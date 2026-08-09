@@ -1,0 +1,89 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  "extends": [
+    "./node_modules/eslint-config-greenpie/configs/oxlintrc.jsonc"
+  ],
+
+  "ignorePatterns": [
+    "**/worker-configuration.d.ts",
+    "**/.nuxt/**",
+    "**/.output/**",
+    "**/dist/**",
+    "playwright-report/**",
+    "test-results/**",
+    "tmp/**"
+  ],
+
+  "options": {
+    "typeAware": true,
+    "typeCheck": true,
+    "reportUnusedDisableDirectives": "error"
+  },
+
+  "rules": {
+    "typescript/no-unnecessary-type-arguments": "off",
+    "eslint/arrow-body-style": ["error", "as-needed", {
+      "requireReturnForObjectLiteral": true
+    }],
+    "eslint/no-magic-numbers": "off",
+    "unicorn/max-nested-calls": "off"
+  },
+
+  "overrides": [{
+    "files": [
+      "**/drizzle.config.ts",
+      "**/nuxt.config.ts",
+      "playwright.config.ts",
+      "**/vitest*.config.ts",
+      "apps/api/src/index.ts"
+    ],
+
+    "rules": {
+      "import/no-default-export": "off"
+    }
+  }, {
+    "files": [
+      "apps/web/nuxt.config.ts"
+    ],
+
+    "globals": {
+      "defineNuxtConfig": "readonly"
+    }
+  }, {
+    "files": [
+      "**/*.config.ts",
+      "tests/**/*.ts"
+    ],
+
+    "env": {
+      "node": true
+    }
+  }, {
+    "files": [
+      "apps/api/src/**/*.ts"
+    ],
+
+    "env": {
+      "worker": true
+    }
+  }, {
+    "files": [
+      "**/__tests__/**/*.ts",
+      "tests/**/*.ts"
+    ],
+
+    "rules": {
+      "import/no-relative-parent-imports": "off",
+      "vitest/require-mock-type-parameters": "off"
+    }
+  }, {
+    "files": [
+      "tests/playwright/**/*.ts"
+    ],
+
+    "rules": {
+      "vitest/prefer-importing-vitest-globals": "off"
+    }
+  }]
+}

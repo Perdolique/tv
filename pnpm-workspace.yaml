@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  sharp: false
+  workerd: false
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types@5.20260809.1'
+  - pg-protocol@1.16.0
+  - pg@8.23.0

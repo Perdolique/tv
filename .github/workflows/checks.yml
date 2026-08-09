@@ -1,0 +1,59 @@
+name: Checks
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+      - run: pnpm run lint:markdown
+      - run: pnpm run lint:oxlint
+
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+      - run: pnpm run test:typecheck
+
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+      - run: pnpm run test:unit:ci
+
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+      - run: pnpm run build
+
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:e2e:ci
