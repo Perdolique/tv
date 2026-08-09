@@ -1,0 +1,22 @@
+name: 💡 Suggest an idea
+description: Share an idea for TV
+labels:
+  - idea
+
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: Describe the idea or opportunity. A finished solution is not required.
+      placeholder: What could TV provide or improve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add examples, links, or anything else that helps explain the idea.
+    validations:
+      required: false
