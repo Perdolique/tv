@@ -6,6 +6,10 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "dev": {
+    "ip": "127.0.0.1",
+    "port": 8788
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

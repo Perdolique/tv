@@ -4,12 +4,11 @@
   "type": "module",
   "scripts": {
     "build": "wrangler deploy --dry-run --outdir dist/worker",
-    "cf-typegen": "wrangler types worker-configuration.d.ts --env-interface CloudflareBindings",
-    "cf-typegen:check": "wrangler types worker-configuration.d.ts --env-interface CloudflareBindings --check",
-    "dev": "wrangler dev --local --compatibility-date 2026-08-08 --ip 127.0.0.1 --port 8788",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "cf-typegen:check": "wrangler types --env-interface CloudflareBindings --check",
+    "dev": "wrangler dev",
     "test:typecheck": "tsc --noEmit",
-    "test:unit": "vitest run --config vitest.config.ts && vitest run --config vitest.node.config.ts",
-    "test:unit:ci": "vitest run --config vitest.config.ts && vitest run --config vitest.node.config.ts"
+    "test:unit": "vitest run --config vitest.config.ts && vitest run --config vitest.node.config.ts"
   },
   "dependencies": {
     "@tv/database": "workspace:*",

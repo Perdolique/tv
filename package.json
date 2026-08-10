@@ -14,8 +14,7 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:ci": "CI=true playwright test --project=chromium",
     "test:typecheck": "pnpm -r --if-present run test:typecheck && pnpm run cf-typegen:check",
-    "test:unit": "pnpm --filter @tv/api run test:unit",
-    "test:unit:ci": "pnpm --filter @tv/api run test:unit:ci"
+    "test:unit": "pnpm -r --if-present run test:unit"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.20.3",

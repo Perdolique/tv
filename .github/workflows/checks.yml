@@ -39,7 +39,7 @@ jobs:
       - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
         with:
           install-dependencies: true
-      - run: pnpm run test:unit:ci
+      - run: pnpm run test:unit
 
   build:
     runs-on: ubuntu-24.04

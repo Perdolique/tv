@@ -31,7 +31,7 @@ vp run dev
 | `vp run lint:markdown` | Lint Markdown files |
 | `vp run lint:oxlint` | Lint source and configuration files |
 | `vp run test:typecheck` | Type-check every workspace and verify generated Worker types |
-| `vp run test:unit:ci` | Run API and database wiring tests once |
+| `vp run test:unit` | Run unit tests in every workspace package that defines them |
 | `vp run test:e2e:ci` | Build the web Worker and run Chromium browser tests |
 | `vp run cf-typegen` | Regenerate types for both Workers |
 

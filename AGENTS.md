@@ -2,7 +2,7 @@
 
 ## Package management
 
-- Use `vp` for package manager commands.
+- Use `vp` for package manager commands run locally by users, agents, and Git hooks.
 
 ## GitHub planning
 
