@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build && wrangler deploy --dry-run --outdir dist/worker",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "cf-typegen:check": "wrangler types --env-interface CloudflareBindings --check",
+    "cf-typegen": "nuxt build && wrangler types --env-interface CloudflareBindings",
+    "cf-typegen:check": "nuxt build && wrangler types --env-interface CloudflareBindings --check",
     "dev": "nuxt dev",
     "prepare": "nuxt prepare",
     "preview": "wrangler dev",

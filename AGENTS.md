@@ -3,7 +3,6 @@
 ## Package management
 
 - Use `vp` for package manager commands run locally by users, agents, and Git hooks.
-- Use long pnpm option names in scripts and workflows, such as `--recursive` instead of `-r`.
 
 ## GitHub planning
 
