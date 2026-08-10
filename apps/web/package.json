@@ -1,0 +1,20 @@
+{
+  "name": "@tv/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build && wrangler deploy --dry-run --outdir dist/worker",
+    "cf-typegen": "nuxt build && wrangler types --env-interface CloudflareBindings",
+    "cf-typegen:check": "nuxt build && wrangler types --env-interface CloudflareBindings --check",
+    "dev": "nuxt dev",
+    "prepare": "nuxt prepare",
+    "preview": "wrangler dev",
+    "preview:e2e": "wrangler dev --port 8889",
+    "test:typecheck": "nuxi typecheck"
+  },
+  "dependencies": {
+    "nuxt": "4.5.2",
+    "vue": "3.5.41",
+    "vue-router": "5.2.0"
+  }
+}

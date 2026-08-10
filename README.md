@@ -1,43 +1,59 @@
 # TV
 
-TV is a service for finding movies and series, following them, and seeing their upcoming releases.
+TV helps people discover movies and series, keep track of what interests them, and see what is coming next.
 
-## MVP
+## Features
 
-The planned MVP allows a user to:
-
-- Create an account and sign in.
-- Search the catalog.
-- View movie and series details.
+- Search a catalog of movies and series.
+- View title details and release information.
 - Follow movies and series.
-- View upcoming releases for followed titles.
+- See upcoming releases for followed titles.
+- Create an account and keep preferences across sessions.
 
-## Technical direction
+## Technology
 
-The service will maintain its own complete catalog, including movies, series, episodes, people, localized metadata, genres, releases, and derived data.
+- Nuxt and Vue for the server-rendered web application.
+- Hono and Cloudflare Workers for the API.
+- PostgreSQL through Cloudflare Hyperdrive for application and catalog data.
+- Drizzle ORM for schemas, queries, and migrations.
+- Vitest and Playwright for automated testing.
 
-### Confirmed
+## Local development
 
-- Cloudflare Workers is the primary compute platform.
-- Neon PostgreSQL is the source of truth for the catalog and user data.
-- Cloudflare Hyperdrive connects Workers to Neon.
-- Drizzle ORM manages the relational schema, queries, and migrations.
-- Cloudflare Queues distributes catalog import and enrichment work.
-- Cloudflare Workflows coordinates durable, multi-step import runs.
-- Cloudflare R2 stores raw source datasets and object media.
-- Cloudflare Cache API caches public catalog responses.
-- Cloudflare D1 is not used as the primary relational database.
-- Hono implements the backend API and Worker handlers.
-- Nuxt 4 with Vue 3 implements the web application and server-side rendering.
-- The repository uses a minimal workspace-based monorepo.
+Install dependencies:
 
-### Repository structure
+```shell
+vp install
+```
+
+Run both applications:
+
+```shell
+vp run dev
+```
+
+- Web: <http://127.0.0.1:3001>
+- API health check: <http://127.0.0.1:8788/health>
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `vp run build` | Build and validate both Cloudflare Workers with Wrangler dry runs |
+| `vp run lint:markdown` | Lint Markdown files |
+| `vp run lint:oxlint` | Lint source and configuration files |
+| `vp run test:typecheck` | Type-check every workspace and verify generated Worker types |
+| `vp run test:unit` | Run unit tests in every workspace package that defines them |
+| `vp run test:e2e` | Build the web Worker and run Chromium browser tests |
+| `vp run cf-typegen` | Regenerate types for both Workers |
+
+## Repository structure
 
 ```text
 tv/
 ├── apps/
-│   ├── web/          # Nuxt web application
-│   └── api/          # Hono API and Cloudflare Worker handlers
+│   ├── web/          # Nuxt SSR Worker
+│   └── api/          # Hono API Worker
 └── packages/
-    └── database/     # Drizzle schema, migrations, and database client
+    └── database/     # Shared Drizzle schema, migrations, and database access
 ```

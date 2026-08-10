@@ -1,0 +1,12 @@
+node_modules/
+.nuxt/
+.output/
+.playwright-cli/
+.wrangler/
+dist/
+playwright-report/
+test-results/
+tmp/
+.env
+.env.*
+!.env.example
