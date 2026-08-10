@@ -4,12 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build && wrangler deploy --dry-run --outdir dist/worker",
-    "cf-typegen": "nuxt build && wrangler types worker-configuration.d.ts --env-interface CloudflareBindings",
-    "cf-typegen:check": "nuxt build && wrangler types worker-configuration.d.ts --env-interface CloudflareBindings --check",
-    "dev": "nuxt dev --host 127.0.0.1 --port 3001",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "cf-typegen:check": "wrangler types --env-interface CloudflareBindings --check",
+    "dev": "nuxt dev",
     "prepare": "nuxt prepare",
-    "preview": "wrangler dev --local --compatibility-date 2026-08-08 --ip 127.0.0.1 --port 3001",
-    "preview:e2e": "wrangler dev --local --compatibility-date 2026-08-08 --ip 127.0.0.1 --port 8889",
+    "preview": "wrangler dev",
+    "preview:e2e": "wrangler dev --port 8889",
     "test:typecheck": "nuxi typecheck"
   },
   "dependencies": {

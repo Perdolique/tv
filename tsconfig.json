@@ -15,7 +15,7 @@
     "noUnusedParameters": true,
     "skipLibCheck": true,
     "strict": true,
-    "target": "ES2023",
+    "target": "ES2025",
     "verbatimModuleSyntax": true
   }
 }

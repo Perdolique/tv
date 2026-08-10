@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": [
-      "ES2023"
+      "ES2025"
     ],
     "types": [
       "@cloudflare/vitest-pool-workers/types"

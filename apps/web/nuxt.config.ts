@@ -12,7 +12,12 @@ const compilerOptions = {
 } satisfies TypeScriptCompilerOptions
 
 export default defineNuxtConfig({
-  compatibilityDate: '2026-08-09',
+  compatibilityDate: '2026-08-08',
+
+  devServer: {
+    host: '127.0.0.1',
+    port: 3001
+  },
 
   css: [
     '~/assets/styles/reset.css'

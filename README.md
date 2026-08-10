@@ -1,18 +1,30 @@
 # TV
 
-TV is a service for finding movies and series, following them, and seeing their upcoming releases.
+TV helps people discover movies and series, keep track of what interests them, and see what is coming next.
 
-This repository currently contains the minimal Cloudflare foundation: a Nuxt SSR Worker, a Hono API Worker, and a shared Drizzle package. It does not provision or deploy cloud resources and does not connect to a database yet.
+## Features
 
-## Prerequisites
+- Search a catalog of movies and series.
+- View title details and release information.
+- Follow movies and series.
+- See upcoming releases for followed titles.
+- Create an account and keep preferences across sessions.
 
-- Node.js 24.14
-- pnpm 11.20.0
-- Chromium installed for Playwright (`vp exec playwright install chromium`)
+## Technology
 
-Install dependencies with `vp install`.
+- Nuxt and Vue for the server-rendered web application.
+- Hono and Cloudflare Workers for the API.
+- PostgreSQL through Cloudflare Hyperdrive for application and catalog data.
+- Drizzle ORM for schemas, queries, and migrations.
+- Vitest and Playwright for automated testing.
 
 ## Local development
+
+Install dependencies:
+
+```shell
+vp install
+```
 
 Run both applications:
 
@@ -32,7 +44,7 @@ vp run dev
 | `vp run lint:oxlint` | Lint source and configuration files |
 | `vp run test:typecheck` | Type-check every workspace and verify generated Worker types |
 | `vp run test:unit` | Run unit tests in every workspace package that defines them |
-| `vp run test:e2e:ci` | Build the web Worker and run Chromium browser tests |
+| `vp run test:e2e` | Build the web Worker and run Chromium browser tests |
 | `vp run cf-typegen` | Regenerate types for both Workers |
 
 ## Repository structure
@@ -43,5 +55,5 @@ tv/
 │   ├── web/          # Nuxt SSR Worker
 │   └── api/          # Hono API Worker
 └── packages/
-    └── database/     # Shared Drizzle factory, empty schema, and migrations
+    └── database/     # Shared Drizzle schema, migrations, and database access
 ```

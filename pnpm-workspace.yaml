@@ -2,6 +2,8 @@ packages:
   - apps/*
   - packages/*
 
+saveExact: true
+
 allowBuilds:
   '@parcel/watcher': false
   esbuild: false
@@ -9,6 +11,29 @@ allowBuilds:
   workerd: false
 
 minimumReleaseAgeExclude:
-  - '@cloudflare/workers-types@5.20260809.1'
-  - pg-protocol@1.16.0
-  - pg@8.23.0
+  - taze@20.0.1
+  - '@cloudflare/vitest-pool-workers@0.21.0'
+  - '@cloudflare/workers-types@5.20260810.1'
+  - '@oxlint/binding-android-arm-eabi@1.78.0'
+  - '@oxlint/binding-android-arm64@1.78.0'
+  - '@oxlint/binding-darwin-arm64@1.78.0'
+  - '@oxlint/binding-darwin-x64@1.78.0'
+  - '@oxlint/binding-freebsd-x64@1.78.0'
+  - '@oxlint/binding-linux-arm-gnueabihf@1.78.0'
+  - '@oxlint/binding-linux-arm-musleabihf@1.78.0'
+  - '@oxlint/binding-linux-arm64-gnu@1.78.0'
+  - '@oxlint/binding-linux-arm64-musl@1.78.0'
+  - '@oxlint/binding-linux-ppc64-gnu@1.78.0'
+  - '@oxlint/binding-linux-riscv64-gnu@1.78.0'
+  - '@oxlint/binding-linux-riscv64-musl@1.78.0'
+  - '@oxlint/binding-linux-s390x-gnu@1.78.0'
+  - '@oxlint/binding-linux-x64-gnu@1.78.0'
+  - '@oxlint/binding-linux-x64-musl@1.78.0'
+  - '@oxlint/binding-openharmony-arm64@1.78.0'
+  - '@oxlint/binding-win32-arm64-msvc@1.78.0'
+  - '@oxlint/binding-win32-ia32-msvc@1.78.0'
+  - '@oxlint/binding-win32-x64-msvc@1.78.0'
+  - eslint-config-greenpie@17.6.0
+  - miniflare@5.20260804.0-alpha
+  - oxlint@1.78.0
+  - wrangler@4.120.1
