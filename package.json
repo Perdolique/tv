@@ -6,20 +6,25 @@
     "build": "pnpm --filter @tv/web run build && pnpm --filter @tv/api run build",
     "cf-typegen": "pnpm --filter @tv/web --filter @tv/api run cf-typegen",
     "cf-typegen:check": "pnpm --filter @tv/web --filter @tv/api run cf-typegen:check",
+    "db:generate": "pnpm --filter @tv/database run db:generate",
+    "db:migrate": "pnpm --filter @tv/database run db:migrate",
     "dev": "pnpm --parallel --filter @tv/web --filter @tv/api run dev",
+    "format": "worsier --write .",
+    "format:check": "worsier --check .",
     "lint:markdown": "markdownlint '**/*.md'",
     "lint:oxlint": "oxlint .",
     "postinstall": "pnpm --filter @tv/web run prepare",
     "prepare": "husky",
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:ci": "CI=true playwright test --project=chromium",
+    "test:integration": "pnpm --filter @tv/api run test:integration",
     "test:typecheck": "pnpm --recursive --if-present run test:typecheck && pnpm run cf-typegen:check",
     "test:unit": "pnpm --recursive --if-present run test:unit",
     "update:all": "taze --recursive --interactive --include-locked"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.21.0",
-    "@cloudflare/workers-types": "5.20260810.1",
+    "@cloudflare/vitest-pool-workers": "0.21.3",
+    "@cloudflare/workers-types": "5.20260816.1",
     "@playwright/test": "1.62.1",
     "@types/node": "26.2.0",
     "@types/pg": "8.21.0",
@@ -30,11 +35,13 @@
     "markdownlint-cli": "0.49.1",
     "oxlint": "1.78.0",
     "oxlint-tsgolint": "7.0.2001",
-    "taze": "20.0.1",
+    "taze": "21.1.0",
+    "tsx": "4.23.12",
     "typescript": "6.0.3",
     "vitest": "4.1.10",
-    "vue-tsc": "3.3.9",
-    "wrangler": "4.120.1"
+    "vue-tsc": "3.3.10",
+    "worsier": "2.8.0",
+    "wrangler": "4.123.0"
   },
-  "packageManager": "pnpm@11.21.0"
+  "packageManager": "pnpm@11.22.0"
 }

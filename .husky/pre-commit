@@ -1,5 +1,6 @@
 set -e
 
+vp run format:check
 vp run lint:markdown
 vp run lint:oxlint
 vp run test:typecheck

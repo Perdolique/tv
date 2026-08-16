@@ -5,4 +5,4 @@ export function createDatabase(client: Client) {
   return drizzle({ client })
 }
 
-export type Database = ReturnType<typeof createDatabase>;
+export type Database = ReturnType<typeof createDatabase>

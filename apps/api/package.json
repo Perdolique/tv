@@ -3,16 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "wrangler deploy --dry-run --outdir dist/worker",
+    "build": "wrangler deploy --dry-run --env=\"\" --outdir dist/worker",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "cf-typegen:check": "wrangler types --env-interface CloudflareBindings --check",
     "dev": "wrangler dev",
+    "test:integration": "tsx scripts/run-integration-tests.ts",
     "test:typecheck": "tsc --noEmit",
     "test:unit": "vitest run --config vitest.config.ts && vitest run --config vitest.node.config.ts"
   },
   "dependencies": {
     "@tv/database": "workspace:*",
-    "hono": "4.13.1",
-    "pg": "8.23.0"
+    "drizzle-orm": "1.0.0-rc.4",
+    "hono": "4.13.2",
+    "pg": "8.23.0",
+    "valibot": "1.4.2"
   }
 }

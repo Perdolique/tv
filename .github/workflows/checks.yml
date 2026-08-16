@@ -22,6 +22,7 @@ jobs:
       - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
         with:
           install-dependencies: true
+      - run: pnpm run format:check
       - run: pnpm run lint:markdown
       - run: pnpm run lint:oxlint
 
@@ -40,6 +41,30 @@ jobs:
         with:
           install-dependencies: true
       - run: pnpm run test:unit
+
+  integration:
+    runs-on: ubuntu-24.04
+    env:
+      TEST_DATABASE_ADMIN_URL: postgresql://tv:tv@127.0.0.1:5432/postgres
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: tv
+          POSTGRES_PASSWORD: tv
+          POSTGRES_USER: tv
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tv -d tv"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+      - run: pnpm run test:integration
 
   build:
     runs-on: ubuntu-24.04
