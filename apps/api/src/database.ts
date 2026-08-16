@@ -6,7 +6,7 @@ interface DatabaseAdapter {
   database: Database;
 }
 
-export function createDatabaseAdapter(connectionString: string): DatabaseAdapter {
+function createDatabaseAdapter(connectionString: string): DatabaseAdapter {
   const client = new Client({ connectionString })
   const database = createDatabase(client)
 
@@ -14,4 +14,19 @@ export function createDatabaseAdapter(connectionString: string): DatabaseAdapter
     client,
     database
   }
+}
+
+async function connectDatabaseAdapter(
+  connectionString: string
+): Promise<DatabaseAdapter> {
+  const adapter = createDatabaseAdapter(connectionString)
+
+  await adapter.client.connect()
+
+  return adapter
+}
+
+export {
+  connectDatabaseAdapter,
+  createDatabaseAdapter
 }

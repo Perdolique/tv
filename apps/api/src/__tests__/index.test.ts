@@ -6,6 +6,7 @@ describe('get /health contract', () => {
     const response = await exports.default.fetch(
       new Request('https://tv-api.test/health')
     )
+
     const body: unknown = await response.json()
 
     expect(response.status).toBe(200)

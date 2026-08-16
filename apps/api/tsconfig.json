@@ -5,13 +5,17 @@
       "ES2025"
     ],
     "types": [
+      "./worker-configuration.d.ts",
+      "node",
       "@cloudflare/vitest-pool-workers/types"
     ]
   },
   "include": [
+    "scripts/**/*.ts",
     "src/**/*.ts",
+    "vitest.database-integration.config.ts",
     "vitest.config.ts",
     "vitest.node.config.ts",
-    "worker-configuration.d.ts"
+    "vitest.worker-integration.config.ts"
   ]
 }

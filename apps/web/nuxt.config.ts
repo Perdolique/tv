@@ -2,7 +2,7 @@ import type { NuxtOptions } from 'nuxt/schema'
 
 type TypeScriptCompilerOptions = NonNullable<
   NuxtOptions['typescript']['tsConfig']['compilerOptions']
->;
+>
 
 const compilerOptions = {
   noFallthroughCasesInSwitch: true,

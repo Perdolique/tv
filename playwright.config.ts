@@ -5,6 +5,7 @@ import { appBaseUrl } from './tests/playwright/constants.ts'
 delete env.NO_COLOR
 
 const isCI = Boolean(env.CI)
+
 const reporters: ReporterDescription[] = [
   ['html', { open: 'never' }]
 ]
