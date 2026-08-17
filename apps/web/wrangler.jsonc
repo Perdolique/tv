@@ -9,6 +9,12 @@
   "assets": {
     "directory": ".output/public"
   },
+  "services": [
+    {
+      "binding": "API",
+      "service": "tv-api"
+    }
+  ],
   "dev": {
     "ip": "127.0.0.1",
     "port": 3001

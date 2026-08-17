@@ -75,11 +75,21 @@
     }
   }, {
     "files": [
-      "apps/api/src/**/*.ts"
+      "apps/api/src/**/*.ts",
+      "apps/web/server/**/*.ts"
     ],
 
     "env": {
       "worker": true
+    }
+  }, {
+    "files": [
+      "apps/web/app/app.vue",
+      "apps/web/app/pages/**/*.vue"
+    ],
+
+    "rules": {
+      "unicorn/filename-case": "off"
     }
   }, {
     "files": [
