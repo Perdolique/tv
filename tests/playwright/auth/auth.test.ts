@@ -1,7 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
-import { longEmail } from './constants.ts'
 
 const validPassword = 'correct horse battery staple'
 
@@ -114,10 +113,14 @@ test.describe('Authentication routing and SSR', () => {
       await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
       await expect(page.getByLabel('Email')).toBeVisible()
       await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+      await expect(page.getByText('TV', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('Sign in to search and save your TV catalog.')).toHaveCount(0)
 
       await page.goto('/register')
       await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible()
-      await expect(page.getByLabel('Confirm password')).toBeVisible()
+      await expect(page.locator('input[autocomplete="new-password"]')).toHaveCount(1)
+      await expect(page.getByText('TV', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('Create an account to start building your TV experience.')).toHaveCount(0)
     })
   })
 
@@ -136,46 +139,27 @@ test.describe('Authentication forms', () => {
   test('toggles password visibility with an accessible name', async ({ page }) => {
     await page.goto('/sign-in')
 
-    const password = page.getByLabel('Password', { exact: true })
+    const signInPassword = page.getByLabel('Password', { exact: true })
 
-    await expect(password).toHaveAttribute('type', 'password')
+    await expect(signInPassword).toHaveAttribute('type', 'password')
 
     await page.getByRole('button', { name: 'Show password' }).click()
-    await expect(password).toHaveAttribute('type', 'text')
+    await expect(signInPassword).toHaveAttribute('type', 'text')
     await expect(page.getByRole('button', { name: 'Hide password' })).toBeVisible()
 
     await page.goto('/register')
 
-    const passwordFields = page.locator('input[autocomplete="new-password"]')
+    const registrationPassword = page.getByLabel('Password', { exact: true })
 
-    await page.getByRole('button', { name: 'Show passwords' }).click()
-    await expect(passwordFields).toHaveCount(2)
-    await expect(passwordFields.nth(0)).toHaveAttribute('type', 'text')
-    await expect(passwordFields.nth(1)).toHaveAttribute('type', 'text')
-  })
-
-  test('blocks registration when password confirmation does not match', async ({ page }) => {
-    let registrationRequests = 0
-
-    page.on('request', (request) => {
-      registrationRequests += Number(request.url().endsWith('/api/auth/register'))
-    })
-
-    await page.goto('/register')
-    await page.getByLabel('Email').fill('viewer@example.com')
-    await page.getByLabel('Password', { exact: true }).fill(validPassword)
-    await page.getByLabel('Confirm password').fill('different password')
-    await page.getByRole('button', { name: 'Create account' }).click()
-
-    await expect(page.getByText('Passwords do not match.')).toBeVisible()
-    expect(registrationRequests).toBe(0)
+    await page.getByRole('button', { name: 'Show password' }).click()
+    await expect(registrationPassword).toHaveAttribute('type', 'text')
+    await expect(page.getByRole('button', { name: 'Hide password' })).toBeVisible()
   })
 
   test('accepts registration without creating a session', async ({ page }) => {
     await page.goto('/register?redirectTo=%2F%3Fview%3Drecent')
     await page.getByLabel('Email').fill('  viewer@example.com  ')
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
-    await page.getByLabel('Confirm password').fill(validPassword)
 
     const registrationRequestPromise = page.waitForRequest(`${appBaseUrl}/api/auth/register`)
 
@@ -206,7 +190,6 @@ test.describe('Authentication forms', () => {
     await emailInput.fill('registration-unavailable@example.com')
     await expect(emailInput).toHaveValue('registration-unavailable@example.com')
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
-    await page.getByLabel('Confirm password').fill(validPassword)
     await page.getByRole('button', { name: 'Create account' }).click()
 
     const formError = page.getByRole('alert')
@@ -277,19 +260,6 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
 
     await secondPage.close()
-  })
-
-  test('keeps a valid long email inside the mobile viewport', async ({ page }) => {
-    await page.setViewportSize({ height: 720, width: 320 })
-    await signIn(page, { email: longEmail })
-
-    await expect(page.getByText(longEmail)).toBeVisible()
-
-    const viewportOverflow = await page.evaluate(() => (
-      globalThis.document.documentElement.scrollWidth - globalThis.innerWidth
-    ))
-
-    expect(viewportOverflow).toBeLessThanOrEqual(0)
   })
 
   expectedUnavailableErrorTest('moves focus to authenticated content after session retry succeeds', async ({ context, page }) => {

@@ -33,7 +33,6 @@ type AuthSessionState =
 interface AuthFieldErrors {
   email?: string;
   password?: string;
-  passwordConfirmation?: string;
 }
 
 interface ParsedAuthError {

@@ -5,10 +5,6 @@ interface CredentialsPayload {
   password: string;
 }
 
-interface RegistrationFormValues extends CredentialsPayload {
-  passwordConfirmation: string;
-}
-
 interface ValidationResult {
   fields: AuthFieldErrors;
   payload: CredentialsPayload | null;
@@ -57,32 +53,11 @@ function validateCredentials(email: string, password: string): ValidationResult 
   }
 }
 
-function validateRegistration(values: RegistrationFormValues): ValidationResult {
-  const result = validateCredentials(values.email, values.password)
-
-  if (values.passwordConfirmation === '') {
-    result.fields.passwordConfirmation = 'Confirm your password.'
-  } else if (values.passwordConfirmation !== values.password) {
-    result.fields.passwordConfirmation = 'Passwords do not match.'
-  }
-
-  if (Object.keys(result.fields).length > 0) {
-    return {
-      fields: result.fields,
-      payload: null
-    }
-  }
-
-  return result
-}
-
 export {
-  validateCredentials,
-  validateRegistration
+  validateCredentials
 }
 
 export type {
   CredentialsPayload,
-  RegistrationFormValues,
   ValidationResult
 }
