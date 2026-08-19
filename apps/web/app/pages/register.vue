@@ -127,11 +127,13 @@
 
     if (emailError.value !== undefined) {
       emailInput.value?.focus()
+
       return
     }
 
     if (passwordError.value !== undefined) {
       passwordField.value?.focus()
+
       return
     }
 
@@ -151,6 +153,7 @@
     if (validation.payload === null) {
       fields.value = validation.fields
       await focusFirstError()
+
       return
     }
 

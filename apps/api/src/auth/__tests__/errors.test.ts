@@ -27,9 +27,11 @@ describe(createErrorEnvelope, () => {
     expect(createErrorEnvelope(error)).toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
+
         fields: {
           email: 'Enter a valid email address.'
         },
+
         message: 'The request is invalid.'
       }
     })

@@ -19,10 +19,11 @@ function useAuthSession() {
     }
 
     try {
-      const response: unknown = await requestFetch('/api/auth/session')
+      const response = await requestFetch('/api/auth/session')
 
       if (!isAuthSessionResponse(response)) {
         state.value = { status: 'error' }
+
         return
       }
 

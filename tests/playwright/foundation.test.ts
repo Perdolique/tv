@@ -5,6 +5,9 @@ test.describe('TV foundation', () => {
     await page.goto('/sign-in')
 
     await expect(page).toHaveTitle('Sign in · TV')
-    await expect(page.getByRole('heading', { level: 1, name: 'Welcome back' })).toBeVisible()
+    await expect(page.getByRole('heading', {
+      level: 1,
+      name: 'Welcome back'
+    })).toBeVisible()
   })
 })

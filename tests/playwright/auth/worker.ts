@@ -140,9 +140,11 @@ function handleSession(request: Request): Response {
   if (hasCookie(request, 'fail_session=1')) {
     return safeError({
       code: 'SERVICE_UNAVAILABLE',
+
       headers: {
         'Set-Cookie': 'fail_session=; Max-Age=0; Path=/; SameSite=Lax'
       },
+
       message: 'Authentication is temporarily unavailable.',
       status: 503
     })
@@ -161,9 +163,11 @@ function handleSignOut(request: Request): Response {
   if (hasCookie(request, 'fail_sign_out=1')) {
     return safeError({
       code: 'SERVICE_UNAVAILABLE',
+
       headers: {
         'Set-Cookie': 'fail_sign_out=; Max-Age=0; Path=/; SameSite=Lax'
       },
+
       message: 'Authentication is temporarily unavailable.',
       status: 503
     })
@@ -174,6 +178,7 @@ function handleSignOut(request: Request): Response {
       'Cache-Control': 'no-store',
       'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
     },
+
     status: 204
   })
 }

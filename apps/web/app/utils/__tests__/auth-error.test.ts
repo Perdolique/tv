@@ -6,11 +6,13 @@ describe(parseAuthError, () => {
     const result = parseAuthError({
       error: {
         code: 'INVALID_REQUEST',
+
         fields: {
           email: 'Enter a valid email address.',
           password: 'Enter a password.',
           token: 'Technical token detail'
         },
+
         message: 'The request is invalid.'
       }
     })
@@ -20,6 +22,7 @@ describe(parseAuthError, () => {
         email: 'Enter a valid email address.',
         password: 'Enter a password.'
       },
+
       message: 'The request is invalid.'
     })
   })
@@ -27,8 +30,14 @@ describe(parseAuthError, () => {
   it.each([
     null,
     { error: 'broken' },
-    { error: { code: 'DATABASE_ERROR', message: 'password leaked' } },
-    { error: { code: 'SERVICE_UNAVAILABLE', message: 'connection refused' } }
+    { error: {
+      code: 'DATABASE_ERROR',
+      message: 'password leaked'
+    } },
+    { error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'connection refused'
+    } }
   ])('replaces malformed or unsafe response %j with a generic error', (value) => {
     expect(parseAuthError(value)).toStrictEqual({
       fields: {},

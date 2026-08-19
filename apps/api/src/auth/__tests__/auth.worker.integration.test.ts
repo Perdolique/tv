@@ -86,6 +86,7 @@ async function registrationRequest(email: string, password = PASSWORD): Promise<
       email,
       password
     },
+
     method: 'POST'
   })
 }
@@ -100,6 +101,7 @@ async function signInRequest(
       email,
       password
     },
+
     method: 'POST'
   }
 
@@ -494,9 +496,11 @@ describe('auth Worker contract', () => {
           email: uniqueEmail('jsonp'),
           password: PASSWORD
         }),
+
         headers: {
           'Content-Type': 'application/jsonp'
         },
+
         method: 'POST'
       }
     ))
@@ -516,9 +520,11 @@ describe('auth Worker contract', () => {
       'https://tv-api.test/auth/sign-out',
       {
         body: '{}',
+
         headers: {
           'Content-Type': 'application/json'
         },
+
         method: 'POST'
       }
     ))
@@ -527,9 +533,11 @@ describe('auth Worker contract', () => {
       'https://tv-api.test/auth/sign-out',
       {
         body: JSON.stringify({ padding: 'x'.repeat(9e3) }),
+
         headers: {
           'Content-Type': 'application/json'
         },
+
         method: 'POST'
       }
     ))
@@ -570,6 +578,7 @@ describe('auth Worker contract', () => {
     for (let attempt = 0; attempt < 6; attempt += 1) {
       signInResponses.push(await signInRequest(email))
     }
+
     /* oxlint-enable eslint/no-await-in-loop */
 
     expect(registrationResponses.slice(0, 5).map((response) => response.status)).toStrictEqual([

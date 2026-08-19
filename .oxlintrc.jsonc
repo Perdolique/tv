@@ -50,7 +50,8 @@
       "**/nuxt.config.ts",
       "playwright.config.ts",
       "**/vitest*.config.ts",
-      "apps/api/src/index.ts"
+      "apps/api/src/index.ts",
+      "apps/web/app/middleware/**/*.ts"
     ],
 
     "rules": {

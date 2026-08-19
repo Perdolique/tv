@@ -10,6 +10,7 @@ describe(validateCredentials, () => {
 
     expect(result).toStrictEqual({
       fields: {},
+
       payload: {
         email: 'viewer@example.com',
         password: 'correct horse battery staple'

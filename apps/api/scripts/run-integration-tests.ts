@@ -37,7 +37,10 @@ async function waitForChild(child: ChildProcess): Promise<ChildResult> {
     child.once('error', reject)
 
     child.once('close', (exitCode, signal) => {
-      resolve({ exitCode, signal })
+      resolve({
+        exitCode,
+        signal
+      })
     })
   })
 }

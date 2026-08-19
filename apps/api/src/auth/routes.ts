@@ -280,6 +280,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
 
     if (!isSessionToken(token)) {
       clearSessionCookie(context)
+
       return context.json({ user: null })
     }
 

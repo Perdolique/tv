@@ -36,6 +36,23 @@ describe(isPasswordCompromised, () => {
     ).resolves.toBe(false)
   })
 
+  it('accepts a valid range response larger than 64 KiB', async () => {
+    const responseBody = Array.from(
+      { length: 2048 },
+      () => `${PADDED_HASH_SUFFIX}:0`
+    ).join('\r\n')
+
+    expect(responseBody.length).toBeGreaterThan(64 * 1024)
+
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(responseBody)
+    )
+
+    await expect(
+      isPasswordCompromised('password', fetchImplementation)
+    ).resolves.toBe(false)
+  })
+
   it('fails closed with the empty-response technical message', async () => {
     const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
       new Response('\r\n')
@@ -67,8 +84,9 @@ describe(isPasswordCompromised, () => {
 
     const responseBody = new ReadableStream<Uint8Array>({
       cancel,
+
       start(controller) {
-        controller.enqueue(new Uint8Array(65 * 1024))
+        controller.enqueue(new Uint8Array(257 * 1024))
       }
     })
 

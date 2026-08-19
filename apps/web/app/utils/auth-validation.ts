@@ -46,6 +46,7 @@ function validateCredentials(email: string, password: string): ValidationResult 
 
   return {
     fields,
+
     payload: {
       email: normalizedEmail,
       password

@@ -86,6 +86,7 @@
         path: '/sign-in',
         query: { redirectTo: '/' }
       }, { replace: true })
+
       return
     }
 
