@@ -70,12 +70,14 @@
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
   import { navigateTo, useHead, useRequestFetch, useRoute, useState } from '#app'
+  import * as v from 'valibot'
   import { computed, nextTick, ref, useId, useTemplateRef } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import type { AuthFieldErrors, RegistrationNotice } from '~/types/auth.ts'
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
+  import { registrationResponseSchema } from '~/utils/auth-response.ts'
   import { validateCredentials } from '~/utils/auth-validation.ts'
   import { sanitizeRedirectTo } from '~/utils/redirect.ts'
 
@@ -160,10 +162,12 @@
     isSubmitting.value = true
 
     try {
-      await requestFetch('/api/auth/register', {
+      const response = await requestFetch('/api/auth/register', {
         body: validation.payload,
         method: 'POST'
       })
+
+      v.parse(registrationResponseSchema, response)
 
       password.value = ''
       registrationNotice.value = {

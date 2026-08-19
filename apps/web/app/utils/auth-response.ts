@@ -1,20 +1,25 @@
-import type { AuthSessionResponse, AuthUser } from '~/types/auth.ts'
+import * as v from 'valibot'
+import type { AuthUser } from '~/types/auth.ts'
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+const authUserSchema = v.object({
+  email: v.string(),
+  id: v.string()
+}) satisfies v.GenericSchema<AuthUser, AuthUser>
 
-function isAuthUser(value: unknown): value is AuthUser {
-  return isRecord(value)
-    && typeof value.email === 'string'
-    && typeof value.id === 'string'
-}
+const authSessionResponseSchema = v.object({
+  user: v.nullable(authUserSchema)
+})
 
-function isAuthSessionResponse(value: unknown): value is AuthSessionResponse {
-  return isRecord(value) && (value.user === null || isAuthUser(value.user))
-}
+const registrationResponseSchema = v.object({
+  status: v.literal('accepted')
+})
+
+const signInResponseSchema = v.object({
+  user: authUserSchema
+})
 
 export {
-  isAuthSessionResponse,
-  isAuthUser
+  authSessionResponseSchema,
+  registrationResponseSchema,
+  signInResponseSchema
 }

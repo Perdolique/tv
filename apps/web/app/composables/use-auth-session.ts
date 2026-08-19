@@ -1,6 +1,7 @@
 import { useRequestFetch, useState } from '#app'
+import * as v from 'valibot'
 import type { AuthSessionState, AuthUser } from '~/types/auth.ts'
-import { isAuthSessionResponse } from '~/utils/auth-response.ts'
+import { authSessionResponseSchema } from '~/utils/auth-response.ts'
 
 interface RestoreSessionOptions {
   force?: boolean;
@@ -20,18 +21,13 @@ function useAuthSession() {
 
     try {
       const response = await requestFetch('/api/auth/session')
+      const { user } = v.parse(authSessionResponseSchema, response)
 
-      if (!isAuthSessionResponse(response)) {
-        state.value = { status: 'error' }
-
-        return
-      }
-
-      state.value = response.user === null
+      state.value = user === null
         ? { status: 'anonymous' }
         : {
             status: 'authenticated',
-            user: response.user
+            user
           }
     } catch {
       state.value = { status: 'error' }

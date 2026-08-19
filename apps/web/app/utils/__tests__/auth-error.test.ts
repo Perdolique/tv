@@ -27,6 +27,30 @@ describe(parseAuthError, () => {
     })
   })
 
+  it('keeps supported string field errors independently', () => {
+    const result = parseAuthError({
+      error: {
+        code: 'INVALID_REQUEST',
+
+        fields: {
+          email: 42,
+          password: 'Enter a password.',
+          token: 'Technical token detail'
+        },
+
+        message: 'The request is invalid.'
+      }
+    })
+
+    expect(result).toStrictEqual({
+      fields: {
+        password: 'Enter a password.'
+      },
+
+      message: 'The request is invalid.'
+    })
+  })
+
   it.each([
     null,
     { error: 'broken' },

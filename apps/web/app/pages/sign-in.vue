@@ -76,13 +76,14 @@
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
   import { navigateTo, useHead, useRequestFetch, useRoute, useState } from '#app'
+  import * as v from 'valibot'
   import { computed, nextTick, ref, useId, useTemplateRef } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import type { AuthFieldErrors, RegistrationNotice } from '~/types/auth.ts'
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
-  import { isAuthUser } from '~/utils/auth-response.ts'
+  import { signInResponseSchema } from '~/utils/auth-response.ts'
   import { validateCredentials } from '~/utils/auth-validation.ts'
   import { sanitizeRedirectTo } from '~/utils/redirect.ts'
 
@@ -172,21 +173,14 @@
     isSubmitting.value = true
 
     try {
-      const response: unknown = await requestFetch('/api/auth/sign-in', {
+      const response = await requestFetch('/api/auth/sign-in', {
         body: validation.payload,
         method: 'POST'
       })
 
-      if (
-        typeof response !== 'object'
-        || response === null
-        || !('user' in response)
-        || !isAuthUser(response.user)
-      ) {
-        throw new Error('Invalid sign-in response')
-      }
+      const { user } = v.parse(signInResponseSchema, response)
 
-      setAuthenticated(response.user)
+      setAuthenticated(user)
       await navigateTo(redirectTo.value, { replace: true })
     } catch (error) {
       const parsedError = parseAuthError(getFetchErrorData(error))

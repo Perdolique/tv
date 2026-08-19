@@ -156,6 +156,27 @@ test.describe('Authentication forms', () => {
     await expect(page.getByRole('button', { name: 'Hide password' })).toBeVisible()
   })
 
+  test('validates the email before submitting credentials', async ({ page }) => {
+    let signInRequestCount = 0
+
+    await page.route(`${appBaseUrl}/api/auth/sign-in`, async (route) => {
+      signInRequestCount += 1
+      await route.continue()
+    })
+
+    await page.goto('/sign-in')
+
+    const emailInput = page.getByLabel('Email')
+
+    await emailInput.fill('person@example.c')
+    await page.getByLabel('Password', { exact: true }).fill(validPassword)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+
+    await expect(page.getByText('Enter a valid email address.')).toBeVisible()
+    await expect(emailInput).toBeFocused()
+    expect(signInRequestCount).toBe(0)
+  })
+
   test('accepts registration without creating a session', async ({ page }) => {
     await page.goto('/register?redirectTo=%2F%3Fview%3Drecent')
     await page.getByLabel('Email').fill('  viewer@example.com  ')

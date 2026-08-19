@@ -51,7 +51,8 @@
       "playwright.config.ts",
       "**/vitest*.config.ts",
       "apps/api/src/index.ts",
-      "apps/web/app/middleware/**/*.ts"
+      "apps/web/app/middleware/**/*.ts",
+      "apps/web/server/api/**/*.ts"
     ],
 
     "rules": {

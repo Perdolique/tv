@@ -1,3 +1,4 @@
+import * as v from 'valibot'
 import type { AuthFieldErrors, ParsedAuthError } from '~/types/auth.ts'
 
 const AUTH_ERROR_MESSAGES = {
@@ -10,6 +11,21 @@ const AUTH_ERROR_MESSAGES = {
 } as const
 
 const FALLBACK_ERROR_MESSAGE = 'Something went wrong. Try again.'
+
+const authErrorCodeSchema = v.custom<keyof typeof AUTH_ERROR_MESSAGES>(
+  value => typeof value === 'string' && Object.hasOwn(AUTH_ERROR_MESSAGES, value)
+)
+
+const authErrorResponseSchema = v.object({
+  error: v.pipe(
+    v.object({
+      code: authErrorCodeSchema,
+      fields: v.optional(v.unknown()),
+      message: v.string()
+    }),
+    v.check(({ code, message }) => message === AUTH_ERROR_MESSAGES[code])
+  )
+})
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -33,30 +49,17 @@ function parseFieldErrors(value: unknown): AuthFieldErrors {
   return fields
 }
 
-function isAuthErrorCode(value: unknown): value is keyof typeof AUTH_ERROR_MESSAGES {
-  return typeof value === 'string' && Object.hasOwn(AUTH_ERROR_MESSAGES, value)
-}
-
 function parseAuthError(value: unknown): ParsedAuthError {
-  if (!isRecord(value) || !isRecord(value.error)) {
+  const result = v.safeParse(authErrorResponseSchema, value, { abortEarly: true })
+
+  if (!result.success) {
     return {
       fields: {},
       message: FALLBACK_ERROR_MESSAGE
     }
   }
 
-  const { code, fields, message } = value.error
-
-  if (
-    !isAuthErrorCode(code)
-    || typeof message !== 'string'
-    || message !== AUTH_ERROR_MESSAGES[code]
-  ) {
-    return {
-      fields: {},
-      message: FALLBACK_ERROR_MESSAGE
-    }
-  }
+  const { code, fields } = result.output.error
 
   return {
     fields: parseFieldErrors(fields),

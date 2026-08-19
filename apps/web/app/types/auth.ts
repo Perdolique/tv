@@ -3,10 +3,6 @@ interface AuthUser {
   id: string;
 }
 
-interface AuthSessionResponse {
-  user: AuthUser | null;
-}
-
 interface AuthenticatedSessionState {
   status: 'authenticated';
   user: AuthUser;
@@ -47,7 +43,6 @@ interface RegistrationNotice {
 
 export type {
   AuthFieldErrors,
-  AuthSessionResponse,
   AuthSessionState,
   AuthUser,
   ParsedAuthError,

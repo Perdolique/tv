@@ -10,6 +10,8 @@ allowBuilds:
   sharp: false
   workerd: false
 
+minimumReleaseAgeExcludePrune: true
+
 minimumReleaseAgeExclude:
   - '@cloudflare/workers-types@5.20260819.1'
   - worsier-darwin-arm64@3.0.1
