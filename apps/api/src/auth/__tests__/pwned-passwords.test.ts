@@ -81,12 +81,15 @@ describe(isPasswordCompromised, () => {
 
   it('cancels and fails closed for an oversized chunked response', async () => {
     const cancel = vi.fn()
+    const chunks = Array.from({ length: 5 }, () => new Uint8Array(64 * 1024))
 
     const responseBody = new ReadableStream<Uint8Array>({
       cancel,
 
       start(controller) {
-        controller.enqueue(new Uint8Array(257 * 1024))
+        for (const chunk of chunks) {
+          controller.enqueue(chunk)
+        }
       }
     })
 

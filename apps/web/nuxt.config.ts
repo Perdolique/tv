@@ -61,6 +61,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
+    entry: './cloudflare-entry.ts',
     preset: 'cloudflare_module',
 
     cloudflare: {
@@ -69,6 +70,10 @@ export default defineNuxtConfig({
 
     typescript: {
       tsConfig: {
+        files: [
+          '../worker-configuration.d.ts'
+        ],
+
         compilerOptions
       }
     }

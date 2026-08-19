@@ -1,15 +1,73 @@
+/* oxlint-disable eslint/max-lines -- The auth browser contract stays readable as one lifecycle specification. */
 import type { BrowserContext, Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { longEmail } from './constants.ts'
 
 const validPassword = 'correct horse battery staple'
 
-const expectedAuthErrorTest = test.extend({
-  expectedHttpErrorStatuses: [401, 503]
+const registrationUnavailableError = {
+  pathname: '/api/auth/register',
+  status: 503
+}
+
+const registrationValidationError = {
+  pathname: '/api/auth/register',
+  status: 400
+}
+
+const invalidCredentialsError = {
+  pathname: '/api/auth/sign-in',
+  status: 401
+}
+
+const signInUnavailableError = {
+  pathname: '/api/auth/sign-in',
+  status: 503
+}
+
+const sessionUnavailableError = {
+  pathname: '/api/auth/session',
+  status: 503
+}
+
+const signOutUnavailableError = {
+  pathname: '/api/auth/sign-out',
+  status: 503
+}
+
+const expectedRegistrationUnavailableTest = test.extend({
+  expectedHttpErrors: { values: [registrationUnavailableError] }
 })
 
-const expectedUnavailableErrorTest = test.extend({
-  expectedHttpErrorStatuses: [503]
+const expectedRegistrationValidationTest = test.extend({
+  expectedHttpErrors: { values: [registrationValidationError] }
+})
+
+const expectedSignInErrorsTest = test.extend({
+  expectedHttpErrors: {
+    values: [
+      invalidCredentialsError,
+      signInUnavailableError
+    ]
+  }
+})
+
+const expectedSessionUnavailableTest = test.extend({
+  expectedHttpErrors: { values: [sessionUnavailableError] }
+})
+
+const expectedRepeatedSessionUnavailableTest = test.extend({
+  expectedHttpErrors: {
+    values: [
+      sessionUnavailableError,
+      sessionUnavailableError
+    ]
+  }
+})
+
+const expectedSignOutUnavailableTest = test.extend({
+  expectedHttpErrors: { values: [signOutUnavailableError] }
 })
 
 interface SignInOptions {
@@ -49,7 +107,17 @@ async function fillSignIn(
 async function signIn(page: Page, options: SignInOptions = {}): Promise<void> {
   await page.goto(options.target ?? '/sign-in')
   await fillSignIn(page, options.email)
+
+  const signInResponsePromise = page.waitForResponse((response) => (
+    response.url() === `${appBaseUrl}/api/auth/sign-in`
+  ))
+
   await page.getByRole('button', { name: 'Sign in' }).click()
+
+  const signInResponse = await signInResponsePromise
+
+  expect(signInResponse.status()).toBe(200)
+  expect(signInResponse.headers()['cache-control']).toBe('no-store')
   await expect(page.getByText('Signed in as')).toBeVisible()
   await expect(page).toHaveTitle('Your catalog · TV')
 }
@@ -62,16 +130,25 @@ async function addFailedSignOutCookie(context: BrowserContext): Promise<void> {
   }])
 }
 
-async function addRecoverableSessionCookies(context: BrowserContext): Promise<void> {
-  await context.addCookies([{
-    name: 'tv_session',
-    url: appBaseUrl,
-    value: 'e2e-session'
-  }, {
+async function addRecoverableSessionCookies(
+  context: BrowserContext,
+  options: { authenticated?: boolean; failures?: 1 | 2; } = {}
+): Promise<void> {
+  const cookies = [{
     name: 'fail_session',
     url: appBaseUrl,
-    value: '1'
-  }])
+    value: String(options.failures ?? 1)
+  }]
+
+  if (options.authenticated !== false) {
+    cookies.push({
+      name: 'tv_session',
+      url: appBaseUrl,
+      value: 'e2e-session'
+    })
+  }
+
+  await context.addCookies(cookies)
 }
 
 async function navigateWithClientRouter(page: Page, target: string): Promise<void> {
@@ -203,7 +280,7 @@ test.describe('Authentication forms', () => {
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
   })
 
-  expectedUnavailableErrorTest('shows a safe registration service error', async ({ page }) => {
+  expectedRegistrationUnavailableTest('shows a safe registration service error', async ({ page }) => {
     await page.goto('/register')
 
     const emailInput = page.getByLabel('Email')
@@ -220,7 +297,20 @@ test.describe('Authentication forms', () => {
     await expect(page).toHaveURL(`${appBaseUrl}/register`)
   })
 
-  expectedAuthErrorTest('shows safe invalid-credential and unavailable messages', async ({ page }) => {
+  expectedRegistrationValidationTest('shows a server-owned password error', async ({ page }) => {
+    await page.goto('/register')
+    await page.getByLabel('Email').fill('server-validation@example.com')
+    await page.getByLabel('Password', { exact: true }).fill(validPassword)
+    await page.getByRole('button', { name: 'Create account' }).click()
+
+    const passwordInput = page.getByLabel('Password', { exact: true })
+
+    await expect(page.getByText('Choose a different password.')).toBeVisible()
+    await expect(passwordInput).toHaveAttribute('aria-invalid', 'true')
+    await expect(passwordInput).toBeFocused()
+  })
+
+  expectedSignInErrorsTest('shows safe invalid-credential and unavailable messages', async ({ page }) => {
     await page.goto('/sign-in')
     await fillSignIn(page, 'viewer@example.com', 'wrong password')
     await page.getByRole('button', { name: 'Sign in' }).click()
@@ -262,7 +352,11 @@ test.describe('Authenticated session lifecycle', () => {
 
   test('restores the signed-in user from the HttpOnly cookie during SSR', async ({ page }) => {
     await signIn(page)
-    await page.reload()
+
+    const response = await page.reload()
+
+    expect(response).not.toBeNull()
+    expect(response?.headers()['cache-control']).toBe('private, no-store')
 
     await expect(page).toHaveURL(`${appBaseUrl}/`)
     await expect(page.getByText('viewer@example.com')).toBeVisible()
@@ -283,7 +377,42 @@ test.describe('Authenticated session lifecycle', () => {
     await secondPage.close()
   })
 
-  expectedUnavailableErrorTest('moves focus to authenticated content after session retry succeeds', async ({ context, page }) => {
+  test('revalidates the session before a client-side protected guard decision', async ({ context, page }) => {
+    await signIn(page)
+
+    const secondPage = await context.newPage()
+
+    await secondPage.goto('/')
+    await secondPage.getByRole('button', { name: 'Sign out' }).click()
+    await expect(secondPage).toHaveURL(`${appBaseUrl}/sign-in`)
+
+    await navigateWithClientRouter(page, '/?view=recent')
+
+    const redirectedUrl = new URL(page.url())
+
+    expect(redirectedUrl.pathname).toBe('/sign-in')
+    expect(redirectedUrl.searchParams.get('redirectTo')).toBe('/?view=recent')
+
+    await secondPage.close()
+  })
+
+  test('keeps a valid long email inside the mobile viewport', async ({ page }) => {
+    await page.setViewportSize({
+      height: 720,
+      width: 320
+    })
+    await signIn(page, { email: longEmail })
+
+    await expect(page.getByText(longEmail)).toBeVisible()
+
+    const viewportOverflow = await page.evaluate(() => (
+      globalThis.document.documentElement.scrollWidth - globalThis.innerWidth
+    ))
+
+    expect(viewportOverflow).toBeLessThanOrEqual(0)
+  })
+
+  expectedSessionUnavailableTest('moves focus to authenticated content after session retry succeeds', async ({ context, page }) => {
     await addRecoverableSessionCookies(context)
     await page.goto('/')
 
@@ -296,6 +425,49 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(heading).toBeFocused()
   })
 
+  expectedSessionUnavailableTest('redirects an anonymous user after session retry succeeds', async ({ context, page }) => {
+    await addRecoverableSessionCookies(context, { authenticated: false })
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: 'We couldn’t verify your session.' })).toBeVisible()
+    await page.getByRole('button', { name: 'Try again' }).click()
+    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
+
+    const redirectedUrl = new URL(page.url())
+
+    expect(redirectedUrl.pathname).toBe('/sign-in')
+    expect(redirectedUrl.searchParams.get('redirectTo')).toBe('/')
+  })
+
+  expectedRepeatedSessionUnavailableTest('returns focus to retry after another session failure', async ({ context, page }) => {
+    await addRecoverableSessionCookies(context, { failures: 2 })
+    await page.goto('/')
+
+    const retryButton = page.getByRole('button', { name: 'Try again' })
+
+    await retryButton.click()
+    await expect(retryButton).toBeFocused()
+
+    await retryButton.click()
+    await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeFocused()
+  })
+
+  expectedSessionUnavailableTest('does not retain a registration notice after an authenticated redirect', async ({ context, page }) => {
+    await signIn(page)
+    await addRecoverableSessionCookies(context)
+    await page.goto('/register')
+
+    await page.getByLabel('Email').fill('new-viewer@example.com')
+    await page.getByLabel('Password', { exact: true }).fill(validPassword)
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await expect(page).toHaveURL(`${appBaseUrl}/`)
+
+    await page.getByRole('button', { name: 'Sign out' }).click()
+    await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
+    await expect(page.getByText('If an account can be created for this email, you can sign in now.')).toHaveCount(0)
+    await expect(page.getByLabel('Email')).toHaveValue('')
+  })
+
   test('signs out, clears the cookie, and protects the page after reload', async ({ page }) => {
     await signIn(page)
     await page.getByRole('button', { name: 'Sign out' }).click()
@@ -306,7 +478,7 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
   })
 
-  expectedUnavailableErrorTest('keeps the user signed in when sign-out fails and allows retry', async ({ context, page }) => {
+  expectedSignOutUnavailableTest('keeps the user signed in when sign-out fails and allows retry', async ({ context, page }) => {
     await signIn(page)
     await addFailedSignOutCookie(context)
     await page.getByRole('button', { name: 'Sign out' }).click()
@@ -314,7 +486,11 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(page.getByRole('alert')).toHaveText('We couldn’t sign you out. Try again.')
     await expect(page.getByText('viewer@example.com')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Sign out' }).click()
+    const signOutButton = page.getByRole('button', { name: 'Sign out' })
+
+    await expect(signOutButton).toBeFocused()
+
+    await signOutButton.click()
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
   })
 })

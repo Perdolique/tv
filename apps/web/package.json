@@ -9,7 +9,6 @@
     "dev": "nuxt dev",
     "prepare": "nuxt prepare",
     "preview": "wrangler dev",
-    "preview:e2e": "wrangler dev --port 8889",
     "test:typecheck": "nuxi typecheck",
     "test:unit": "vitest run --config vitest.config.ts"
   },
@@ -18,5 +17,8 @@
     "valibot": "1.4.2",
     "vue": "3.5.41",
     "vue-router": "5.2.0"
+  },
+  "devDependencies": {
+    "nitropack": "2.13.4"
   }
 }

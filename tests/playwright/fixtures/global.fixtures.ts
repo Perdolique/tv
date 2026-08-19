@@ -1,16 +1,38 @@
 import { expect as playwrightExpect, test as base } from '@playwright/test'
 
+interface ExpectedHttpError {
+  pathname: string;
+  status: number;
+}
+
+interface ExpectedHttpErrors {
+  values: ExpectedHttpError[];
+}
+
 interface TestOptions {
-  expectedHttpErrorStatuses: number[];
+  expectedHttpErrors: ExpectedHttpErrors;
 }
 
 const expect = playwrightExpect
 
-const test = base.extend<TestOptions>({
-  expectedHttpErrorStatuses: [[], { option: true }],
+function getPathname(url: string): string | undefined {
+  if (url === '') {
+    return undefined
+  }
 
-  page: async ({ expectedHttpErrorStatuses, page }, use) => {
+  try {
+    return new URL(url).pathname
+  } catch {
+    return undefined
+  }
+}
+
+const test = base.extend<TestOptions>({
+  expectedHttpErrors: [{ values: [] }, { option: true }],
+
+  page: async ({ expectedHttpErrors, page }, use) => {
     const browserErrors: string[] = []
+    const pendingHttpErrors = [...expectedHttpErrors.values]
 
     page.on('pageerror', (error) => {
       browserErrors.push(error.stack ?? error.message)
@@ -21,18 +43,30 @@ const test = base.extend<TestOptions>({
       const isApplicationWarning = /\[Vue warn\]|hydration/iu.test(text)
       const httpErrorMatch = /Failed to load resource: the server responded with a status of (?<status>\d+)/u.exec(text)
       const httpErrorStatus = httpErrorMatch?.groups?.status
+      const locationUrl = message.location().url
+      const locationPathname = getPathname(locationUrl)
 
-      const isExpectedHttpError = httpErrorStatus !== undefined
-        && expectedHttpErrorStatuses.includes(Number(httpErrorStatus))
+      const expectedHttpErrorIndex = pendingHttpErrors.findIndex((expectedError) => (
+        httpErrorStatus !== undefined
+        && expectedError.status === Number(httpErrorStatus)
+        && expectedError.pathname === locationPathname
+      ))
+
+      const isExpectedHttpError = expectedHttpErrorIndex !== -1
+
+      if (isExpectedHttpError) {
+        pendingHttpErrors.splice(expectedHttpErrorIndex, 1)
+      }
 
       if ((message.type() === 'error' && !isExpectedHttpError) || isApplicationWarning) {
-        browserErrors.push(`[console.${message.type()}] ${text}`)
+        browserErrors.push(`[console.${message.type()}] ${text} (${locationUrl})`)
       }
     })
 
     await use(page)
 
     expect(browserErrors, 'browser errors').toStrictEqual([])
+    expect(pendingHttpErrors, 'expected HTTP errors').toStrictEqual([])
   }
 })
 

@@ -12,6 +12,7 @@ function useAuthSession() {
     return { status: 'unknown' }
   })
 
+  const generation = useState<number>('auth-session-generation', () => 0)
   const requestFetch = useRequestFetch()
 
   async function restoreSession(options: RestoreSessionOptions = {}): Promise<void> {
@@ -19,9 +20,17 @@ function useAuthSession() {
       return
     }
 
+    const restoreGeneration = generation.value + 1
+
+    generation.value = restoreGeneration
+
     try {
       const response = await requestFetch('/api/auth/session')
       const { user } = v.parse(authSessionResponseSchema, response)
+
+      if (generation.value !== restoreGeneration) {
+        return
+      }
 
       state.value = user === null
         ? { status: 'anonymous' }
@@ -30,11 +39,16 @@ function useAuthSession() {
             user
           }
     } catch {
+      if (generation.value !== restoreGeneration) {
+        return
+      }
+
       state.value = { status: 'error' }
     }
   }
 
   function setAuthenticated(user: AuthUser): void {
+    generation.value += 1
     state.value = {
       status: 'authenticated',
       user
@@ -42,6 +56,7 @@ function useAuthSession() {
   }
 
   function setAnonymous(): void {
+    generation.value += 1
     state.value = { status: 'anonymous' }
   }
 

@@ -19,6 +19,13 @@ const SERVICE_UNAVAILABLE_BODY = {
 
 const LOCAL_API_ORIGIN = 'http://127.0.0.1:8788'
 
+const AUTH_TARGET_PATHS: ReadonlyMap<string, string> = new Map([
+  ['GET /api/auth/session', '/auth/session'],
+  ['POST /api/auth/register', '/auth/register'],
+  ['POST /api/auth/sign-in', '/auth/sign-in'],
+  ['POST /api/auth/sign-out', '/auth/sign-out']
+])
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -71,6 +78,15 @@ function findRootCause(error: unknown): unknown {
   return rootCause
 }
 
+function logAuthProxyError(error: unknown): void {
+  const technicalError = findRootCause(error)
+
+  globalThis.console.error(JSON.stringify({
+    error: serializeError(technicalError),
+    message: 'auth service binding request failed'
+  }))
+}
+
 function createAuthTargetUrl(
   requestUrl: URL,
   targetPath: string,
@@ -82,6 +98,42 @@ function createAuthTargetUrl(
   targetUrl.search = requestUrl.search
 
   return targetUrl
+}
+
+function getAuthTargetPath(request: Request): string | undefined {
+  const requestUrl = new URL(request.url)
+  const routeKey = `${request.method} ${requestUrl.pathname}`
+
+  return AUTH_TARGET_PATHS.get(routeKey)
+}
+
+async function proxyAuthRequestAtEdge(
+  request: Request,
+  api: ApiBinding
+): Promise<Response | undefined> {
+  const targetPath = getAuthTargetPath(request)
+
+  if (targetPath === undefined) {
+    return
+  }
+
+  try {
+    const requestUrl = new URL(request.url)
+    const targetUrl = createAuthTargetUrl(requestUrl, targetPath, false)
+    const targetRequest = new Request(targetUrl, request)
+
+    return await api.fetch(targetRequest)
+  } catch (error) {
+    logAuthProxyError(error)
+
+    return Response.json(SERVICE_UNAVAILABLE_BODY, {
+      headers: {
+        'Cache-Control': 'no-store'
+      },
+
+      status: 503
+    })
+  }
 }
 
 async function proxyAuthRequest(event: H3Event, targetPath: string): Promise<unknown> {
@@ -100,12 +152,7 @@ async function proxyAuthRequest(event: H3Event, targetPath: string): Promise<unk
       streamRequest: true
     })
   } catch (error) {
-    const technicalError = findRootCause(error)
-
-    globalThis.console.error(JSON.stringify({
-      error: serializeError(technicalError),
-      message: 'auth service binding request failed'
-    }))
+    logAuthProxyError(error)
 
     setResponseStatus(event, 503)
     setResponseHeader(event, 'Cache-Control', 'no-store')
@@ -116,5 +163,7 @@ async function proxyAuthRequest(event: H3Event, targetPath: string): Promise<unk
 
 export {
   createAuthTargetUrl,
+  getAuthTargetPath,
+  proxyAuthRequestAtEdge,
   proxyAuthRequest
 }

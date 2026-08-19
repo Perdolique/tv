@@ -176,6 +176,7 @@
       }
 
       await navigateTo(signInLocation.value)
+      registrationNotice.value = null
     } catch (error) {
       const parsedError = parseAuthError(getFetchErrorData(error))
 

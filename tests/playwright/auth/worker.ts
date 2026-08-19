@@ -7,6 +7,7 @@ interface Credentials {
 
 interface SafeErrorOptions {
   code: 'INVALID_CREDENTIALS' | 'INVALID_REQUEST' | 'SERVICE_UNAVAILABLE';
+  fields?: Record<string, string>;
   headers?: HeadersInit;
   message: string;
   status: number;
@@ -41,7 +42,8 @@ function safeError(options: SafeErrorOptions): Response {
   return json({
     error: {
       code: options.code,
-      message: options.message
+      message: options.message,
+      ...(options.fields === undefined ? {} : { fields: options.fields })
     }
   }, options.status, options.headers)
 }
@@ -98,6 +100,19 @@ async function handleRegister(request: Request): Promise<Response> {
     })
   }
 
+  if (credentials.email === 'server-validation@example.com') {
+    return safeError({
+      code: 'INVALID_REQUEST',
+
+      fields: {
+        password: 'Choose a different password.'
+      },
+
+      message: 'The request is invalid.',
+      status: 400
+    })
+  }
+
   return json({ status: 'accepted' }, 202)
 }
 
@@ -137,6 +152,19 @@ async function handleSignIn(request: Request): Promise<Response> {
 }
 
 function handleSession(request: Request): Response {
+  if (hasCookie(request, 'fail_session=2')) {
+    return safeError({
+      code: 'SERVICE_UNAVAILABLE',
+
+      headers: {
+        'Set-Cookie': 'fail_session=1; Path=/; SameSite=Lax'
+      },
+
+      message: 'Authentication is temporarily unavailable.',
+      status: 503
+    })
+  }
+
   if (hasCookie(request, 'fail_session=1')) {
     return safeError({
       code: 'SERVICE_UNAVAILABLE',
