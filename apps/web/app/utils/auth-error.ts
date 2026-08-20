@@ -1,3 +1,4 @@
+import { isRecord } from '@tv/shared/type-guards'
 import * as v from 'valibot'
 import type { AuthFieldErrors, ParsedAuthError } from '~/types/auth.ts'
 
@@ -26,10 +27,6 @@ const authErrorResponseSchema = v.object({
     v.check(({ code, message }) => message === AUTH_ERROR_MESSAGES[code])
   )
 })
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 function parseFieldErrors(value: unknown): AuthFieldErrors {
   if (!isRecord(value)) {

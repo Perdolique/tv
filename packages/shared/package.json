@@ -1,0 +1,14 @@
+{
+  "name": "@tv/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./errors": "./src/errors.ts",
+    "./network": "./src/network.ts",
+    "./type-guards": "./src/type-guards.ts"
+  },
+  "scripts": {
+    "test:typecheck": "tsc --noEmit",
+    "test:unit": "vitest run"
+  }
+}

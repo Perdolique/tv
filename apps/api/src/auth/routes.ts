@@ -2,6 +2,7 @@ import { type Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { getCookie, setCookie } from 'hono/cookie'
 import { requestId, type RequestIdVariables } from 'hono/request-id'
+import { findRootCause, serializeError } from '@tv/shared/errors'
 // oxlint-disable-next-line import/no-relative-parent-imports -- Auth uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 
@@ -102,59 +103,22 @@ function clearSessionCookie(context: AuthContext): void {
   setCookie(context, cookieName, '', options)
 }
 
-interface SerializedError {
-  message: string;
-  name: string;
-  stack?: string;
-}
-
-function serializeError(error: unknown): SerializedError {
-  if (!(error instanceof Error)) {
-    return {
-      message: String(error),
-      name: 'UnknownError'
-    }
-  }
-
-  const serializedError: SerializedError = {
-    message: error.message,
-    name: error.name
-  }
-
-  if (error.stack !== undefined && error.stack !== '') {
-    serializedError.stack = error.stack
-  }
-
-  return serializedError
-}
-
-function findRootCause(error: unknown): unknown {
-  const visitedErrors = new Set<Error>()
-  let rootCause = error
-
-  while (
-    rootCause instanceof Error
-    && rootCause.cause !== undefined
-    && !visitedErrors.has(rootCause)
-  ) {
-    visitedErrors.add(rootCause)
-    rootCause = rootCause.cause
-  }
-
-  return rootCause
-}
-
 function logServerError(context: AuthContext, error: AuthHttpError): void {
   const technicalError = findRootCause(error.cause ?? error)
+  const serializedTechnicalError = serializeError(technicalError)
+  const emailHash = context.get('emailHash')
+  const authRequestId = context.get('requestId')
+
+  const logEntry = JSON.stringify({
+    code: error.code,
+    emailHash,
+    error: serializedTechnicalError,
+    message: 'auth request failed',
+    requestId: authRequestId
+  })
 
   // oxlint-disable-next-line eslint/no-console -- Worker logs retain safe technical failures and request IDs.
-  console.error(JSON.stringify({
-    code: error.code,
-    emailHash: context.get('emailHash'),
-    error: serializeError(technicalError),
-    message: 'auth request failed',
-    requestId: context.get('requestId')
-  }))
+  console.error(logEntry)
 }
 
 function createAuthApp(): Hono<AuthEnvironment> {

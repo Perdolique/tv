@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { env } from 'node:process'
 import { fileURLToPath, URL } from 'node:url'
 import { createDatabase } from '@tv/database'
+import { isLoopbackHostname } from '@tv/shared/network'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { Client } from 'pg'
 
@@ -22,13 +23,6 @@ const wranglerLogPath = join(tmpdir(), 'tv-wrangler-logs')
 interface ChildResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  return hostname === '127.0.0.1'
-    || hostname === '[::1]'
-    || hostname === '::1'
-    || hostname === 'localhost'
 }
 
 async function waitForChild(child: ChildProcess): Promise<ChildResult> {

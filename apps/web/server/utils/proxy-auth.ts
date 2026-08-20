@@ -1,13 +1,9 @@
 import { getRequestURL, proxyRequest, setResponseHeader, setResponseStatus, type H3Event } from 'h3'
+import { findRootCause, serializeError } from '@tv/shared/errors'
+import { isRecord } from '@tv/shared/type-guards'
 
 interface ApiBinding {
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-}
-
-interface SerializedError {
-  message: string;
-  name: string;
-  stack?: string;
 }
 
 const SERVICE_UNAVAILABLE_BODY = {
@@ -26,10 +22,6 @@ const AUTH_TARGET_PATHS: ReadonlyMap<string, string> = new Map([
   ['POST /api/auth/sign-out', '/auth/sign-out']
 ])
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function isApiBinding(value: unknown): value is ApiBinding {
   return isRecord(value) && typeof value.fetch === 'function'
 }
@@ -40,42 +32,6 @@ function getApiBinding(value: unknown): ApiBinding {
   }
 
   return value.env.API
-}
-
-function serializeError(error: unknown): SerializedError {
-  if (!(error instanceof Error)) {
-    return {
-      message: String(error),
-      name: 'UnknownError'
-    }
-  }
-
-  const serializedError: SerializedError = {
-    message: error.message,
-    name: error.name
-  }
-
-  if (error.stack !== undefined && error.stack !== '') {
-    serializedError.stack = error.stack
-  }
-
-  return serializedError
-}
-
-function findRootCause(error: unknown): unknown {
-  const visitedErrors = new Set<Error>()
-  let rootCause = error
-
-  while (
-    rootCause instanceof Error
-    && rootCause.cause !== undefined
-    && !visitedErrors.has(rootCause)
-  ) {
-    visitedErrors.add(rootCause)
-    rootCause = rootCause.cause
-  }
-
-  return rootCause
 }
 
 function logAuthProxyError(error: unknown): void {
