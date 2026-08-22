@@ -13,8 +13,9 @@
   },
   "dependencies": {
     "@tv/database": "workspace:*",
+    "@tv/shared": "workspace:*",
     "drizzle-orm": "1.0.0-rc.4",
-    "hono": "4.13.2",
+    "hono": "4.13.3",
     "pg": "8.23.0",
     "valibot": "1.4.2"
   }

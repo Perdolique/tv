@@ -27,6 +27,12 @@
       }
     }
   ],
+  "routes": [
+    {
+      "pattern": "tv.perd.dev/api/*",
+      "zone_name": "perd.dev"
+    }
+  ],
   "dev": {
     "ip": "127.0.0.1",
     "port": 8788
@@ -57,6 +63,12 @@
             "limit": 5,
             "period": 60
           }
+        }
+      ],
+      "routes": [
+        {
+          "pattern": "tv-staging.perd.dev/api/*",
+          "zone_name": "perd.dev"
         }
       ]
     }

@@ -28,15 +28,16 @@ export default defineConfig({
 
   projects: [{
     name: 'chromium',
+
     use: {
       ...devices['Desktop Chrome']
     }
   }],
 
   webServer: {
-    command: 'pnpm --filter @tv/web run build && pnpm --filter @tv/web run preview:e2e',
+    command: 'pnpm --filter @tv/web run build && wrangler dev -c apps/web/wrangler.jsonc -c tests/playwright/auth/wrangler.jsonc --port 8889',
     url: appBaseUrl,
-    reuseExistingServer: isCI === false,
+    reuseExistingServer: false,
     timeout: 120_000,
 
     gracefulShutdown: {

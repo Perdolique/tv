@@ -2,7 +2,7 @@ import * as v from 'valibot'
 import { hashSha1 } from './hashing.ts'
 
 const HIBP_RANGE_URL = 'https://api.pwnedpasswords.com/range/'
-const HIBP_RESPONSE_SIZE_LIMIT = 64 * 1024
+const HIBP_RESPONSE_SIZE_LIMIT = 256 * 1024
 const HIBP_TIMEOUT_MILLISECONDS = 2e3
 const HIBP_LINE_PATTERN = /^[0-9A-F]{35}:\d+$/u
 const HIBP_EMPTY_RESPONSE_MESSAGE = 'HIBP returned an empty response'
@@ -113,6 +113,7 @@ async function readBoundedResponseBody(response: Response): Promise<string> {
 
       if (chunk.done) {
         body += decoder.decode()
+
         return body
       }
 
@@ -168,6 +169,7 @@ async function isPasswordCompromised(
       headers: {
         'Add-Padding': 'true'
       },
+
       signal: abortController.signal
     }
 

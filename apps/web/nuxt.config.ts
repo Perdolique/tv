@@ -69,6 +69,10 @@ export default defineNuxtConfig({
 
     typescript: {
       tsConfig: {
+        files: [
+          '../worker-configuration.d.ts'
+        ],
+
         compilerOptions
       }
     }

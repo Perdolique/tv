@@ -1,3 +1,4 @@
+import { isRecord } from '@tv/shared/type-guards'
 import * as v from 'valibot'
 import { AuthHttpError } from './errors.ts'
 import type { Credentials } from './types.ts'
@@ -33,14 +34,10 @@ const registrationPasswordSchema = v.pipe(
   }, INVALID_PASSWORD_LENGTH_MESSAGE)
 )
 
-function isCredentialsObject(value: unknown): value is Record<PropertyKey, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function createCredentialsSchema(password: v.GenericSchema<string, string>) {
   return v.pipe(
     v.unknown(),
-    v.guard(isCredentialsObject),
+    v.guard(isRecord),
     v.object({
       email: emailSchema,
       password

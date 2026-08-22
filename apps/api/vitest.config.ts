@@ -34,6 +34,7 @@ export default defineConfig({
       optimizer: {
         ssr: {
           enabled: true,
+
           exclude: [
             'crypto',
             'dns',
@@ -46,10 +47,12 @@ export default defineConfig({
             'util',
             'util/types'
           ],
+
           include: ['pg']
         }
       }
     },
+
     include: [
       'src/__tests__/index.test.ts'
     ]

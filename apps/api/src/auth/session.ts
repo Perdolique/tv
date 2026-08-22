@@ -1,4 +1,5 @@
 import type { CookieOptions } from 'hono/utils/cookie'
+import { isLoopbackHostname } from '@tv/shared/network'
 import * as v from 'valibot'
 import { encodeBase64Url } from './base64url.ts'
 import { SESSION_DURATION_SECONDS } from './constants.ts'
@@ -11,13 +12,6 @@ const sessionTokenSchema = v.pipe(
   v.string(),
   v.regex(SESSION_TOKEN_PATTERN)
 )
-
-function isLoopbackHostname(hostname: string): boolean {
-  return hostname === '127.0.0.1'
-    || hostname === '[::1]'
-    || hostname === '::1'
-    || hostname === 'localhost'
-}
 
 function isSessionTransportAllowed(requestUrl: string): boolean {
   const url = new URL(requestUrl)

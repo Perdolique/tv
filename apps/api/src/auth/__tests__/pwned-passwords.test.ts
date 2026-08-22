@@ -36,6 +36,23 @@ describe(isPasswordCompromised, () => {
     ).resolves.toBe(false)
   })
 
+  it('accepts a valid range response larger than 64 KiB', async () => {
+    const responseBody = Array.from(
+      { length: 2048 },
+      () => `${PADDED_HASH_SUFFIX}:0`
+    ).join('\r\n')
+
+    expect(responseBody.length).toBeGreaterThan(64 * 1024)
+
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(responseBody)
+    )
+
+    await expect(
+      isPasswordCompromised('password', fetchImplementation)
+    ).resolves.toBe(false)
+  })
+
   it('fails closed with the empty-response technical message', async () => {
     const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
       new Response('\r\n')
@@ -62,13 +79,43 @@ describe(isPasswordCompromised, () => {
     })
   })
 
-  it('cancels and fails closed for an oversized chunked response', async () => {
+  it('cancels a non-success response and reports the exact HTTP failure', async () => {
     const cancel = vi.fn()
 
     const responseBody = new ReadableStream<Uint8Array>({
       cancel,
+
       start(controller) {
-        controller.enqueue(new Uint8Array(65 * 1024))
+        const body = new TextEncoder().encode(`${PADDED_HASH_SUFFIX}:0`)
+
+        controller.enqueue(body)
+      }
+    })
+
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(responseBody, { status: 503 })
+    )
+
+    await expect(
+      isPasswordCompromised('password', fetchImplementation)
+    ).rejects.toStrictEqual(
+      new PwnedPasswordsUnavailableError('HIBP returned HTTP 503')
+    )
+
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels and fails closed for an oversized chunked response', async () => {
+    const cancel = vi.fn()
+    const chunks = Array.from({ length: 5 }, () => new Uint8Array(64 * 1024))
+
+    const responseBody = new ReadableStream<Uint8Array>({
+      cancel,
+
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(chunk)
+        }
       }
     })
 

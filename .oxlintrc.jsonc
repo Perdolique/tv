@@ -50,7 +50,9 @@
       "**/nuxt.config.ts",
       "playwright.config.ts",
       "**/vitest*.config.ts",
-      "apps/api/src/index.ts"
+      "apps/api/src/index.ts",
+      "apps/web/app/middleware/**/*.ts",
+      "apps/web/server/api/**/*.ts"
     ],
 
     "rules": {
@@ -75,11 +77,21 @@
     }
   }, {
     "files": [
-      "apps/api/src/**/*.ts"
+      "apps/api/src/**/*.ts",
+      "apps/web/server/**/*.ts"
     ],
 
     "env": {
       "worker": true
+    }
+  }, {
+    "files": [
+      "apps/web/app/app.vue",
+      "apps/web/app/pages/**/*.vue"
+    ],
+
+    "rules": {
+      "unicorn/filename-case": "off"
     }
   }, {
     "files": [
