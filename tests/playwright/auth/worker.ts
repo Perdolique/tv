@@ -216,19 +216,19 @@ export default {
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
 
-    if (request.method === 'POST' && url.pathname === '/auth/register') {
+    if (request.method === 'POST' && url.pathname === '/api/auth/register') {
       return handleRegister(request)
     }
 
-    if (request.method === 'POST' && url.pathname === '/auth/sign-in') {
+    if (request.method === 'POST' && url.pathname === '/api/auth/sign-in') {
       return handleSignIn(request)
     }
 
-    if (request.method === 'GET' && url.pathname === '/auth/session') {
+    if (request.method === 'GET' && url.pathname === '/api/auth/session') {
       return handleSession(request)
     }
 
-    if (request.method === 'POST' && url.pathname === '/auth/sign-out') {
+    if (request.method === 'POST' && url.pathname === '/api/auth/sign-out') {
       return handleSignOut(request)
     }
 

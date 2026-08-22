@@ -125,9 +125,9 @@ function createAuthApp(): Hono<AuthEnvironment> {
   const app = new Hono<AuthEnvironment>()
   const jsonBodyLimit = createJsonBodyLimit()
 
-  app.use('/auth/*', requestId())
+  app.use('/api/auth/*', requestId())
 
-  app.use('/auth/*', async (context, next) => {
+  app.use('/api/auth/*', async (context, next) => {
     if (!isSessionTransportAllowed(context.req.url)) {
       throw new AuthHttpError('INVALID_REQUEST', 400)
     }
@@ -138,7 +138,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     context.header('Cache-Control', 'no-store')
   })
 
-  app.post('/auth/register', jsonBodyLimit, async (context) => {
+  app.post('/api/auth/register', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
     const credentials = validateRegistrationCredentials(body)
 
@@ -182,7 +182,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     return context.json({ status: 'accepted' }, 202)
   })
 
-  app.post('/auth/sign-in', jsonBodyLimit, async (context) => {
+  app.post('/api/auth/sign-in', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
     const credentials = validateSignInCredentials(body)
 
@@ -234,7 +234,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     return context.json({ user: credential.user })
   })
 
-  app.get('/auth/session', async (context) => {
+  app.get('/api/auth/session', async (context) => {
     const cookieName = getSessionCookieName(context.req.url)
     const token = getCookie(context, cookieName)
 
@@ -266,7 +266,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     return context.json({ user })
   })
 
-  app.post('/auth/sign-out', jsonBodyLimit, async (context) => {
+  app.post('/api/auth/sign-out', jsonBodyLimit, async (context) => {
     await requireEmptyBody(context.req.raw)
 
     const tokenHash = await getCurrentTokenHash(context)

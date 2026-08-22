@@ -61,7 +61,6 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    entry: './cloudflare-entry.ts',
     preset: 'cloudflare_module',
 
     cloudflare: {

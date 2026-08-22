@@ -15,13 +15,6 @@ const SERVICE_UNAVAILABLE_BODY = {
 
 const LOCAL_API_ORIGIN = 'http://127.0.0.1:8788'
 
-const AUTH_TARGET_PATHS: ReadonlyMap<string, string> = new Map([
-  ['GET /api/auth/session', '/auth/session'],
-  ['POST /api/auth/register', '/auth/register'],
-  ['POST /api/auth/sign-in', '/auth/sign-in'],
-  ['POST /api/auth/sign-out', '/auth/sign-out']
-])
-
 function isApiBinding(value: unknown): value is ApiBinding {
   return isRecord(value) && typeof value.fetch === 'function'
 }
@@ -45,56 +38,19 @@ function logAuthProxyError(error: unknown): void {
 
 function createAuthTargetUrl(
   requestUrl: URL,
-  targetPath: string,
   isDevelopment: boolean
 ): URL {
   const targetOrigin = isDevelopment ? LOCAL_API_ORIGIN : requestUrl.origin
-  const targetUrl = new URL(targetPath, targetOrigin)
+  const targetUrl = new URL(requestUrl.pathname, targetOrigin)
 
   targetUrl.search = requestUrl.search
 
   return targetUrl
 }
 
-function getAuthTargetPath(request: Request): string | undefined {
-  const requestUrl = new URL(request.url)
-  const routeKey = `${request.method} ${requestUrl.pathname}`
-
-  return AUTH_TARGET_PATHS.get(routeKey)
-}
-
-async function proxyAuthRequestAtEdge(
-  request: Request,
-  api: ApiBinding
-): Promise<Response | undefined> {
-  const targetPath = getAuthTargetPath(request)
-
-  if (targetPath === undefined) {
-    return
-  }
-
-  try {
-    const requestUrl = new URL(request.url)
-    const targetUrl = createAuthTargetUrl(requestUrl, targetPath, false)
-    const targetRequest = new Request(targetUrl, request)
-
-    return await api.fetch(targetRequest)
-  } catch (error) {
-    logAuthProxyError(error)
-
-    return Response.json(SERVICE_UNAVAILABLE_BODY, {
-      headers: {
-        'Cache-Control': 'no-store'
-      },
-
-      status: 503
-    })
-  }
-}
-
-async function proxyAuthRequest(event: H3Event, targetPath: string): Promise<unknown> {
+async function proxyAuthRequest(event: H3Event): Promise<unknown> {
   const requestUrl = getRequestURL(event)
-  const targetUrl = createAuthTargetUrl(requestUrl, targetPath, import.meta.dev)
+  const targetUrl = createAuthTargetUrl(requestUrl, import.meta.dev)
 
   try {
     if (import.meta.dev) {
@@ -119,7 +75,5 @@ async function proxyAuthRequest(event: H3Event, targetPath: string): Promise<unk
 
 export {
   createAuthTargetUrl,
-  getAuthTargetPath,
-  proxyAuthRequestAtEdge,
   proxyAuthRequest
 }

@@ -9,6 +9,12 @@
   "assets": {
     "directory": ".output/public"
   },
+  "routes": [
+    {
+      "pattern": "tv.perd.dev",
+      "custom_domain": true
+    }
+  ],
   "services": [
     {
       "binding": "API",
@@ -23,5 +29,22 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
-  "upload_source_maps": true
+  "upload_source_maps": true,
+  "env": {
+    "staging": {
+      "name": "tv-web-staging",
+      "routes": [
+        {
+          "pattern": "tv-staging.perd.dev",
+          "custom_domain": true
+        }
+      ],
+      "services": [
+        {
+          "binding": "API",
+          "service": "tv-api-staging"
+        }
+      ]
+    }
+  }
 }

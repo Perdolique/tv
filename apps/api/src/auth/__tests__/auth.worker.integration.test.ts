@@ -81,7 +81,7 @@ async function authRequest(
 }
 
 async function registrationRequest(email: string, password = PASSWORD): Promise<Response> {
-  return authRequest('/auth/register', {
+  return authRequest('/api/auth/register', {
     body: {
       email,
       password
@@ -109,7 +109,7 @@ async function signInRequest(
     requestOptions.cookie = cookie
   }
 
-  return authRequest('/auth/sign-in', requestOptions)
+  return authRequest('/api/auth/sign-in', requestOptions)
 }
 
 function readCookie(response: Response): string {
@@ -188,6 +188,14 @@ describe('auth Worker contract', () => {
       service: 'tv-api',
       status: 'ok'
     })
+  })
+
+  it('does not serve the removed auth path', async () => {
+    const response = await exports.default.fetch(
+      new Request('https://tv-api.test/auth/session')
+    )
+
+    expect(response.status).toBe(404)
   })
 
   it('returns the same registration response for a new and occupied email', async () => {
@@ -332,12 +340,12 @@ describe('auth Worker contract', () => {
     expect(signInResponse.headers.get('set-cookie')).toContain('Path=/')
     expect(signInResponse.headers.get('set-cookie')).not.toContain('Domain=')
 
-    const sessionResponse = await authRequest('/auth/session', { cookie })
+    const sessionResponse = await authRequest('/api/auth/session', { cookie })
 
     expect(sessionResponse.status).toBe(200)
     await expect(readJson<SessionResponse>(sessionResponse)).resolves.toStrictEqual(signInBody)
 
-    const signOutResponse = await authRequest('/auth/sign-out', {
+    const signOutResponse = await authRequest('/api/auth/sign-out', {
       cookie,
       method: 'POST'
     })
@@ -346,7 +354,7 @@ describe('auth Worker contract', () => {
     expect(signOutResponse.headers.get('set-cookie')).toContain('Max-Age=0')
     expectNoStore(signOutResponse)
 
-    const signedOutSession = await authRequest('/auth/session', { cookie })
+    const signedOutSession = await authRequest('/api/auth/session', { cookie })
 
     await expect(readJson<SessionResponse>(signedOutSession)).resolves.toStrictEqual({
       user: null
@@ -356,9 +364,9 @@ describe('auth Worker contract', () => {
   it('treats missing, malformed, and expired cookies as no session', async () => {
     mockSafeHibp()
 
-    const missingResponse = await authRequest('/auth/session')
+    const missingResponse = await authRequest('/api/auth/session')
 
-    const malformedResponse = await authRequest('/auth/session', {
+    const malformedResponse = await authRequest('/api/auth/session', {
       cookie: '__Host-tv_session=malformed'
     })
 
@@ -380,7 +388,7 @@ describe('auth Worker contract', () => {
       await client.end()
     }
 
-    const expiredResponse = await authRequest('/auth/session', { cookie })
+    const expiredResponse = await authRequest('/api/auth/session', { cookie })
 
     await expect(readJson<SessionResponse>(missingResponse)).resolves.toStrictEqual({ user: null })
     await expect(readJson<SessionResponse>(malformedResponse)).resolves.toStrictEqual({ user: null })
@@ -404,16 +412,16 @@ describe('auth Worker contract', () => {
     const firstCookie = readCookie(firstSignIn)
     const secondCookie = readCookie(secondSignIn)
 
-    await authRequest('/auth/sign-out', {
+    await authRequest('/api/auth/sign-out', {
       cookie: firstCookie,
       method: 'POST'
     })
 
-    const firstSession = await authRequest('/auth/session', {
+    const firstSession = await authRequest('/api/auth/session', {
       cookie: firstCookie
     })
 
-    const secondSession = await authRequest('/auth/session', {
+    const secondSession = await authRequest('/api/auth/session', {
       cookie: secondCookie
     })
 
@@ -437,13 +445,13 @@ describe('auth Worker contract', () => {
     const otherDeviceCookie = readCookie(otherDeviceSignIn)
     const replacementSignIn = await signInRequest(email, PASSWORD, firstCookie)
     const replacementCookie = readCookie(replacementSignIn)
-    const oldSession = await authRequest('/auth/session', { cookie: firstCookie })
+    const oldSession = await authRequest('/api/auth/session', { cookie: firstCookie })
 
-    const otherDeviceSession = await authRequest('/auth/session', {
+    const otherDeviceSession = await authRequest('/api/auth/session', {
       cookie: otherDeviceCookie
     })
 
-    const replacementSession = await authRequest('/auth/session', {
+    const replacementSession = await authRequest('/api/auth/session', {
       cookie: replacementCookie
     })
 
@@ -474,7 +482,7 @@ describe('auth Worker contract', () => {
 
   it('rejects insecure deployed auth requests', async () => {
     const response = await exports.default.fetch(
-      new Request('http://tv-api.test/auth/session')
+      new Request('http://tv-api.test/api/auth/session')
     )
 
     expect(response.status).toBe(400)
@@ -490,7 +498,7 @@ describe('auth Worker contract', () => {
 
   it('requires the exact JSON media type', async () => {
     const response = await exports.default.fetch(new Request(
-      'https://tv-api.test/auth/sign-in',
+      'https://tv-api.test/api/auth/sign-in',
       {
         body: JSON.stringify({
           email: uniqueEmail('jsonp'),
@@ -517,7 +525,7 @@ describe('auth Worker contract', () => {
 
   it('rejects non-empty and oversized sign-out bodies', async () => {
     const nonEmptyResponse = await exports.default.fetch(new Request(
-      'https://tv-api.test/auth/sign-out',
+      'https://tv-api.test/api/auth/sign-out',
       {
         body: '{}',
 
@@ -530,7 +538,7 @@ describe('auth Worker contract', () => {
     ))
 
     const oversizedResponse = await exports.default.fetch(new Request(
-      'https://tv-api.test/auth/sign-out',
+      'https://tv-api.test/api/auth/sign-out',
       {
         body: JSON.stringify({ padding: 'x'.repeat(9e3) }),
 

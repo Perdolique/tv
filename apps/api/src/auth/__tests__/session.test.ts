@@ -42,7 +42,7 @@ describe('session tokens and cookies', () => {
   })
 
   it('uses the secure host cookie on HTTPS', () => {
-    const requestUrl = 'https://tv-api.example.com/auth/sign-in'
+    const requestUrl = 'https://tv-api.example.com/api/auth/sign-in'
     const name = getSessionCookieName(requestUrl)
 
     const cookie = generateCookie(
@@ -61,7 +61,7 @@ describe('session tokens and cookies', () => {
   })
 
   it('uses the non-secure local cookie on HTTP', () => {
-    const requestUrl = 'http://127.0.0.1:8788/auth/sign-in'
+    const requestUrl = 'http://127.0.0.1:8788/api/auth/sign-in'
     const name = getSessionCookieName(requestUrl)
 
     const cookie = generateCookie(
@@ -75,7 +75,7 @@ describe('session tokens and cookies', () => {
   })
 
   it('rejects insecure transport outside loopback development hosts', () => {
-    const requestUrl = 'http://tv-api.example.com/auth/sign-in'
+    const requestUrl = 'http://tv-api.example.com/api/auth/sign-in'
 
     expect(isSessionTransportAllowed(requestUrl)).toBe(false)
     expect(() => getSessionCookieName(requestUrl)).toThrow(
