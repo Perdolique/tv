@@ -29,7 +29,7 @@
   ],
   "routes": [
     {
-      "pattern": "tv.perd.dev/api/auth/*",
+      "pattern": "tv.perd.dev/api/*",
       "zone_name": "perd.dev"
     }
   ],
@@ -67,7 +67,7 @@
       ],
       "routes": [
         {
-          "pattern": "tv-staging.perd.dev/api/auth/*",
+          "pattern": "tv-staging.perd.dev/api/*",
           "zone_name": "perd.dev"
         }
       ]
