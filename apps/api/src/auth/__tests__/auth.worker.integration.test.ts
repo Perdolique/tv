@@ -591,8 +591,29 @@ describe('auth Worker contract', () => {
     expectNoStore(oversizedResponse)
   })
 
-  it('enforces five attempts per operation and email hash', async () => {
+  it('handles exhausted rate limits independently for each operation', async () => {
     const email = uniqueEmail('limited')
+
+    const rateLimitResults = [
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ] as const
+
+    const rateLimit = vi.spyOn(env.AUTH_RATE_LIMITER, 'limit')
+
+    for (const success of rateLimitResults) {
+      rateLimit.mockResolvedValueOnce({ success })
+    }
 
     const hibpFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(
       createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`)
@@ -626,6 +647,15 @@ describe('auth Worker contract', () => {
       200,
       200
     ])
+
+    const rateLimitKeys = rateLimit.mock.calls.map(([options]) => options.key)
+
+    expect(rateLimit).toHaveBeenCalledTimes(12)
+    expect(new Set(rateLimitKeys.slice(0, 6)).size).toBe(1)
+    expect(new Set(rateLimitKeys.slice(6)).size).toBe(1)
+    expect(rateLimitKeys[0]).toMatch(/^register:/u)
+    expect(rateLimitKeys[6]).toMatch(/^sign-in:/u)
+    expect(rateLimitKeys[0]).not.toBe(rateLimitKeys[6])
     expect(hibpFetch).toHaveBeenCalledTimes(5)
 
     const limitedRegistration = registrationResponses.at(5)
