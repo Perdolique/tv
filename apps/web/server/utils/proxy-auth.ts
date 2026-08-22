@@ -29,11 +29,15 @@ function getApiBinding(value: unknown): ApiBinding {
 
 function logAuthProxyError(error: unknown): void {
   const technicalError = findRootCause(error)
+  const serializedTechnicalError = serializeError(technicalError)
 
-  globalThis.console.error(JSON.stringify({
-    error: serializeError(technicalError),
+  const logEntry = JSON.stringify({
+    error: serializedTechnicalError,
     message: 'auth service binding request failed'
-  }))
+  })
+
+  // oxlint-disable-next-line eslint/no-console -- Worker logs retain the technical binding failure without exposing it to clients.
+  console.error(logEntry)
 }
 
 function createAuthTargetUrl(
@@ -48,12 +52,15 @@ function createAuthTargetUrl(
   return targetUrl
 }
 
-async function proxyAuthRequest(event: H3Event): Promise<unknown> {
+async function proxyAuthRequest(
+  event: H3Event,
+  isDevelopment = import.meta.dev
+): Promise<unknown> {
   const requestUrl = getRequestURL(event)
-  const targetUrl = createAuthTargetUrl(requestUrl, import.meta.dev)
+  const targetUrl = createAuthTargetUrl(requestUrl, isDevelopment)
 
   try {
-    if (import.meta.dev) {
+    if (isDevelopment) {
       return await proxyRequest(event, targetUrl.href, { streamRequest: true })
     }
 

@@ -231,7 +231,9 @@ describe('auth Worker contract', () => {
 
     const compromisedResponse = await registrationRequest(compromisedEmail)
 
-    fetchMock.mockImplementationOnce(createResponseFactory('unavailable', { status: 503 }))
+    fetchMock.mockImplementationOnce(
+      createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`, { status: 503 })
+    )
 
     const unavailableResponse = await registrationRequest(unavailableEmail)
     const unavailableBody = await readJson<AuthErrorResponse>(unavailableResponse)
@@ -241,6 +243,11 @@ describe('auth Worker contract', () => {
     await expect(readJson<AuthErrorResponse>(compromisedResponse)).resolves.toStrictEqual({
       error: {
         code: 'PASSWORD_COMPROMISED',
+
+        fields: {
+          password: 'Choose a password that has not appeared in a known data breach.'
+        },
+
         message: 'Choose a password that has not appeared in a known data breach.'
       }
     })
@@ -464,9 +471,25 @@ describe('auth Worker contract', () => {
     expect(replacementBody.user).toMatchObject({ email })
   })
 
-  it('rejects JSON bodies larger than 8 KiB with the safe error envelope', async () => {
+  it('rejects registration bodies larger than 8 KiB with the safe error envelope', async () => {
     const response = await registrationRequest(
       uniqueEmail('oversize'),
+      'x'.repeat(9e3)
+    )
+
+    expect(response.status).toBe(413)
+    await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
+      error: {
+        code: 'INVALID_REQUEST',
+        message: 'The request is invalid.'
+      }
+    })
+    expectNoStore(response)
+  })
+
+  it('rejects sign-in bodies larger than 8 KiB with the safe error envelope', async () => {
+    const response = await signInRequest(
+      uniqueEmail('oversize-sign-in'),
       'x'.repeat(9e3)
     )
 

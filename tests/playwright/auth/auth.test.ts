@@ -166,14 +166,6 @@ async function navigateWithClientRouter(page: Page, target: string): Promise<voi
 }
 
 test.describe('Authentication routing and SSR', () => {
-  test('redirects an anonymous SSR request for the protected page', async ({ page }) => {
-    await page.goto('/')
-
-    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
-    await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
-    await expect(page).toHaveTitle('Sign in · TV')
-  })
-
   test('sets a distinct title after client-side guest navigation', async ({ page }) => {
     await page.goto('/sign-in')
     await page.getByRole('link', { name: 'Create an account' }).click()
@@ -184,6 +176,31 @@ test.describe('Authentication routing and SSR', () => {
 
   test.describe('without JavaScript', () => {
     test.use({ javaScriptEnabled: false })
+
+    test('redirects an anonymous SSR request for the protected page', async ({ page }) => {
+      await page.goto('/')
+
+      await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
+      await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
+      await expect(page).toHaveTitle('Sign in · TV')
+    })
+
+    test('renders an authenticated protected page from an HttpOnly cookie', async ({ context, page }) => {
+      await context.addCookies([{
+        httpOnly: true,
+        name: 'tv_session',
+        url: appBaseUrl,
+        value: 'e2e-session'
+      }])
+
+      const response = await page.goto('/')
+
+      expect(response).not.toBeNull()
+      expect(response?.headers()['cache-control']).toBe('private, no-store')
+      await expect(page).toHaveURL(`${appBaseUrl}/`)
+      await expect(page.getByText('viewer@example.com')).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeVisible()
+    })
 
     test('renders both guest forms on the server', async ({ page }) => {
       await page.goto('/sign-in')
@@ -297,16 +314,21 @@ test.describe('Authentication forms', () => {
     await expect(page).toHaveURL(`${appBaseUrl}/register`)
   })
 
-  expectedRegistrationValidationTest('shows a server-owned password error', async ({ page }) => {
+  expectedRegistrationValidationTest('shows a compromised-password field error', async ({ page }) => {
     await page.goto('/register')
-    await page.getByLabel('Email').fill('server-validation@example.com')
+    await page.getByLabel('Email').fill('compromised@example.com')
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
     await page.getByRole('button', { name: 'Create account' }).click()
 
     const passwordInput = page.getByLabel('Password', { exact: true })
 
-    await expect(page.getByText('Choose a different password.')).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveText(
+      'Choose a password that has not appeared in a known data breach.'
+    )
     await expect(passwordInput).toHaveAttribute('aria-invalid', 'true')
+    await expect(passwordInput).toHaveAccessibleDescription(
+      'Use between 15 and 128 characters. Choose a password that has not appeared in a known data breach.'
+    )
     await expect(passwordInput).toBeFocused()
   })
 
@@ -350,7 +372,7 @@ test.describe('Authenticated session lifecycle', () => {
     })
   }
 
-  test('restores the signed-in user from the HttpOnly cookie during SSR', async ({ page }) => {
+  test('keeps the signed-in user after a full-page reload', async ({ page }) => {
     await signIn(page)
 
     const response = await page.reload()

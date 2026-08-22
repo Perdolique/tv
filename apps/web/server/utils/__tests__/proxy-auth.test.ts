@@ -81,7 +81,7 @@ describe('auth proxy', () => {
 
       proxyRequest.mockResolvedValue(serviceResponse)
 
-      const result = await proxyAuthRequest(event)
+      const result = await proxyAuthRequest(event, false)
       const [proxyCall] = proxyRequest.mock.calls
 
       expect(result).toBe(serviceResponse)
@@ -89,6 +89,51 @@ describe('auth proxy', () => {
       expect(proxyCall?.[1]).toBe('https://tv.example.com/api/auth/session?fresh=true')
       expect(proxyCall?.[2]?.streamRequest).toBe(true)
       expect(typeof proxyCall?.[2]?.fetch).toBe('function')
+    })
+
+    it('uses the local API origin in development without a service binding', async () => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Mocked h3 helpers only use this event identity and context.
+      const event = { context: {} } as H3Event
+      const localResponse = { user: null }
+
+      getRequestURL.mockReturnValue(
+        new URL('http://127.0.0.1:3001/api/auth/session?fresh=true')
+      )
+
+      proxyRequest.mockResolvedValue(localResponse)
+
+      const result = await proxyAuthRequest(event, true)
+
+      expect(result).toBe(localResponse)
+      expect(proxyRequest).toHaveBeenCalledWith(
+        event,
+        'http://127.0.0.1:8788/api/auth/session?fresh=true',
+        { streamRequest: true }
+      )
+    })
+
+    it('returns a safe response when the production service binding is missing', async () => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Mocked h3 helpers only use this event identity and context.
+      const event = { context: {} } as H3Event
+
+      getRequestURL.mockReturnValue(new URL('https://tv.example.com/api/auth/session'))
+
+      const consoleError = vi.spyOn(console, 'error').mockReturnValue()
+      const result = await proxyAuthRequest(event, false)
+
+      expect(result).toStrictEqual({
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Authentication is temporarily unavailable.'
+        }
+      })
+
+      expect(proxyRequest).not.toHaveBeenCalled()
+      expect(setResponseStatus).toHaveBeenCalledWith(event, 503)
+      expect(setResponseHeader).toHaveBeenCalledWith(event, 'Cache-Control', 'no-store')
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining('API service binding is unavailable')
+      )
     })
 
     it('returns a safe response and logs the raw service binding failure', async () => {
@@ -107,8 +152,8 @@ describe('auth proxy', () => {
       getRequestURL.mockReturnValue(new URL('https://tv.example.com/api/auth/session'))
       proxyRequest.mockRejectedValue(bindingError)
 
-      const consoleError = vi.spyOn(globalThis.console, 'error').mockReturnValue()
-      const result = await proxyAuthRequest(event)
+      const consoleError = vi.spyOn(console, 'error').mockReturnValue()
+      const result = await proxyAuthRequest(event, false)
 
       expect(result).toStrictEqual({
         error: {

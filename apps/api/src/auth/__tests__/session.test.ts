@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createSessionToken,
+  getExpiredSessionCookieOptions,
   getSessionCookieName,
   getSessionCookieOptions,
   hashSessionToken,
@@ -72,6 +73,22 @@ describe('session tokens and cookies', () => {
 
     expect(name).toBe('tv_session')
     expect(cookie).not.toContain('Secure')
+  })
+
+  it('expires the HTTPS host cookie without a domain', () => {
+    const requestUrl = 'https://tv-api.example.com/api/auth/session'
+    const name = getSessionCookieName(requestUrl)
+
+    const cookie = generateCookie(
+      name,
+      '',
+      getExpiredSessionCookieOptions(requestUrl)
+    )
+
+    expect(cookie).toBe(
+      '__Host-tv_session=; Max-Age=0; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax'
+    )
+    expect(cookie).not.toContain('Domain=')
   })
 
   it('rejects insecure transport outside loopback development hosts', () => {

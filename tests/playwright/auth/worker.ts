@@ -6,7 +6,11 @@ interface Credentials {
 }
 
 interface SafeErrorOptions {
-  code: 'INVALID_CREDENTIALS' | 'INVALID_REQUEST' | 'SERVICE_UNAVAILABLE';
+  code:
+    | 'INVALID_CREDENTIALS'
+    | 'INVALID_REQUEST'
+    | 'PASSWORD_COMPROMISED'
+    | 'SERVICE_UNAVAILABLE';
   fields?: Record<string, string>;
   headers?: HeadersInit;
   message: string;
@@ -100,15 +104,15 @@ async function handleRegister(request: Request): Promise<Response> {
     })
   }
 
-  if (credentials.email === 'server-validation@example.com') {
+  if (credentials.email === 'compromised@example.com') {
     return safeError({
-      code: 'INVALID_REQUEST',
+      code: 'PASSWORD_COMPROMISED',
 
       fields: {
-        password: 'Choose a different password.'
+        password: 'Choose a password that has not appeared in a known data breach.'
       },
 
-      message: 'The request is invalid.',
+      message: 'Choose a password that has not appeared in a known data breach.',
       status: 400
     })
   }

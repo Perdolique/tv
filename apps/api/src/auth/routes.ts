@@ -148,7 +148,11 @@ function createAuthApp(): Hono<AuthEnvironment> {
       const compromised = await isPasswordCompromised(credentials.password)
 
       if (compromised) {
-        throw new AuthHttpError('PASSWORD_COMPROMISED', 400)
+        throw new AuthHttpError('PASSWORD_COMPROMISED', 400, {
+          fields: {
+            password: 'Choose a password that has not appeared in a known data breach.'
+          }
+        })
       }
     } catch (error) {
       if (error instanceof AuthHttpError) {
