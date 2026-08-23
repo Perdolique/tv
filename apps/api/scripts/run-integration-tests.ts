@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { env } from 'node:process'
 import { fileURLToPath, URL } from 'node:url'
 import { createDatabase } from '@tv/database'
+import { isLoopbackHostname } from '@tv/shared/network'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { Client } from 'pg'
 
@@ -24,20 +25,16 @@ interface ChildResult {
   signal: NodeJS.Signals | null;
 }
 
-function isLoopbackHostname(hostname: string): boolean {
-  return hostname === '127.0.0.1'
-    || hostname === '[::1]'
-    || hostname === '::1'
-    || hostname === 'localhost'
-}
-
 async function waitForChild(child: ChildProcess): Promise<ChildResult> {
   // oxlint-disable-next-line promise/avoid-new -- Node child processes expose completion through events.
   return new Promise((resolve, reject) => {
     child.once('error', reject)
 
     child.once('close', (exitCode, signal) => {
-      resolve({ exitCode, signal })
+      resolve({
+        exitCode,
+        signal
+      })
     })
   })
 }

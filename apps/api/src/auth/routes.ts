@@ -2,6 +2,7 @@ import { type Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { getCookie, setCookie } from 'hono/cookie'
 import { requestId, type RequestIdVariables } from 'hono/request-id'
+import { findRootCause, serializeError } from '@tv/shared/errors'
 // oxlint-disable-next-line import/no-relative-parent-imports -- Auth uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 
@@ -102,68 +103,31 @@ function clearSessionCookie(context: AuthContext): void {
   setCookie(context, cookieName, '', options)
 }
 
-interface SerializedError {
-  message: string;
-  name: string;
-  stack?: string;
-}
-
-function serializeError(error: unknown): SerializedError {
-  if (!(error instanceof Error)) {
-    return {
-      message: String(error),
-      name: 'UnknownError'
-    }
-  }
-
-  const serializedError: SerializedError = {
-    message: error.message,
-    name: error.name
-  }
-
-  if (error.stack !== undefined && error.stack !== '') {
-    serializedError.stack = error.stack
-  }
-
-  return serializedError
-}
-
-function findRootCause(error: unknown): unknown {
-  const visitedErrors = new Set<Error>()
-  let rootCause = error
-
-  while (
-    rootCause instanceof Error
-    && rootCause.cause !== undefined
-    && !visitedErrors.has(rootCause)
-  ) {
-    visitedErrors.add(rootCause)
-    rootCause = rootCause.cause
-  }
-
-  return rootCause
-}
-
 function logServerError(context: AuthContext, error: AuthHttpError): void {
   const technicalError = findRootCause(error.cause ?? error)
+  const serializedTechnicalError = serializeError(technicalError)
+  const emailHash = context.get('emailHash')
+  const authRequestId = context.get('requestId')
+
+  const logEntry = JSON.stringify({
+    code: error.code,
+    emailHash,
+    error: serializedTechnicalError,
+    message: 'auth request failed',
+    requestId: authRequestId
+  })
 
   // oxlint-disable-next-line eslint/no-console -- Worker logs retain safe technical failures and request IDs.
-  console.error(JSON.stringify({
-    code: error.code,
-    emailHash: context.get('emailHash'),
-    error: serializeError(technicalError),
-    message: 'auth request failed',
-    requestId: context.get('requestId')
-  }))
+  console.error(logEntry)
 }
 
 function createAuthApp(): Hono<AuthEnvironment> {
   const app = new Hono<AuthEnvironment>()
   const jsonBodyLimit = createJsonBodyLimit()
 
-  app.use('/auth/*', requestId())
+  app.use('/api/auth/*', requestId())
 
-  app.use('/auth/*', async (context, next) => {
+  app.use('/api/auth/*', async (context, next) => {
     if (!isSessionTransportAllowed(context.req.url)) {
       throw new AuthHttpError('INVALID_REQUEST', 400)
     }
@@ -174,7 +138,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     context.header('Cache-Control', 'no-store')
   })
 
-  app.post('/auth/register', jsonBodyLimit, async (context) => {
+  app.post('/api/auth/register', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
     const credentials = validateRegistrationCredentials(body)
 
@@ -184,7 +148,11 @@ function createAuthApp(): Hono<AuthEnvironment> {
       const compromised = await isPasswordCompromised(credentials.password)
 
       if (compromised) {
-        throw new AuthHttpError('PASSWORD_COMPROMISED', 400)
+        throw new AuthHttpError('PASSWORD_COMPROMISED', 400, {
+          fields: {
+            password: 'Choose a password that has not appeared in a known data breach.'
+          }
+        })
       }
     } catch (error) {
       if (error instanceof AuthHttpError) {
@@ -218,7 +186,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     return context.json({ status: 'accepted' }, 202)
   })
 
-  app.post('/auth/sign-in', jsonBodyLimit, async (context) => {
+  app.post('/api/auth/sign-in', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
     const credentials = validateSignInCredentials(body)
 
@@ -270,7 +238,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     return context.json({ user: credential.user })
   })
 
-  app.get('/auth/session', async (context) => {
+  app.get('/api/auth/session', async (context) => {
     const cookieName = getSessionCookieName(context.req.url)
     const token = getCookie(context, cookieName)
 
@@ -280,6 +248,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
 
     if (!isSessionToken(token)) {
       clearSessionCookie(context)
+
       return context.json({ user: null })
     }
 
@@ -301,7 +270,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     return context.json({ user })
   })
 
-  app.post('/auth/sign-out', jsonBodyLimit, async (context) => {
+  app.post('/api/auth/sign-out', jsonBodyLimit, async (context) => {
     await requireEmptyBody(context.req.raw)
 
     const tokenHash = await getCurrentTokenHash(context)
