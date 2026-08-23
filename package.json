@@ -8,6 +8,8 @@
     "cf-typegen:check": "pnpm --filter @tv/web --filter @tv/api run cf-typegen:check",
     "db:generate": "pnpm --filter @tv/database run db:generate",
     "db:migrate": "pnpm --filter @tv/database run db:migrate",
+    "deploy:production": "pnpm --filter @tv/api exec wrangler deploy --env=\"\" && pnpm --filter @tv/web exec wrangler deploy --env=\"\"",
+    "deploy:staging": "pnpm --filter @tv/api exec wrangler deploy --env staging && pnpm --filter @tv/web exec wrangler deploy --env staging",
     "dev": "pnpm --parallel --filter @tv/web --filter @tv/api run dev",
     "format": "worsier --write .",
     "format:check": "worsier --check .",

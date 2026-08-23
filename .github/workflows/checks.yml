@@ -11,13 +11,12 @@ on:
     branches:
       - master
 
-concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   lint:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: checks-lint-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
         with:
@@ -28,6 +27,9 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: checks-typecheck-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
         with:
@@ -36,6 +38,9 @@ jobs:
 
   unit:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: checks-unit-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
         with:
@@ -44,6 +49,9 @@ jobs:
 
   integration:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: checks-integration-${{ github.ref }}
+      cancel-in-progress: true
     env:
       TEST_DATABASE_ADMIN_URL: postgresql://tv:tv@127.0.0.1:5432/postgres
     services:
@@ -66,19 +74,59 @@ jobs:
           install-dependencies: true
       - run: pnpm run test:integration
 
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
-        with:
-          install-dependencies: true
-      - run: pnpm run build
-
   e2e:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: checks-e2e-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
         with:
           install-dependencies: true
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run test:e2e:ci
+
+  migration:
+    if: >-
+      github.event_name == 'push' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.actor != 'dependabot[bot]' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    needs:
+      - lint
+      - typecheck
+      - unit
+      - integration
+      - e2e
+    name: Database migration
+    runs-on: ubuntu-24.04
+    environment: ${{ github.event_name == 'pull_request' && 'staging' || 'production' }}
+    steps:
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+      - name: Run database migration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm run db:migrate
+
+  deploy:
+    needs: migration
+    concurrency:
+      group: tv-workers-${{ github.event_name == 'pull_request' && 'staging' || 'production' }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: Perdolique/automations/.github/workflows/deploy.yml@v3
+    with:
+      artifact-path: apps/web/.output
+      artifact-name: tv-workers
+      build-command: build
+      deploy-to-staging-command: deploy:staging
+      deploy-to-production-command: deploy:production
+    secrets:
+      cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
