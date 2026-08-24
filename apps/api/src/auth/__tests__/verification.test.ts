@@ -1,5 +1,6 @@
+import { isVerificationToken } from '@tv/shared/verification'
 import { describe, expect, it } from 'vitest'
-import { createVerificationToken, hashVerificationToken, isVerificationToken } from '../verification.ts'
+import { createVerificationToken, hashVerificationToken } from '../verification.ts'
 
 describe('email verification tokens', () => {
   it('creates independent 256-bit base64url tokens', () => {

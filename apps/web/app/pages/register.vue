@@ -10,7 +10,7 @@
     </template>
 
     <form
-      v-if="mode === 'email'"
+      v-if="showsEmailForm"
       novalidate
       @submit.prevent="requestVerification"
     >
@@ -50,7 +50,7 @@
       </button>
     </form>
 
-    <div v-else-if="mode === 'check-email'">
+    <div v-else-if="showsCheckEmail">
       <p role="status">
         Check your email for the next step. If the address can be used, a message is on its way.
       </p>
@@ -61,7 +61,7 @@
     </div>
 
     <form
-      v-else-if="mode === 'password'"
+      v-else-if="showsPasswordForm"
       novalidate
       @submit.prevent="completeRegistration"
     >
@@ -117,6 +117,7 @@
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
   import { navigateTo, useHead, useRequestFetch, useRoute, useState } from '#app'
+  import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import * as v from 'valibot'
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, useTemplateRef, watch } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
@@ -127,7 +128,6 @@
   import { registrationCompletionResponseSchema, registrationResponseSchema } from '~/utils/auth-response.ts'
   import { validateEmail, validatePassword } from '~/utils/auth-validation.ts'
   import { parseRegistrationFragment } from '~/utils/registration-fragment.ts'
-  import { sanitizeRedirectTo } from '~/utils/redirect.ts'
 
   type RegistrationMode = 'check-email' | 'email' | 'invalid' | 'password'
 
@@ -177,6 +177,9 @@
     ? 'Choose your password'
     : 'Create your account')
 
+  const showsEmailForm = computed(() => mode.value === 'email')
+  const showsCheckEmail = computed(() => mode.value === 'check-email')
+  const showsPasswordForm = computed(() => mode.value === 'password')
   const emailError = computed(() => fields.value.email)
   const passwordError = computed(() => fields.value.password)
   const isEmailInvalid = computed(() => emailError.value !== undefined)

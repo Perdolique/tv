@@ -1,9 +1,9 @@
 import { isRecord } from '@tv/shared/type-guards'
 import { sanitizeRedirectTo } from '@tv/shared/redirect'
+import { isVerificationToken } from '@tv/shared/verification'
 import * as v from 'valibot'
 import { AuthHttpError } from './errors.ts'
 import type { Credentials, RegistrationCompletionEnvelope, RegistrationRequest } from './types.ts'
-import { isVerificationToken } from './verification.ts'
 
 const EMAIL_MAX_LENGTH = 254
 const PASSWORD_MIN_LENGTH = 15

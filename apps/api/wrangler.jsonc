@@ -19,8 +19,24 @@
   ],
   "ratelimits": [
     {
-      "name": "AUTH_RATE_LIMITER",
+      "name": "REGISTRATION_EMAIL_RATE_LIMITER",
       "namespace_id": "1001",
+      "simple": {
+        "limit": 1,
+        "period": 60
+      }
+    },
+    {
+      "name": "REGISTRATION_ACTIVATION_RATE_LIMITER",
+      "namespace_id": "1003",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
+    },
+    {
+      "name": "SIGN_IN_RATE_LIMITER",
+      "namespace_id": "1005",
       "simple": {
         "limit": 5,
         "period": 60
@@ -68,8 +84,24 @@
       ],
       "ratelimits": [
         {
-          "name": "AUTH_RATE_LIMITER",
+          "name": "REGISTRATION_EMAIL_RATE_LIMITER",
           "namespace_id": "1002",
+          "simple": {
+            "limit": 1,
+            "period": 60
+          }
+        },
+        {
+          "name": "REGISTRATION_ACTIVATION_RATE_LIMITER",
+          "namespace_id": "1004",
+          "simple": {
+            "limit": 5,
+            "period": 60
+          }
+        },
+        {
+          "name": "SIGN_IN_RATE_LIMITER",
+          "namespace_id": "1006",
           "simple": {
             "limit": 5,
             "period": 60
@@ -79,6 +111,9 @@
       "send_email": [
         {
           "name": "EMAIL",
+          "allowed_destination_addresses": [
+            "tv@kekus.slmail.me"
+          ],
           "allowed_sender_addresses": [
             "noreply@perd.dev"
           ]

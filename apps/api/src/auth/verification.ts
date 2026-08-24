@@ -20,5 +20,3 @@ export {
   hashVerificationToken,
   VERIFICATION_TOKEN_BYTE_LENGTH
 }
-
-export { isVerificationToken } from '@tv/shared/verification'

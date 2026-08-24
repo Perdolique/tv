@@ -1,6 +1,6 @@
 import { defineNuxtRouteMiddleware, navigateTo, useNuxtApp } from '#app'
+import { sanitizeRedirectTo } from '@tv/shared/redirect'
 import { useAuthSession } from '~/composables/use-auth-session.ts'
-import { sanitizeRedirectTo } from '~/utils/redirect.ts'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const { restoreSession, state } = useAuthSession()

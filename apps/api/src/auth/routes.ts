@@ -20,7 +20,7 @@ import { AuthHttpError, createErrorEnvelope } from './errors.ts'
 import { hashPassword, verifyPassword } from './password.ts'
 import { isPasswordCompromised, PwnedPasswordsUnavailableError } from './pwned-passwords.ts'
 import { readRequiredJsonBody, requireEmptyBody } from './request-body.ts'
-import { enforceRateLimit, type AuthOperation } from './rate-limit.ts'
+import { enforceRateLimit } from './rate-limit.ts'
 
 import {
   completeRegistration,
@@ -77,12 +77,11 @@ function createJsonBodyLimit() {
 
 async function applyRateLimit(
   context: AuthContext,
-  operation: AuthOperation,
+  rateLimiter: RateLimit,
   normalizedEmail: string
 ): Promise<void> {
   const emailHash = await enforceRateLimit(
-    context.env.AUTH_RATE_LIMITER,
-    operation,
+    rateLimiter,
     normalizedEmail
   )
 
@@ -177,7 +176,11 @@ function createAuthApp(): Hono<AuthEnvironment> {
     const body = await readRequiredJsonBody(context.req.raw)
     const registration = validateRegistrationRequest(body)
 
-    await applyRateLimit(context, 'register', registration.email)
+    await applyRateLimit(
+      context,
+      context.env.REGISTRATION_EMAIL_RATE_LIMITER,
+      registration.email
+    )
 
     const { database } = await connectDatabase(context)
     const token = createVerificationToken()
@@ -246,7 +249,11 @@ function createAuthApp(): Hono<AuthEnvironment> {
       throw new AuthHttpError('INVALID_VERIFICATION', 400)
     }
 
-    await applyRateLimit(context, 'activate', verification.email)
+    await applyRateLimit(
+      context,
+      context.env.REGISTRATION_ACTIVATION_RATE_LIMITER,
+      verification.email
+    )
 
     const password = validateRegistrationPassword(completion.password)
 
@@ -309,7 +316,11 @@ function createAuthApp(): Hono<AuthEnvironment> {
     const body = await readRequiredJsonBody(context.req.raw)
     const credentials = validateSignInCredentials(body)
 
-    await applyRateLimit(context, 'sign-in', credentials.email)
+    await applyRateLimit(
+      context,
+      context.env.SIGN_IN_RATE_LIMITER,
+      credentials.email
+    )
 
     const { database } = await connectDatabase(context)
     // oxlint-disable-next-line eslint/init-declarations -- The catch block translates database failures.

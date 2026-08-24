@@ -296,6 +296,8 @@ describe('auth Worker contract', () => {
       createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`)
     )
 
+    vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit').mockResolvedValue({ success: true })
+
     const pendingEmail = uniqueEmail('pending')
     const occupiedEmail = uniqueEmail('occupied')
     const newResponse = await verificationRequest(`  ${pendingEmail.toUpperCase()}  `)
@@ -417,6 +419,8 @@ describe('auth Worker contract', () => {
   it('removes only the failed resend token when email delivery fails', async () => {
     const email = uniqueEmail('email-failure')
     const consoleError = vi.spyOn(console, 'error').mockReturnValue()
+
+    vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit').mockResolvedValue({ success: true })
 
     await verificationRequest(email)
 
@@ -803,7 +807,7 @@ describe('auth Worker contract', () => {
 
   it('rejects registration completion bodies larger than 8 KiB before downstream work', async () => {
     const hibpFetch = vi.spyOn(globalThis, 'fetch')
-    const rateLimit = vi.spyOn(env.AUTH_RATE_LIMITER, 'limit')
+    const rateLimit = vi.spyOn(env.REGISTRATION_ACTIVATION_RATE_LIMITER, 'limit')
 
     const response = await authRequest('/api/auth/register/complete', {
       body: {
@@ -931,35 +935,28 @@ describe('auth Worker contract', () => {
     expectNoStore(oversizedResponse)
   })
 
-  it('handles exhausted rate limits independently for each operation', async () => {
+  it('handles exhausted registration and sign-in rate limits independently', async () => {
     const email = uniqueEmail('limited')
+    const registrationRateLimit = vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit')
+    const signInRateLimit = vi.spyOn(env.SIGN_IN_RATE_LIMITER, 'limit')
 
-    const rateLimitResults = [
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false
-    ] as const
+    registrationRateLimit
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce({ success: false })
 
-    const rateLimit = vi.spyOn(env.AUTH_RATE_LIMITER, 'limit')
-
-    for (const success of rateLimitResults) {
-      rateLimit.mockResolvedValueOnce({ success })
-    }
+    signInRateLimit
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce({ success: false })
 
     const registrationResponses: Response[] = []
     const signInResponses: Response[] = []
 
     /* oxlint-disable eslint/no-await-in-loop -- Rate limits must be observed sequentially. */
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       registrationResponses.push(await verificationRequest(email))
     }
 
@@ -969,13 +966,7 @@ describe('auth Worker contract', () => {
 
     /* oxlint-enable eslint/no-await-in-loop */
 
-    expect(registrationResponses.slice(0, 5).map((response) => response.status)).toStrictEqual([
-      202,
-      202,
-      202,
-      202,
-      202
-    ])
+    expect(registrationResponses[0]?.status).toBe(202)
     expect(signInResponses.slice(0, 5).map((response) => response.status)).toStrictEqual([
       401,
       401,
@@ -984,16 +975,17 @@ describe('auth Worker contract', () => {
       401
     ])
 
-    const rateLimitKeys = rateLimit.mock.calls.map(([options]) => options.key)
+    const registrationRateLimitKeys = registrationRateLimit.mock.calls.map(([options]) => options.key)
+    const signInRateLimitKeys = signInRateLimit.mock.calls.map(([options]) => options.key)
 
-    expect(rateLimit).toHaveBeenCalledTimes(12)
-    expect(new Set(rateLimitKeys.slice(0, 6)).size).toBe(1)
-    expect(new Set(rateLimitKeys.slice(6)).size).toBe(1)
-    expect(rateLimitKeys[0]).toMatch(/^register:/u)
-    expect(rateLimitKeys[6]).toMatch(/^sign-in:/u)
-    expect(rateLimitKeys[0]).not.toBe(rateLimitKeys[6])
+    expect(registrationRateLimit).toHaveBeenCalledTimes(2)
+    expect(signInRateLimit).toHaveBeenCalledTimes(6)
+    expect(new Set(registrationRateLimitKeys).size).toBe(1)
+    expect(new Set(signInRateLimitKeys).size).toBe(1)
+    expect(registrationRateLimitKeys[0]).toMatch(/^[0-9a-f]{64}$/u)
+    expect(signInRateLimitKeys[0]).toBe(registrationRateLimitKeys[0])
 
-    const limitedRegistration = registrationResponses.at(5)
+    const limitedRegistration = registrationResponses.at(1)
     const limitedSignIn = signInResponses.at(5)
 
     assert(limitedRegistration !== undefined)
@@ -1026,7 +1018,7 @@ describe('auth Worker contract', () => {
     await verificationRequest(email)
 
     const token = readVerificationToken(getLatestEmailMessage())
-    const rateLimit = vi.spyOn(env.AUTH_RATE_LIMITER, 'limit')
+    const rateLimit = vi.spyOn(env.REGISTRATION_ACTIVATION_RATE_LIMITER, 'limit')
 
     rateLimit.mockResolvedValueOnce({ success: false })
 
@@ -1039,7 +1031,7 @@ describe('auth Worker contract', () => {
 
     expect(response.status).toBe(429)
     expect(response.headers.get('retry-after')).toBe('60')
-    expect(rateLimitOptions.key).toMatch(/^activate:/u)
+    expect(rateLimitOptions.key).toMatch(/^[0-9a-f]{64}$/u)
     expect(hibpFetch).not.toHaveBeenCalled()
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 0,

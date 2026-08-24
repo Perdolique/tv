@@ -1,5 +1,5 @@
+import { sanitizeRedirectTo } from '@tv/shared/redirect'
 import { describe, expect, it } from 'vitest'
-import { sanitizeRedirectTo } from '../redirect.ts'
 
 describe(sanitizeRedirectTo, () => {
   it.each([

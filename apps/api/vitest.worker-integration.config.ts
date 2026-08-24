@@ -26,8 +26,26 @@ export default defineConfig({
         },
 
         ratelimits: {
-          AUTH_RATE_LIMITER: {
+          REGISTRATION_EMAIL_RATE_LIMITER: {
             namespace_id: '1001',
+
+            simple: {
+              limit: 1,
+              period: 60
+            }
+          },
+
+          REGISTRATION_ACTIVATION_RATE_LIMITER: {
+            namespace_id: '1003',
+
+            simple: {
+              limit: 5,
+              period: 60
+            }
+          },
+
+          SIGN_IN_RATE_LIMITER: {
+            namespace_id: '1005',
 
             simple: {
               limit: 5,
