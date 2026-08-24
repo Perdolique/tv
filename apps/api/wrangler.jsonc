@@ -27,6 +27,17 @@
       }
     }
   ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": [
+        "noreply@perd.dev"
+      ]
+    }
+  ],
+  "vars": {
+    "WEB_ORIGIN": "https://tv.perd.dev"
+  },
   "routes": [
     {
       "pattern": "tv.perd.dev/api/*",
@@ -65,6 +76,17 @@
           }
         }
       ],
+      "send_email": [
+        {
+          "name": "EMAIL",
+          "allowed_sender_addresses": [
+            "noreply@perd.dev"
+          ]
+        }
+      ],
+      "vars": {
+        "WEB_ORIGIN": "https://tv-staging.perd.dev"
+      },
       "routes": [
         {
           "pattern": "tv-staging.perd.dev/api/*",

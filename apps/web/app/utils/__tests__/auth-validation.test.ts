@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateCredentials } from '../auth-validation.ts'
+import { validateCredentials, validateEmail, validatePassword } from '../auth-validation.ts'
 
 function createEmail(length: number): string {
   const suffix = '@example.com'
@@ -78,6 +78,36 @@ describe(validateCredentials, () => {
       payload: {
         email: 'viewer@example.com',
         password: 'x'
+      }
+    })
+  })
+})
+
+describe('registration step validation', () => {
+  it('normalizes an email without requiring a password', () => {
+    expect(validateEmail('  viewer@example.com  ')).toStrictEqual({
+      fields: {},
+
+      payload: {
+        email: 'viewer@example.com'
+      }
+    })
+  })
+
+  it('validates the password step independently', () => {
+    expect(validatePassword('')).toStrictEqual({
+      fields: {
+        password: 'Enter your password.'
+      },
+
+      payload: null
+    })
+
+    expect(validatePassword('correct horse battery staple')).toStrictEqual({
+      fields: {},
+
+      payload: {
+        password: 'correct horse battery staple'
       }
     })
   })

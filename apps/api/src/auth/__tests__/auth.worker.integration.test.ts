@@ -2,7 +2,9 @@
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
+import { VERIFICATION_TOKEN_DURATION_MILLISECONDS } from '../constants.ts'
 import { hashSha1 } from '../hashing.ts'
+import { hashVerificationToken } from '../verification.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
 const PASSWORD = 'correct horse battery staple'
@@ -80,15 +82,66 @@ async function authRequest(
   ))
 }
 
-async function registrationRequest(email: string, password = PASSWORD): Promise<Response> {
+async function verificationRequest(email: string, redirectTo = '/'): Promise<Response> {
   return authRequest('/api/auth/register', {
     body: {
       email,
-      password
+      redirectTo
     },
 
     method: 'POST'
   })
+}
+
+async function completionRequest(token: string, password = PASSWORD): Promise<Response> {
+  return authRequest('/api/auth/register/complete', {
+    body: {
+      password,
+      token
+    },
+
+    method: 'POST'
+  })
+}
+
+function getLatestEmailMessage(): EmailMessageBuilder {
+  const latestCall = vi.mocked(env.EMAIL).send.mock.calls.at(-1)
+  const [message] = latestCall ?? []
+
+  if (message === undefined || !('subject' in message)) {
+    throw new Error('Expected a structured registration email')
+  }
+
+  return message
+}
+
+function readVerificationToken(message: EmailMessageBuilder): string {
+  const token = message.text?.match(/#token=(?<token>[\w-]{43})/u)?.groups?.token
+
+  if (token === undefined) {
+    throw new Error('Expected a verification token in the email')
+  }
+
+  return token
+}
+
+async function createAccount(email: string, password = PASSWORD): Promise<Response> {
+  const response = await verificationRequest(email)
+
+  if (response.status !== 202) {
+    return response
+  }
+
+  const message = getLatestEmailMessage()
+
+  if (message.subject !== 'Verify your email for TV') {
+    return response
+  }
+
+  const token = readVerificationToken(message)
+  const completionResponse = await completionRequest(token, password)
+
+  return completionResponse
 }
 
 async function signInRequest(
@@ -160,6 +213,44 @@ async function countUsers(email: string): Promise<number> {
   }
 }
 
+async function countAccountState(email: string): Promise<{
+  credentials: number;
+  tokens: number;
+  users: number;
+}> {
+  const client = new Client({ connectionString: env.DATABASE.connectionString })
+
+  try {
+    await client.connect()
+
+    const result = await client.query<{
+      credentials: string;
+      tokens: string;
+      users: string;
+    }>(`
+      SELECT
+        (SELECT count(*) FROM users WHERE email = $1) AS users,
+        (
+          SELECT count(*)
+          FROM password_credentials credentials
+          INNER JOIN users ON users.id = credentials.user_id
+          WHERE users.email = $1
+        ) AS credentials,
+        (SELECT count(*) FROM email_verification_tokens WHERE email = $1) AS tokens
+    `, [email])
+
+    const [row] = result.rows
+
+    return {
+      credentials: Number(row?.credentials ?? 0),
+      tokens: Number(row?.tokens ?? 0),
+      users: Number(row?.users ?? 0)
+    }
+  } finally {
+    await client.end()
+  }
+}
+
 describe('auth Worker contract', () => {
   beforeEach(async () => {
     const client = new Client({ connectionString: env.DATABASE.connectionString })
@@ -167,10 +258,12 @@ describe('auth Worker contract', () => {
     try {
       await client.connect()
       await assertDisposableTestDatabase(client)
-      await client.query('TRUNCATE TABLE users CASCADE')
+      await client.query('TRUNCATE TABLE email_verification_tokens, users CASCADE')
     } finally {
       await client.end()
     }
+
+    vi.spyOn(env.EMAIL, 'send').mockResolvedValue({ messageId: crypto.randomUUID() })
   })
 
   afterEach(() => {
@@ -198,25 +291,241 @@ describe('auth Worker contract', () => {
     expect(response.status).toBe(404)
   })
 
-  it('returns the same registration response for a new and occupied email', async () => {
+  it('returns the same registration response for new, pending, and occupied email', async () => {
     const hibpFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(
       createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`)
     )
 
-    const email = uniqueEmail('duplicate')
-    const firstResponse = await registrationRequest(`  ${email.toUpperCase()}  `)
-    const secondResponse = await registrationRequest(email)
+    const pendingEmail = uniqueEmail('pending')
+    const occupiedEmail = uniqueEmail('occupied')
+    const newResponse = await verificationRequest(`  ${pendingEmail.toUpperCase()}  `)
+    const pendingResponse = await verificationRequest(pendingEmail)
 
-    expect(hibpFetch).toHaveBeenCalledTimes(2)
-    expect(firstResponse.status).toBe(202)
-    expect(secondResponse.status).toBe(202)
-    await expect(readJson(firstResponse)).resolves.toStrictEqual({ status: 'accepted' })
-    await expect(readJson(secondResponse)).resolves.toStrictEqual({ status: 'accepted' })
-    expect(firstResponse.headers.get('set-cookie')).toBeNull()
-    expect(secondResponse.headers.get('set-cookie')).toBeNull()
-    expectNoStore(firstResponse)
-    expectNoStore(secondResponse)
-    await expect(countUsers(email)).resolves.toBe(1)
+    await createAccount(occupiedEmail)
+
+    const occupiedResponse = await verificationRequest(occupiedEmail)
+
+    expect(hibpFetch).toHaveBeenCalledTimes(1)
+
+    const neutralResponses = [newResponse, pendingResponse, occupiedResponse]
+
+    for (const response of neutralResponses) {
+      expect(response.status).toBe(202)
+      expect(response.headers.get('set-cookie')).toBeNull()
+      expectNoStore(response)
+    }
+
+    await Promise.all(neutralResponses.map(async (response) => {
+      await expect(readJson(response)).resolves.toStrictEqual({ status: 'accepted' })
+    }))
+
+    // oxlint-disable-next-line typescript/unbound-method -- Vitest inspects mock metadata without invoking the binding method.
+    expect(vi.mocked(env.EMAIL).send).toHaveBeenCalledTimes(4)
+
+    const existingAccountMessage = getLatestEmailMessage()
+
+    expect(existingAccountMessage.subject).toBe('A registration request was made for TV')
+    expect(existingAccountMessage.text).toContain('/sign-in?redirectTo=')
+    expect(existingAccountMessage.text).not.toContain('/register#token=')
+    await expect(countAccountState(pendingEmail)).resolves.toStrictEqual({
+      credentials: 0,
+      tokens: 2,
+      users: 0
+    })
+    await expect(countAccountState(occupiedEmail)).resolves.toStrictEqual({
+      credentials: 1,
+      tokens: 0,
+      users: 1
+    })
+
+    const pendingSignIn = await signInRequest(pendingEmail)
+
+    expect(pendingSignIn.status).toBe(401)
+  })
+
+  it('stores verification tokens with the promised one-hour lifetime', async () => {
+    const email = uniqueEmail('token-lifetime')
+    const earliestExpiry = Date.now() + VERIFICATION_TOKEN_DURATION_MILLISECONDS
+
+    await verificationRequest(email)
+
+    const latestExpiry = Date.now() + VERIFICATION_TOKEN_DURATION_MILLISECONDS
+    const token = readVerificationToken(getLatestEmailMessage())
+    const tokenHash = await hashVerificationToken(token)
+    const client = new Client({ connectionString: env.DATABASE.connectionString })
+
+    try {
+      await client.connect()
+
+      const result = await client.query<{ expires_at: Date; }>(`
+        SELECT expires_at
+        FROM email_verification_tokens
+        WHERE token_hash = $1
+      `, [tokenHash])
+
+      const expiresAt = result.rows[0]?.expires_at
+
+      assert(expiresAt !== undefined)
+      expect(expiresAt.getTime()).toBeGreaterThanOrEqual(earliestExpiry)
+      expect(expiresAt.getTime()).toBeLessThanOrEqual(latestExpiry)
+    } finally {
+      await client.end()
+    }
+  })
+
+  it('creates no account before proof and no session after completion', async () => {
+    mockSafeHibp()
+
+    const email = uniqueEmail('proof')
+    const registrationResponse = await verificationRequest(email, '/?view=recent')
+    const token = readVerificationToken(getLatestEmailMessage())
+
+    expect(registrationResponse.status).toBe(202)
+    await expect(countAccountState(email)).resolves.toStrictEqual({
+      credentials: 0,
+      tokens: 1,
+      users: 0
+    })
+
+    const completionResponse = await completionRequest(token)
+
+    expect(completionResponse.status).toBe(201)
+    await expect(readJson(completionResponse)).resolves.toStrictEqual({
+      email,
+      redirectTo: '/?view=recent',
+      status: 'created'
+    })
+    expect(completionResponse.headers.get('set-cookie')).toBeNull()
+    expectNoStore(completionResponse)
+    await expect(countAccountState(email)).resolves.toStrictEqual({
+      credentials: 1,
+      tokens: 0,
+      users: 1
+    })
+
+    const replayResponse = await completionRequest(token)
+
+    expect(replayResponse.status).toBe(400)
+    await expect(readJson<AuthErrorResponse>(replayResponse)).resolves.toStrictEqual({
+      error: {
+        code: 'INVALID_VERIFICATION',
+        message: 'This verification link is invalid or has expired.'
+      }
+    })
+  })
+
+  it('removes only the failed resend token when email delivery fails', async () => {
+    const email = uniqueEmail('email-failure')
+    const consoleError = vi.spyOn(console, 'error').mockReturnValue()
+
+    await verificationRequest(email)
+
+    const deliveredToken = readVerificationToken(getLatestEmailMessage())
+
+    vi.mocked(env.EMAIL).send.mockRejectedValueOnce(new Error('email provider unavailable'))
+
+    const response = await verificationRequest(email)
+    const body = await readJson<AuthErrorResponse>(response)
+    const logs = JSON.stringify(readStructuredErrorLogs(consoleError))
+
+    expect(response.status).toBe(503)
+    expect(body.error).toStrictEqual({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Authentication is temporarily unavailable.'
+    })
+    await expect(countAccountState(email)).resolves.toStrictEqual({
+      credentials: 0,
+      tokens: 1,
+      users: 0
+    })
+    expect(logs).toContain('email provider unavailable')
+    expect(logs).not.toContain(email)
+    expectNoStore(response)
+
+    mockSafeHibp()
+
+    const completionResponse = await completionRequest(deliveredToken)
+
+    expect(completionResponse.status).toBe(201)
+    await expect(countAccountState(email)).resolves.toStrictEqual({
+      credentials: 1,
+      tokens: 0,
+      users: 1
+    })
+  })
+
+  it('rejects password-length boundaries without consuming the token or checking HIBP', async () => {
+    const email = uniqueEmail('password-length')
+    const hibpFetch = vi.spyOn(globalThis, 'fetch')
+
+    await verificationRequest(email)
+
+    const token = readVerificationToken(getLatestEmailMessage())
+
+    const invalidPasswords = [
+      'x'.repeat(14),
+      'x'.repeat(129)
+    ]
+
+    /* oxlint-disable eslint/no-await-in-loop -- Both boundaries must reuse the same live token and own separate response bodies. */
+    for (const password of invalidPasswords) {
+      const response = await completionRequest(token, password)
+
+      expect(response.status).toBe(400)
+      await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
+        error: {
+          code: 'INVALID_REQUEST',
+
+          fields: {
+            password: 'Use between 15 and 128 characters.'
+          },
+
+          message: 'The request is invalid.'
+        }
+      })
+    }
+
+    /* oxlint-enable eslint/no-await-in-loop */
+
+    expect(hibpFetch).not.toHaveBeenCalled()
+    await expect(countAccountState(email)).resolves.toStrictEqual({
+      credentials: 0,
+      tokens: 1,
+      users: 0
+    })
+  })
+
+  it('rejects an expired verification link before checking HIBP', async () => {
+    const email = uniqueEmail('expired-verification')
+    const hibpFetch = vi.spyOn(globalThis, 'fetch')
+
+    await verificationRequest(email)
+
+    const token = readVerificationToken(getLatestEmailMessage())
+    const tokenHash = await hashVerificationToken(token)
+    const client = new Client({ connectionString: env.DATABASE.connectionString })
+
+    try {
+      await client.connect()
+      await client.query(`
+        UPDATE email_verification_tokens
+        SET expires_at = now() - interval '1 second'
+        WHERE token_hash = $1
+      `, [tokenHash])
+    } finally {
+      await client.end()
+    }
+
+    const response = await completionRequest(token)
+
+    expect(response.status).toBe(400)
+    expect(hibpFetch).not.toHaveBeenCalled()
+    await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
+      error: {
+        code: 'INVALID_VERIFICATION',
+        message: 'This verification link is invalid or has expired.'
+      }
+    })
   })
 
   it('rejects compromised passwords and fails closed when HIBP is unavailable', async () => {
@@ -229,13 +538,13 @@ describe('auth Worker contract', () => {
 
     fetchMock.mockImplementationOnce(createResponseFactory(`${passwordSuffix}:42`))
 
-    const compromisedResponse = await registrationRequest(compromisedEmail)
+    const compromisedResponse = await createAccount(compromisedEmail)
 
     fetchMock.mockImplementationOnce(
       createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`, { status: 503 })
     )
 
-    const unavailableResponse = await registrationRequest(unavailableEmail)
+    const unavailableResponse = await createAccount(unavailableEmail)
     const unavailableBody = await readJson<AuthErrorResponse>(unavailableResponse)
     const loggedError = JSON.stringify(readStructuredErrorLogs(consoleError))
 
@@ -281,7 +590,7 @@ describe('auth Worker contract', () => {
     `)
 
     try {
-      response = await registrationRequest(email)
+      response = await createAccount(email)
     } finally {
       await client.query(`
         ALTER TABLE password_credentials
@@ -306,7 +615,7 @@ describe('auth Worker contract', () => {
     const email = uniqueEmail('credential')
     const unknownEmail = uniqueEmail('unknown')
 
-    await registrationRequest(email)
+    await createAccount(email)
 
     const unknownResponse = await signInRequest(unknownEmail)
     const wrongPasswordResponse = await signInRequest(email, 'wrong')
@@ -331,7 +640,7 @@ describe('auth Worker contract', () => {
 
     const email = uniqueEmail('lifecycle')
 
-    await registrationRequest(email)
+    await createAccount(email)
 
     const signInResponse = await signInRequest(email)
     const signInBody = await readJson<SessionResponse>(signInResponse)
@@ -379,7 +688,7 @@ describe('auth Worker contract', () => {
 
     const email = uniqueEmail('expired')
 
-    await registrationRequest(email)
+    await createAccount(email)
 
     const signInResponse = await signInRequest(email)
     const cookie = readCookie(signInResponse)
@@ -412,7 +721,7 @@ describe('auth Worker contract', () => {
 
     const email = uniqueEmail('devices')
 
-    await registrationRequest(email)
+    await createAccount(email)
 
     const firstSignIn = await signInRequest(email)
     const secondSignIn = await signInRequest(email)
@@ -444,7 +753,7 @@ describe('auth Worker contract', () => {
 
     const email = uniqueEmail('replace')
 
-    await registrationRequest(email)
+    await createAccount(email)
 
     const firstSignIn = await signInRequest(email)
     const otherDeviceSignIn = await signInRequest(email)
@@ -472,10 +781,15 @@ describe('auth Worker contract', () => {
   })
 
   it('rejects registration bodies larger than 8 KiB with the safe error envelope', async () => {
-    const response = await registrationRequest(
-      uniqueEmail('oversize'),
-      'x'.repeat(9e3)
-    )
+    const response = await authRequest('/api/auth/register', {
+      body: {
+        email: uniqueEmail('oversize'),
+        padding: 'x'.repeat(9e3),
+        redirectTo: '/'
+      },
+
+      method: 'POST'
+    })
 
     expect(response.status).toBe(413)
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
@@ -484,6 +798,32 @@ describe('auth Worker contract', () => {
         message: 'The request is invalid.'
       }
     })
+    expectNoStore(response)
+  })
+
+  it('rejects registration completion bodies larger than 8 KiB before downstream work', async () => {
+    const hibpFetch = vi.spyOn(globalThis, 'fetch')
+    const rateLimit = vi.spyOn(env.AUTH_RATE_LIMITER, 'limit')
+
+    const response = await authRequest('/api/auth/register/complete', {
+      body: {
+        padding: 'x'.repeat(9e3),
+        password: PASSWORD,
+        token: 'a'.repeat(43)
+      },
+
+      method: 'POST'
+    })
+
+    expect(response.status).toBe(413)
+    await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
+      error: {
+        code: 'INVALID_REQUEST',
+        message: 'The request is invalid.'
+      }
+    })
+    expect(hibpFetch).not.toHaveBeenCalled()
+    expect(rateLimit).not.toHaveBeenCalled()
     expectNoStore(response)
   })
 
@@ -615,16 +955,12 @@ describe('auth Worker contract', () => {
       rateLimit.mockResolvedValueOnce({ success })
     }
 
-    const hibpFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(
-      createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`)
-    )
-
     const registrationResponses: Response[] = []
     const signInResponses: Response[] = []
 
     /* oxlint-disable eslint/no-await-in-loop -- Rate limits must be observed sequentially. */
     for (let attempt = 0; attempt < 6; attempt += 1) {
-      registrationResponses.push(await registrationRequest(email))
+      registrationResponses.push(await verificationRequest(email))
     }
 
     for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -641,11 +977,11 @@ describe('auth Worker contract', () => {
       202
     ])
     expect(signInResponses.slice(0, 5).map((response) => response.status)).toStrictEqual([
-      200,
-      200,
-      200,
-      200,
-      200
+      401,
+      401,
+      401,
+      401,
+      401
     ])
 
     const rateLimitKeys = rateLimit.mock.calls.map(([options]) => options.key)
@@ -656,7 +992,6 @@ describe('auth Worker contract', () => {
     expect(rateLimitKeys[0]).toMatch(/^register:/u)
     expect(rateLimitKeys[6]).toMatch(/^sign-in:/u)
     expect(rateLimitKeys[0]).not.toBe(rateLimitKeys[6])
-    expect(hibpFetch).toHaveBeenCalledTimes(5)
 
     const limitedRegistration = registrationResponses.at(5)
     const limitedSignIn = signInResponses.at(5)
@@ -682,5 +1017,35 @@ describe('auth Worker contract', () => {
     })
     expectNoStore(limitedRegistration)
     expectNoStore(limitedSignIn)
+  })
+
+  it('preserves a live token when the activation rate limit is exhausted', async () => {
+    const email = uniqueEmail('limited-activation')
+    const hibpFetch = vi.spyOn(globalThis, 'fetch')
+
+    await verificationRequest(email)
+
+    const token = readVerificationToken(getLatestEmailMessage())
+    const rateLimit = vi.spyOn(env.AUTH_RATE_LIMITER, 'limit')
+
+    rateLimit.mockResolvedValueOnce({ success: false })
+
+    const response = await completionRequest(token)
+    const [rateLimitCall] = rateLimit.mock.calls
+
+    assert(rateLimitCall !== undefined)
+
+    const [rateLimitOptions] = rateLimitCall
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('60')
+    expect(rateLimitOptions.key).toMatch(/^activate:/u)
+    expect(hibpFetch).not.toHaveBeenCalled()
+    await expect(countAccountState(email)).resolves.toStrictEqual({
+      credentials: 0,
+      tokens: 1,
+      users: 0
+    })
+    expectNoStore(response)
   })
 })

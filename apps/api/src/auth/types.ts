@@ -8,10 +8,21 @@ interface Credentials {
   password: string;
 }
 
+interface RegistrationRequest {
+  email: string;
+  redirectTo: string;
+}
+
+interface RegistrationCompletionEnvelope {
+  password: unknown;
+  token: string;
+}
+
 type AuthErrorCode =
   | 'INTERNAL_ERROR'
   | 'INVALID_CREDENTIALS'
   | 'INVALID_REQUEST'
+  | 'INVALID_VERIFICATION'
   | 'PASSWORD_COMPROMISED'
   | 'RATE_LIMITED'
   | 'SERVICE_UNAVAILABLE'
@@ -31,5 +42,7 @@ export type {
   AuthErrorCode,
   AuthErrorEnvelope,
   AuthUser,
-  Credentials
+  Credentials,
+  RegistrationCompletionEnvelope,
+  RegistrationRequest
 }

@@ -58,7 +58,7 @@
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
   import { navigateTo, useHead, useRequestFetch, useResponseHeader } from '#app'
-  import { computed, nextTick, ref, useTemplateRef } from 'vue'
+  import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
 
   definePageMeta({ middleware: 'auth' })
@@ -83,6 +83,16 @@
   const userEmail = computed(() => state.value.status === 'authenticated'
     ? state.value.user.email
     : '')
+
+  onMounted(() => {
+    if (globalThis.location.hash.startsWith('#token=')) {
+      globalThis.history.replaceState(
+        globalThis.history.state,
+        '',
+        `${globalThis.location.pathname}${globalThis.location.search}`
+      )
+    }
+  })
 
   async function retrySession(): Promise<void> {
     isRetrying.value = true

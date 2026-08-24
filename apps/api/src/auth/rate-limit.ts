@@ -1,7 +1,7 @@
 import { AuthHttpError } from './errors.ts'
 import { hashSha256 } from './hashing.ts'
 
-export type AuthOperation = 'register' | 'sign-in'
+export type AuthOperation = 'activate' | 'register' | 'sign-in'
 
 export async function enforceRateLimit(
   rateLimiter: RateLimit,

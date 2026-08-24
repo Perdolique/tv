@@ -5,6 +5,7 @@ const ERROR_MESSAGES = {
   INTERNAL_ERROR: 'An unexpected error occurred.',
   INVALID_CREDENTIALS: 'Invalid email or password.',
   INVALID_REQUEST: 'The request is invalid.',
+  INVALID_VERIFICATION: 'This verification link is invalid or has expired.',
   PASSWORD_COMPROMISED: 'Choose a password that has not appeared in a known data breach.',
   RATE_LIMITED: 'Too many attempts. Try again later.',
   SERVICE_UNAVAILABLE: 'Authentication is temporarily unavailable.'

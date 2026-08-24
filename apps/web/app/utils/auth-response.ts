@@ -14,12 +14,19 @@ const registrationResponseSchema = v.object({
   status: v.literal('accepted')
 })
 
+const registrationCompletionResponseSchema = v.object({
+  email: v.string(),
+  redirectTo: v.string(),
+  status: v.literal('created')
+})
+
 const signInResponseSchema = v.object({
   user: authUserSchema
 })
 
 export {
   authSessionResponseSchema,
+  registrationCompletionResponseSchema,
   registrationResponseSchema,
   signInResponseSchema
 }

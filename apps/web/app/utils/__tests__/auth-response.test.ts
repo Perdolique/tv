@@ -1,6 +1,12 @@
 import * as v from 'valibot'
 import { describe, expect, it } from 'vitest'
-import { authSessionResponseSchema, registrationResponseSchema, signInResponseSchema } from '../auth-response.ts'
+
+import {
+  authSessionResponseSchema,
+  registrationCompletionResponseSchema,
+  registrationResponseSchema,
+  signInResponseSchema
+} from '../auth-response.ts'
 
 describe('auth session response validation', () => {
   it('accepts an authenticated session and strips unknown properties', () => {
@@ -76,5 +82,30 @@ describe('sign-in response validation', () => {
 
   it('rejects a response without an authenticated user', () => {
     expect(v.safeParse(signInResponseSchema, { user: null }).success).toBe(false)
+  })
+})
+
+describe('registration completion response validation', () => {
+  it('accepts the created account handoff', () => {
+    expect(v.parse(registrationCompletionResponseSchema, {
+      email: 'viewer@example.com',
+      redirectTo: '/?view=recent',
+      status: 'created'
+    })).toStrictEqual({
+      email: 'viewer@example.com',
+      redirectTo: '/?view=recent',
+      status: 'created'
+    })
+  })
+
+  it.each([
+    { status: 'created' },
+    {
+      email: 'viewer@example.com',
+      redirectTo: '/',
+      status: 'accepted'
+    }
+  ])('rejects malformed completion response %j', (value) => {
+    expect(v.safeParse(registrationCompletionResponseSchema, value).success).toBe(false)
   })
 })

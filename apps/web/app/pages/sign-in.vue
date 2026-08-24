@@ -5,7 +5,7 @@
         v-if="showsRegistrationNotice"
         role="status"
       >
-        If an account can be created for this email, you can sign in now.
+        Account created. Sign in to continue.
       </p>
 
       <p
@@ -106,7 +106,7 @@
   const formError = ref('')
   const isSubmitting = ref(false)
   const isPasswordVisible = ref(false)
-  const showsRegistrationNotice = ref(initialNotice?.accepted === true)
+  const showsRegistrationNotice = ref(initialNotice?.created === true)
 
   registrationNotice.value = null
 
