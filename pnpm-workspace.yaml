@@ -13,7 +13,6 @@ allowBuilds:
 minimumReleaseAgeExcludePrune: true
 
 minimumReleaseAgeExclude:
-  - '@cloudflare/workers-types@5.20260819.1'
   - worsier-darwin-arm64@3.0.1
   - worsier-darwin-x64@3.0.1
   - worsier-linux-arm64-gnu@3.0.1
