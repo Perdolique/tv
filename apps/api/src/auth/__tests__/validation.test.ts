@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { AuthHttpError } from '../errors.ts'
-import { validateRegistrationCredentials, validateSignInCredentials } from '../validation.ts'
+
+import {
+  validateRegistrationCompletionEnvelope,
+  validateRegistrationPassword,
+  validateRegistrationRequest,
+  validateSignInCredentials
+} from '../validation.ts'
 
 const INVALID_EMAIL_FIELD = {
   email: 'Enter a valid email address.'
@@ -50,11 +56,7 @@ describe('auth credential validation', () => {
 
   it('normalizes registration and sign-in passwords to NFC', () => {
     const decomposedPassword = `Cafe\u0301${'x'.repeat(11)}`
-
-    const registrationCredentials = validateRegistrationCredentials({
-      email: 'person@example.com',
-      password: decomposedPassword
-    })
+    const registrationPassword = validateRegistrationPassword(decomposedPassword)
 
     const signInCredentials = validateSignInCredentials({
       email: 'person@example.com',
@@ -63,14 +65,14 @@ describe('auth credential validation', () => {
 
     const normalizedPassword = `Café${'x'.repeat(11)}`
 
-    expect(registrationCredentials.password).toBe(normalizedPassword)
+    expect(registrationPassword).toBe(normalizedPassword)
     expect(signInCredentials.password).toBe(normalizedPassword)
   })
 
   it('uses common email validation stricter than the previous loose shape', () => {
-    const error = getAuthError(() => validateRegistrationCredentials({
+    const error = getAuthError(() => validateRegistrationRequest({
       email: 'person@example.c',
-      password: 'a'.repeat(15)
+      redirectTo: '/'
     }))
 
     expect(error).toMatchObject({
@@ -104,7 +106,7 @@ describe('auth credential validation', () => {
     null,
     []
   ])('returns a root error for a non-object credential input', (input) => {
-    const error = getAuthError(() => validateRegistrationCredentials(input))
+    const error = getAuthError(() => validateRegistrationRequest(input))
 
     expect(error).toMatchObject({
       code: 'INVALID_REQUEST',
@@ -133,7 +135,7 @@ describe('auth credential validation', () => {
   })
 
   it('returns only the first field error when both fields are invalid', () => {
-    const error = getAuthError(() => validateRegistrationCredentials({
+    const error = getAuthError(() => validateSignInCredentials({
       email: 'not-an-email',
       password: 'short'
     }))
@@ -146,24 +148,17 @@ describe('auth credential validation', () => {
     128
   ])('accepts a registration password containing %i Unicode code points', (length) => {
     const password = '😀'.repeat(length)
-
-    const credentials = validateRegistrationCredentials({
-      email: 'person@example.com',
-      password
-    })
+    const validatedPassword = validateRegistrationPassword(password)
 
     // oxlint-disable-next-line unicorn/prefer-spread -- Array.from verifies the production code-point length contract.
-    expect(Array.from(credentials.password)).toHaveLength(length)
+    expect(Array.from(validatedPassword)).toHaveLength(length)
   })
 
   it.each([
     14,
     129
   ])('rejects a registration password containing %i Unicode code points', (length) => {
-    const error = getAuthError(() => validateRegistrationCredentials({
-      email: 'person@example.com',
-      password: '😀'.repeat(length)
-    }))
+    const error = getAuthError(() => validateRegistrationPassword('😀'.repeat(length)))
 
     expect(error.fields).toStrictEqual(INVALID_PASSWORD_LENGTH_FIELD)
   })
@@ -175,5 +170,38 @@ describe('auth credential validation', () => {
     })
 
     expect(credentials.password).toBe('wrong')
+  })
+
+  it('normalizes registration email and sanitizes redirect targets', () => {
+    expect(validateRegistrationRequest({
+      email: '  Person@Example.COM ',
+      redirectTo: 'https://example.com/account'
+    })).toStrictEqual({
+      email: 'person@example.com',
+      redirectTo: '/'
+    })
+  })
+
+  it('accepts only a shaped verification token before password validation', () => {
+    const token = 'a'.repeat(43)
+
+    expect(validateRegistrationCompletionEnvelope({
+      extra: true,
+      password: null,
+      token
+    })).toStrictEqual({
+      password: null,
+      token
+    })
+
+    const error = getAuthError(() => validateRegistrationCompletionEnvelope({
+      password: 'a'.repeat(15),
+      token: 'invalid'
+    }))
+
+    expect(error).toMatchObject({
+      code: 'INVALID_VERIFICATION',
+      status: 400
+    })
   })
 })

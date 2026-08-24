@@ -15,18 +15,17 @@ function createRateLimiter(success: boolean): {
 }
 
 describe(enforceRateLimit, () => {
-  it('keys the limiter by operation and normalized email hash', async () => {
+  it('keys the limiter by normalized email hash', async () => {
     const { limit, rateLimiter } = createRateLimiter(true)
 
     const emailHash = await enforceRateLimit(
       rateLimiter,
-      'register',
       'person@example.com'
     )
 
     expect(emailHash).toMatch(/^[0-9a-f]{64}$/u)
     expect(limit).toHaveBeenCalledWith({
-      key: `register:${emailHash}`
+      key: emailHash
     })
   })
 
@@ -34,7 +33,7 @@ describe(enforceRateLimit, () => {
     const { rateLimiter } = createRateLimiter(false)
 
     await expect(
-      enforceRateLimit(rateLimiter, 'sign-in', 'person@example.com')
+      enforceRateLimit(rateLimiter, 'person@example.com')
     ).rejects.toMatchObject({
       code: 'RATE_LIMITED',
       status: 429
@@ -49,7 +48,7 @@ describe(enforceRateLimit, () => {
     }
 
     await expect(
-      enforceRateLimit(rateLimiter, 'register', 'person@example.com')
+      enforceRateLimit(rateLimiter, 'person@example.com')
     ).rejects.toMatchObject({
       cause: bindingError,
       code: 'SERVICE_UNAVAILABLE',

@@ -5,10 +5,21 @@ interface Credentials {
   password: string;
 }
 
+interface RegistrationRequest {
+  email: string;
+  redirectTo: string;
+}
+
+interface RegistrationCompletionRequest {
+  password: string;
+  token: string;
+}
+
 interface SafeErrorOptions {
   code:
     | 'INVALID_CREDENTIALS'
     | 'INVALID_REQUEST'
+    | 'INVALID_VERIFICATION'
     | 'PASSWORD_COMPROMISED'
     | 'SERVICE_UNAVAILABLE';
   fields?: Record<string, string>;
@@ -22,6 +33,9 @@ const AUTHENTICATED_USER = {
   id: 'user-e2e'
 } as const
 
+const VALID_VERIFICATION_TOKEN = 'v'.repeat(43)
+const COMPROMISED_VERIFICATION_TOKEN = 'c'.repeat(43)
+const UNAVAILABLE_VERIFICATION_TOKEN = 'u'.repeat(43)
 const SESSION_COOKIE = 'tv_session=e2e-session'
 const LONG_EMAIL_SESSION_COOKIE = 'tv_session=e2e-long-email-session'
 
@@ -85,10 +99,52 @@ async function readCredentials(request: Request): Promise<Credentials | null> {
   }
 }
 
-async function handleRegister(request: Request): Promise<Response> {
-  const credentials = await readCredentials(request)
+async function readRegistrationRequest(request: Request): Promise<RegistrationRequest | null> {
+  const value: unknown = await request.json().catch(() => null)
 
-  if (credentials === null) {
+  if (
+    typeof value !== 'object'
+    || value === null
+    || !('email' in value)
+    || !('redirectTo' in value)
+    || typeof value.email !== 'string'
+    || typeof value.redirectTo !== 'string'
+  ) {
+    return null
+  }
+
+  return {
+    email: value.email,
+    redirectTo: value.redirectTo
+  }
+}
+
+async function readRegistrationCompletionRequest(
+  request: Request
+): Promise<RegistrationCompletionRequest | null> {
+  const value: unknown = await request.json().catch(() => null)
+
+  if (
+    typeof value !== 'object'
+    || value === null
+    || !('password' in value)
+    || !('token' in value)
+    || typeof value.password !== 'string'
+    || typeof value.token !== 'string'
+  ) {
+    return null
+  }
+
+  return {
+    password: value.password,
+    token: value.token
+  }
+}
+
+async function handleRegister(request: Request): Promise<Response> {
+  const registration = await readRegistrationRequest(request)
+
+  if (registration === null) {
     return safeError({
       code: 'INVALID_REQUEST',
       message: 'The request is invalid.',
@@ -96,7 +152,7 @@ async function handleRegister(request: Request): Promise<Response> {
     })
   }
 
-  if (credentials.email === 'registration-unavailable@example.com') {
+  if (registration.email === 'registration-unavailable@example.com') {
     return safeError({
       code: 'SERVICE_UNAVAILABLE',
       message: 'Authentication is temporarily unavailable.',
@@ -104,7 +160,21 @@ async function handleRegister(request: Request): Promise<Response> {
     })
   }
 
-  if (credentials.email === 'compromised@example.com') {
+  return json({ status: 'accepted' }, 202)
+}
+
+async function handleRegistrationCompletion(request: Request): Promise<Response> {
+  const completion = await readRegistrationCompletionRequest(request)
+
+  if (completion === null) {
+    return safeError({
+      code: 'INVALID_REQUEST',
+      message: 'The request is invalid.',
+      status: 400
+    })
+  }
+
+  if (completion.token === COMPROMISED_VERIFICATION_TOKEN) {
     return safeError({
       code: 'PASSWORD_COMPROMISED',
 
@@ -117,7 +187,27 @@ async function handleRegister(request: Request): Promise<Response> {
     })
   }
 
-  return json({ status: 'accepted' }, 202)
+  if (completion.token === UNAVAILABLE_VERIFICATION_TOKEN) {
+    return safeError({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Authentication is temporarily unavailable.',
+      status: 503
+    })
+  }
+
+  if (completion.token !== VALID_VERIFICATION_TOKEN) {
+    return safeError({
+      code: 'INVALID_VERIFICATION',
+      message: 'This verification link is invalid or has expired.',
+      status: 400
+    })
+  }
+
+  return json({
+    email: AUTHENTICATED_USER.email,
+    redirectTo: '/?view=recent',
+    status: 'created'
+  }, 201)
 }
 
 async function handleSignIn(request: Request): Promise<Response> {
@@ -222,6 +312,10 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/api/auth/register') {
       return handleRegister(request)
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/auth/register/complete') {
+      return handleRegistrationCompletion(request)
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/sign-in') {

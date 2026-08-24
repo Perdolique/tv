@@ -1,18 +1,15 @@
 import { AuthHttpError } from './errors.ts'
 import { hashSha256 } from './hashing.ts'
 
-export type AuthOperation = 'register' | 'sign-in'
-
 export async function enforceRateLimit(
   rateLimiter: RateLimit,
-  operation: AuthOperation,
   normalizedEmail: string
 ): Promise<string> {
   const emailHash = await hashSha256(normalizedEmail)
 
   try {
     const result = await rateLimiter.limit({
-      key: `${operation}:${emailHash}`
+      key: emailHash
     })
 
     if (!result.success) {

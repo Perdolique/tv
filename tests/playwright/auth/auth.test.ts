@@ -5,6 +5,10 @@ import { expect, test } from '../fixtures/global.fixtures.ts'
 import { longEmail } from './constants.ts'
 
 const validPassword = 'correct horse battery staple'
+const validVerificationToken = 'v'.repeat(43)
+const expiredVerificationToken = 'e'.repeat(43)
+const compromisedVerificationToken = 'c'.repeat(43)
+const unavailableVerificationToken = 'u'.repeat(43)
 
 const registrationUnavailableError = {
   pathname: '/api/auth/register',
@@ -12,8 +16,18 @@ const registrationUnavailableError = {
 }
 
 const registrationValidationError = {
-  pathname: '/api/auth/register',
+  pathname: '/api/auth/register/complete',
   status: 400
+}
+
+const invalidVerificationError = {
+  pathname: '/api/auth/register/complete',
+  status: 400
+}
+
+const registrationCompletionUnavailableError = {
+  pathname: '/api/auth/register/complete',
+  status: 503
 }
 
 const invalidCredentialsError = {
@@ -42,6 +56,14 @@ const expectedRegistrationUnavailableTest = test.extend({
 
 const expectedRegistrationValidationTest = test.extend({
   expectedHttpErrors: { values: [registrationValidationError] }
+})
+
+const expectedInvalidVerificationTest = test.extend({
+  expectedHttpErrors: { values: [invalidVerificationError] }
+})
+
+const expectedRegistrationCompletionUnavailableTest = test.extend({
+  expectedHttpErrors: { values: [registrationCompletionUnavailableError] }
 })
 
 const expectedSignInErrorsTest = test.extend({
@@ -212,7 +234,8 @@ test.describe('Authentication routing and SSR', () => {
 
       await page.goto('/register')
       await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible()
-      await expect(page.locator('input[autocomplete="new-password"]')).toHaveCount(1)
+      await expect(page.getByLabel('Email')).toBeVisible()
+      await expect(page.locator('input[autocomplete="new-password"]')).toHaveCount(0)
       await expect(page.getByText('TV', { exact: true })).toHaveCount(0)
       await expect(page.getByText('Create an account to start building your TV experience.')).toHaveCount(0)
     })
@@ -224,7 +247,7 @@ test.describe('Authentication routing and SSR', () => {
     await page.goto('/sign-in')
     await expect(page).toHaveURL(`${appBaseUrl}/`)
 
-    await page.goto('/register')
+    await page.goto(`/register#token=${validVerificationToken}`)
     await expect(page).toHaveURL(`${appBaseUrl}/`)
   })
 })
@@ -241,7 +264,7 @@ test.describe('Authentication forms', () => {
     await expect(signInPassword).toHaveAttribute('type', 'text')
     await expect(page.getByRole('button', { name: 'Hide password' })).toBeVisible()
 
-    await page.goto('/register')
+    await page.goto(`/register#token=${validVerificationToken}`)
 
     const registrationPassword = page.getByLabel('Password', { exact: true })
 
@@ -271,14 +294,13 @@ test.describe('Authentication forms', () => {
     expect(signInRequestCount).toBe(0)
   })
 
-  test('accepts registration without creating a session', async ({ page }) => {
+  test('verifies email, creates an account, and returns through ordinary sign-in', async ({ page }) => {
     await page.goto('/register?redirectTo=%2F%3Fview%3Drecent')
     await page.getByLabel('Email').fill('  viewer@example.com  ')
-    await page.getByLabel('Password', { exact: true }).fill(validPassword)
 
     const registrationRequestPromise = page.waitForRequest(`${appBaseUrl}/api/auth/register`)
 
-    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.getByRole('button', { name: 'Email me a verification link' }).click()
 
     const registrationRequest = await registrationRequestPromise
     const registrationBody: unknown = registrationRequest.postDataJSON()
@@ -286,15 +308,88 @@ test.describe('Authentication forms', () => {
     expect(registrationRequest.method()).toBe('POST')
     expect(registrationBody).toStrictEqual({
       email: 'viewer@example.com',
-      password: validPassword
+      redirectTo: '/?view=recent'
+    })
+
+    await expect(page.getByText(/Check your email for the next step/u)).toBeVisible()
+    await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?view=recent`)
+
+    await page.goto(`/register?redirectTo=%2F%3Fview%3Drecent#token=${validVerificationToken}`)
+    await expect(page.getByRole('heading', { name: 'Choose your password' })).toBeVisible()
+    await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?view=recent`)
+    await expect(page.getByLabel('Password', { exact: true })).toBeFocused()
+    await page.getByLabel('Password', { exact: true }).fill(validPassword)
+
+    const completionRequestPromise = page.waitForRequest(
+      `${appBaseUrl}/api/auth/register/complete`
+    )
+
+    await page.getByRole('button', { name: 'Create account' }).click()
+
+    const completionRequest = await completionRequestPromise
+    const completionBody: unknown = completionRequest.postDataJSON()
+
+    expect(completionBody).toStrictEqual({
+      password: validPassword,
+      token: validVerificationToken
     })
 
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/?view=recent`)
     await expect(page.getByLabel('Email')).toHaveValue('viewer@example.com')
-    await expect(page.getByText('If an account can be created for this email, you can sign in now.')).toBeVisible()
+    await expect(page.getByText('Account created. Sign in to continue.')).toBeVisible()
 
-    await page.goto('/')
-    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
+    const sessionCookies = await page.context().cookies()
+
+    expect(sessionCookies.some(cookie => cookie.name === 'tv_session')).toBe(false)
+
+    await fillSignIn(page)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
+  })
+
+  test('returns focus to the email field when choosing a different address', async ({ page }) => {
+    await page.goto('/register')
+    await page.getByLabel('Email').fill('viewer@example.com')
+    await page.getByRole('button', { name: 'Email me a verification link' }).click()
+    await page.getByRole('button', { name: 'Use a different email' }).click()
+
+    await expect(page.getByLabel('Email')).toBeFocused()
+    await expect(page.getByLabel('Email')).toHaveValue('viewer@example.com')
+  })
+
+  test('replaces a malformed fragment with a fresh link in the same tab', async ({ page }) => {
+    await page.goto('/register#token=short')
+
+    const invalidAlert = page.getByRole('alert')
+
+    await expect(page).toHaveURL(`${appBaseUrl}/register`)
+    await expect(invalidAlert).toHaveText('This verification link is invalid or has expired.')
+    await expect(invalidAlert).toBeFocused()
+    await expect(page.getByLabel('Email')).toHaveCount(0)
+    await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0)
+
+    await navigateWithClientRouter(page, `/register#token=${validVerificationToken}`)
+
+    const passwordInput = page.getByLabel('Password', { exact: true })
+
+    await expect(page).toHaveURL(`${appBaseUrl}/register`)
+    await expect(page.getByRole('heading', { name: 'Choose your password' })).toBeVisible()
+    await expect(passwordInput).toBeFocused()
+
+    const completionRequestPromise = page.waitForRequest(
+      `${appBaseUrl}/api/auth/register/complete`
+    )
+
+    await passwordInput.fill(validPassword)
+    await page.getByRole('button', { name: 'Create account' }).click()
+
+    const completionRequest = await completionRequestPromise
+    const completionBody: unknown = completionRequest.postDataJSON()
+
+    expect(completionBody).toStrictEqual({
+      password: validPassword,
+      token: validVerificationToken
+    })
   })
 
   expectedRegistrationUnavailableTest('shows a safe registration service error', async ({ page }) => {
@@ -304,8 +399,7 @@ test.describe('Authentication forms', () => {
 
     await emailInput.fill('registration-unavailable@example.com')
     await expect(emailInput).toHaveValue('registration-unavailable@example.com')
-    await page.getByLabel('Password', { exact: true }).fill(validPassword)
-    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.getByRole('button', { name: 'Email me a verification link' }).click()
 
     const formError = page.getByRole('alert')
 
@@ -315,8 +409,7 @@ test.describe('Authentication forms', () => {
   })
 
   expectedRegistrationValidationTest('shows a compromised-password field error', async ({ page }) => {
-    await page.goto('/register')
-    await page.getByLabel('Email').fill('compromised@example.com')
+    await page.goto(`/register#token=${compromisedVerificationToken}`)
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
     await page.getByRole('button', { name: 'Create account' }).click()
 
@@ -330,6 +423,39 @@ test.describe('Authentication forms', () => {
       'Use between 15 and 128 characters. Choose a password that has not appeared in a known data breach.'
     )
     await expect(passwordInput).toBeFocused()
+    await expect(page).toHaveURL(`${appBaseUrl}/register`)
+  })
+
+  expectedInvalidVerificationTest('focuses an expired-link alert and offers a restart', async ({ page }) => {
+    await page.goto(`/register?redirectTo=%2F%3Fview%3Drecent#token=${expiredVerificationToken}`)
+    await page.getByLabel('Password', { exact: true }).fill(validPassword)
+    await page.getByRole('button', { name: 'Create account' }).click()
+
+    const alert = page.getByRole('alert')
+
+    await expect(alert).toHaveText('This verification link is invalid or has expired.')
+    await expect(alert).toBeFocused()
+
+    const restartLink = page.getByRole('link', { name: 'Start registration again' })
+
+    await expect(restartLink).toBeVisible()
+    await restartLink.click()
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(page.getByLabel('Email')).toBeFocused()
+    await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?view=recent`)
+  })
+
+  expectedRegistrationCompletionUnavailableTest('shows a safe activation service error', async ({ page }) => {
+    await page.goto(`/register#token=${unavailableVerificationToken}`)
+    await page.getByLabel('Password', { exact: true }).fill(validPassword)
+    await page.getByRole('button', { name: 'Create account' }).click()
+
+    const alert = page.getByRole('alert')
+
+    await expect(alert).toHaveText('Authentication is temporarily unavailable.')
+    await expect(alert).toBeFocused()
+    await expect(page.getByText(/connection|stack|database/iu)).toHaveCount(0)
+    await expect(page).toHaveURL(`${appBaseUrl}/register`)
   })
 
   expectedSignInErrorsTest('shows safe invalid-credential and unavailable messages', async ({ page }) => {
@@ -477,16 +603,14 @@ test.describe('Authenticated session lifecycle', () => {
   expectedSessionUnavailableTest('does not retain a registration notice after an authenticated redirect', async ({ context, page }) => {
     await signIn(page)
     await addRecoverableSessionCookies(context)
-    await page.goto('/register')
-
-    await page.getByLabel('Email').fill('new-viewer@example.com')
+    await page.goto(`/register#token=${validVerificationToken}`)
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
     await page.getByRole('button', { name: 'Create account' }).click()
-    await expect(page).toHaveURL(`${appBaseUrl}/`)
+    await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
 
     await page.getByRole('button', { name: 'Sign out' }).click()
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
-    await expect(page.getByText('If an account can be created for this email, you can sign in now.')).toHaveCount(0)
+    await expect(page.getByText('Account created. Sign in to continue.')).toHaveCount(0)
     await expect(page.getByLabel('Email')).toHaveValue('')
   })
 

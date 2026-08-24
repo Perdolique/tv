@@ -18,6 +18,8 @@ describe(parseAuthError, () => {
     })
 
     expect(result).toStrictEqual({
+      code: 'INVALID_REQUEST',
+
       fields: {
         email: 'Enter a valid email address.',
         password: 'Enter a password.'
@@ -43,6 +45,8 @@ describe(parseAuthError, () => {
     })
 
     expect(result).toStrictEqual({
+      code: 'INVALID_REQUEST',
+
       fields: {
         password: 'Enter a password.'
       },

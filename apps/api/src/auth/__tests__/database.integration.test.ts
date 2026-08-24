@@ -1,10 +1,18 @@
+/* oxlint-disable eslint/max-lines -- PostgreSQL lifecycle and concurrency coverage share one disposable database fixture. */
 import { randomUUID } from 'node:crypto'
 import { env } from 'node:process'
 import { createDatabase } from '@tv/database'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { Client } from 'pg'
 import { afterAll, assert, beforeEach, describe, expect, it } from 'vitest'
-import { createSession, registerUser } from '../repository.ts'
+
+import {
+  completeRegistration,
+  createSession,
+  findValidVerificationToken,
+  issueVerificationToken
+} from '../repository.ts'
+
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
 const databaseUrl = env.TEST_DATABASE_URL
@@ -25,7 +33,7 @@ await client.connect()
 describe('postgreSQL auth schema', () => {
   beforeEach(async () => {
     await assertDisposableTestDatabase(client)
-    await client.query('TRUNCATE TABLE users CASCADE')
+    await client.query('TRUNCATE TABLE email_verification_tokens, users CASCADE')
   })
 
   afterAll(async () => {
@@ -68,12 +76,14 @@ describe('postgreSQL auth schema', () => {
         `)
 
         expect(tables.rows.map((row) => row.table_name)).toStrictEqual([
+          'email_verification_tokens',
           'password_credentials',
           'sessions',
           'users'
         ])
         expect(migrations.rows).toStrictEqual([
-          { name: '20260810215442_ambiguous_shinobi_shaw' }
+          { name: '20260810215442_ambiguous_shinobi_shaw' },
+          { name: '20260823211151_eager_hawkeye' }
         ])
       } finally {
         await migrationClient.end()
@@ -106,6 +116,18 @@ describe('postgreSQL auth schema', () => {
     `)
 
     expect(indexes.rows).toStrictEqual(expect.arrayContaining([
+      {
+        indexname: 'email_verification_tokens_email_index',
+        tablename: 'email_verification_tokens'
+      },
+      {
+        indexname: 'email_verification_tokens_expires_at_index',
+        tablename: 'email_verification_tokens'
+      },
+      {
+        indexname: 'email_verification_tokens_pkey',
+        tablename: 'email_verification_tokens'
+      },
       {
         indexname: 'sessions_expires_at_index',
         tablename: 'sessions'
@@ -171,8 +193,153 @@ describe('postgreSQL auth schema', () => {
     })
   })
 
-  it('accepts concurrent registration attempts as one account', async () => {
+  it('keeps users and credentials absent until a valid token is consumed', async () => {
+    const database = createDatabase(client)
+    const email = 'pending@example.com'
+    const now = new Date()
+    const tokenHash = 'e'.repeat(64)
+
+    await expect(issueVerificationToken(database, {
+      email,
+      expiresAt: new Date(now.getTime() + 60_000),
+      redirectTo: '/?view=recent',
+      tokenHash
+    }, now)).resolves.toBe(true)
+
+    const counts = await client.query<{
+      credentials: string;
+      tokens: string;
+      users: string;
+    }>(`
+      SELECT
+        (SELECT count(*) FROM users) AS users,
+        (SELECT count(*) FROM password_credentials) AS credentials,
+        (SELECT count(*) FROM email_verification_tokens) AS tokens
+    `)
+
+    expect(counts.rows[0]).toStrictEqual({
+      credentials: '0',
+      tokens: '1',
+      users: '0'
+    })
+    await expect(findValidVerificationToken(database, tokenHash, now)).resolves.toStrictEqual({
+      email,
+      redirectTo: '/?view=recent'
+    })
+  })
+
+  it('keeps multiple delivered links valid until the first activation', async () => {
+    const database = createDatabase(client)
+    const email = 'multiple@example.com'
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 60_000)
+    const firstTokenHash = 'a'.repeat(64)
+    const secondTokenHash = 'b'.repeat(64)
+
+    await issueVerificationToken(database, {
+      email,
+      expiresAt,
+      redirectTo: '/first',
+      tokenHash: firstTokenHash
+    }, now)
+    await issueVerificationToken(database, {
+      email,
+      expiresAt,
+      redirectTo: '/second',
+      tokenHash: secondTokenHash
+    }, now)
+
+    await expect(findValidVerificationToken(database, firstTokenHash, now)).resolves.not.toBeNull()
+    await expect(findValidVerificationToken(database, secondTokenHash, now)).resolves.not.toBeNull()
+
+    await expect(completeRegistration(database, {
+      email,
+      passwordHash: 'password-hash',
+      tokenHash: firstTokenHash
+    }, now)).resolves.toStrictEqual({
+      email,
+      redirectTo: '/first'
+    })
+
+    await expect(findValidVerificationToken(
+      database,
+      secondTokenHash,
+      now
+    )).resolves.toBeNull()
+
+    const remainingTokens = await client.query<{ count: string; }>(`
+      SELECT count(*)
+      FROM email_verification_tokens
+      WHERE email = $1
+    `, [email])
+
+    expect(remainingTokens.rows[0]?.count).toBe('0')
+
+    await expect(completeRegistration(database, {
+      email,
+      passwordHash: 'other-hash',
+      tokenHash: secondTokenHash
+    }, now)).resolves.toBeNull()
+  })
+
+  it('rejects expired and replayed verification tokens', async () => {
+    const database = createDatabase(client)
+    const email = 'expiry@example.com'
+    const now = new Date()
+    const expiredTokenHash = 'c'.repeat(64)
+    const validTokenHash = 'd'.repeat(64)
+
+    await client.query(`
+      INSERT INTO email_verification_tokens (token_hash, email, redirect_to, expires_at)
+      VALUES ($1, $2, '/', $3)
+    `, [expiredTokenHash, email, new Date(now.getTime() - 1)])
+
+    await expect(findValidVerificationToken(database, expiredTokenHash, now)).resolves.toBeNull()
+    await expect(completeRegistration(database, {
+      email,
+      passwordHash: 'password-hash',
+      tokenHash: expiredTokenHash
+    }, now)).resolves.toBeNull()
+
+    await issueVerificationToken(database, {
+      email,
+      expiresAt: new Date(now.getTime() + 60_000),
+      redirectTo: '/',
+      tokenHash: validTokenHash
+    }, now)
+
+    await expect(completeRegistration(database, {
+      email,
+      passwordHash: 'password-hash',
+      tokenHash: validTokenHash
+    }, now)).resolves.not.toBeNull()
+    await expect(completeRegistration(database, {
+      email,
+      passwordHash: 'password-hash',
+      tokenHash: validTokenHash
+    }, now)).resolves.toBeNull()
+  })
+
+  it('serializes concurrent activations as one account without deadlocking', async () => {
     const email = 'concurrent@example.com'
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 60_000)
+    const firstTokenHash = 'f'.repeat(64)
+    const secondTokenHash = '0'.repeat(64)
+
+    await issueVerificationToken(createDatabase(client), {
+      email,
+      expiresAt,
+      redirectTo: '/first',
+      tokenHash: firstTokenHash
+    }, now)
+    await issueVerificationToken(createDatabase(client), {
+      email,
+      expiresAt,
+      redirectTo: '/second',
+      tokenHash: secondTokenHash
+    }, now)
+
     const firstClient = new Client({ connectionString: databaseUrl })
     const secondClient = new Client({ connectionString: databaseUrl })
 
@@ -182,10 +349,20 @@ describe('postgreSQL auth schema', () => {
     ])
 
     try {
-      await Promise.all([
-        registerUser(createDatabase(firstClient), email, 'first-hash'),
-        registerUser(createDatabase(secondClient), email, 'second-hash')
+      const results = await Promise.all([
+        completeRegistration(createDatabase(firstClient), {
+          email,
+          passwordHash: 'first-hash',
+          tokenHash: firstTokenHash
+        }, now),
+        completeRegistration(createDatabase(secondClient), {
+          email,
+          passwordHash: 'second-hash',
+          tokenHash: secondTokenHash
+        }, now)
       ])
+
+      expect(results.filter(result => result !== null)).toHaveLength(1)
     } finally {
       await Promise.all([
         firstClient.end(),
@@ -281,19 +458,40 @@ describe('postgreSQL auth schema', () => {
     ])
   })
 
-  it('rolls back the user when credential insertion fails', async () => {
+  it('rolls back token consumption and the user when credential insertion fails', async () => {
     const database = createDatabase(client)
+    const email = 'rollback@example.com'
+    const now = new Date()
+    const tokenHash = '9'.repeat(64)
+
+    await issueVerificationToken(database, {
+      email,
+      expiresAt: new Date(now.getTime() + 60_000),
+      redirectTo: '/',
+      tokenHash
+    }, now)
 
     await expect(
-      registerUser(database, 'rollback@example.com', 'x'.repeat(257))
+      completeRegistration(database, {
+        email,
+        passwordHash: 'x'.repeat(257),
+        tokenHash
+      }, now)
     ).rejects.toThrow(/Failed query/u)
 
     const account = await client.query(`
       SELECT id
       FROM users
-      WHERE email = 'rollback@example.com'
-    `)
+      WHERE email = $1
+    `, [email])
+
+    const token = await client.query(`
+      SELECT token_hash
+      FROM email_verification_tokens
+      WHERE token_hash = $1
+    `, [tokenHash])
 
     expect(account.rowCount).toBe(0)
+    expect(token.rowCount).toBe(1)
   })
 })

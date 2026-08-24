@@ -1,6 +1,6 @@
 import type { Database } from '@tv/database'
-import { passwordCredentials, sessions, users } from '@tv/database/schema'
-import { and, eq, lte } from 'drizzle-orm'
+import { emailVerificationTokens, passwordCredentials, sessions, users } from '@tv/database/schema'
+import { and, eq, gt, lte, sql } from 'drizzle-orm'
 import type { AuthUser } from './types.ts'
 
 interface PasswordCredential {
@@ -8,29 +8,143 @@ interface PasswordCredential {
   user: AuthUser;
 }
 
-async function registerUser(
+interface IssueVerificationTokenInput {
+  email: string;
+  expiresAt: Date;
+  redirectTo: string;
+  tokenHash: string;
+}
+
+async function issueVerificationToken(
   database: Database,
-  email: string,
-  passwordHash: string
-): Promise<void> {
-  await database.transaction(async (transaction) => {
+  input: IssueVerificationTokenInput,
+  now: Date
+): Promise<boolean> {
+  return database.transaction(async (transaction) => {
+    await transaction.execute(sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${input.email}, 0))
+    `)
+
+    await transaction
+      .delete(emailVerificationTokens)
+      .where(
+        and(
+          eq(emailVerificationTokens.email, input.email),
+          lte(emailVerificationTokens.expiresAt, now)
+        )
+      )
+
+    const existingUsers = await transaction
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, input.email))
+      .limit(1)
+
+    if (existingUsers.length > 0) {
+      return false
+    }
+
+    await transaction.insert(emailVerificationTokens).values(input)
+
+    return true
+  })
+}
+
+interface VerificationTokenRecord {
+  email: string;
+  redirectTo: string;
+}
+
+async function findValidVerificationToken(
+  database: Database,
+  tokenHash: string,
+  now: Date
+): Promise<VerificationTokenRecord | null> {
+  const rows = await database
+    .select({
+      email: emailVerificationTokens.email,
+      redirectTo: emailVerificationTokens.redirectTo
+    })
+    .from(emailVerificationTokens)
+    .where(
+      and(
+        eq(emailVerificationTokens.tokenHash, tokenHash),
+        gt(emailVerificationTokens.expiresAt, now)
+      )
+    )
+    .limit(1)
+
+  return rows[0] ?? null
+}
+
+interface CompleteRegistrationInput {
+  email: string;
+  passwordHash: string;
+  tokenHash: string;
+}
+
+async function completeRegistration(
+  database: Database,
+  input: CompleteRegistrationInput,
+  now: Date
+): Promise<VerificationTokenRecord | null> {
+  return database.transaction(async (transaction) => {
+    await transaction.execute(sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${input.email}, 0))
+    `)
+
+    const consumedTokens = await transaction
+      .delete(emailVerificationTokens)
+      .where(
+        and(
+          eq(emailVerificationTokens.email, input.email),
+          eq(emailVerificationTokens.tokenHash, input.tokenHash),
+          gt(emailVerificationTokens.expiresAt, now)
+        )
+      )
+      .returning({
+        email: emailVerificationTokens.email,
+        redirectTo: emailVerificationTokens.redirectTo
+      })
+
+    const [consumedToken] = consumedTokens
+
+    if (!consumedToken) {
+      return null
+    }
+
     const insertedUsers = await transaction
       .insert(users)
-      .values({ email })
+      .values({ email: input.email })
       .onConflictDoNothing({ target: users.email })
       .returning({ id: users.id })
 
     const [insertedUser] = insertedUsers
 
     if (!insertedUser) {
-      return
+      return null
     }
 
     await transaction.insert(passwordCredentials).values({
-      passwordHash,
+      passwordHash: input.passwordHash,
       userId: insertedUser.id
     })
+
+    await transaction
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.email, input.email))
+
+    return consumedToken
   })
+}
+
+async function deleteVerificationToken(
+  database: Database,
+  tokenHash: string
+): Promise<void> {
+  await database
+    .delete(emailVerificationTokens)
+    .where(eq(emailVerificationTokens.tokenHash, tokenHash))
 }
 
 async function findPasswordCredential(
@@ -160,9 +274,12 @@ async function findUserBySession(
 export type { PasswordCredential }
 
 export {
+  completeRegistration,
   createSession,
+  deleteVerificationToken,
   deleteSession,
   findPasswordCredential,
   findUserBySession,
-  registerUser
+  findValidVerificationToken,
+  issueVerificationToken
 }

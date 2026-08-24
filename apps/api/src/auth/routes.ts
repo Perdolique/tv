@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-lines -- Keeping auth route middleware and lifecycle orchestration together makes the security contract auditable. */
 import { type Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { getCookie, setCookie } from 'hono/cookie'
@@ -10,15 +11,27 @@ import {
   AUTH_BODY_SIZE_LIMIT,
   DUMMY_PASSWORD_HASH,
   RATE_LIMIT_RETRY_SECONDS,
-  SESSION_DURATION_MILLISECONDS
+  SESSION_DURATION_MILLISECONDS,
+  VERIFICATION_TOKEN_DURATION_MILLISECONDS
 } from './constants.ts'
 
+import { createExistingAccountEmail, createVerificationEmail } from './email.ts'
 import { AuthHttpError, createErrorEnvelope } from './errors.ts'
 import { hashPassword, verifyPassword } from './password.ts'
 import { isPasswordCompromised, PwnedPasswordsUnavailableError } from './pwned-passwords.ts'
 import { readRequiredJsonBody, requireEmptyBody } from './request-body.ts'
-import { enforceRateLimit, type AuthOperation } from './rate-limit.ts'
-import { createSession, deleteSession, findPasswordCredential, findUserBySession, registerUser } from './repository.ts'
+import { enforceRateLimit } from './rate-limit.ts'
+
+import {
+  completeRegistration,
+  createSession,
+  deleteSession,
+  deleteVerificationToken,
+  findPasswordCredential,
+  findUserBySession,
+  findValidVerificationToken,
+  issueVerificationToken
+} from './repository.ts'
 
 import {
   createSessionToken,
@@ -30,8 +43,14 @@ import {
   isSessionToken
 } from './session.ts'
 
-import type { Credentials } from './types.ts'
-import { validateRegistrationCredentials, validateSignInCredentials } from './validation.ts'
+import {
+  validateRegistrationCompletionEnvelope,
+  validateRegistrationPassword,
+  validateRegistrationRequest,
+  validateSignInCredentials
+} from './validation.ts'
+
+import { createVerificationToken, hashVerificationToken } from './verification.ts'
 
 interface AuthVariables extends RequestIdVariables {
   emailHash: string | undefined;
@@ -58,13 +77,12 @@ function createJsonBodyLimit() {
 
 async function applyRateLimit(
   context: AuthContext,
-  operation: AuthOperation,
-  credentials: Credentials
+  rateLimiter: RateLimit,
+  normalizedEmail: string
 ): Promise<void> {
   const emailHash = await enforceRateLimit(
-    context.env.AUTH_RATE_LIMITER,
-    operation,
-    credentials.email
+    rateLimiter,
+    normalizedEmail
   )
 
   context.set('emailHash', emailHash)
@@ -121,6 +139,22 @@ function logServerError(context: AuthContext, error: AuthHttpError): void {
   console.error(logEntry)
 }
 
+function logCleanupError(context: AuthContext, error: unknown): void {
+  const technicalError = findRootCause(error)
+  const serializedTechnicalError = serializeError(technicalError)
+
+  const logEntry = JSON.stringify({
+    code: 'VERIFICATION_TOKEN_CLEANUP_FAILED',
+    emailHash: context.get('emailHash'),
+    error: serializedTechnicalError,
+    message: 'verification token cleanup failed',
+    requestId: context.get('requestId')
+  })
+
+  // oxlint-disable-next-line eslint/no-console -- Worker logs retain safe technical failures and request IDs.
+  console.error(logEntry)
+}
+
 function createAuthApp(): Hono<AuthEnvironment> {
   const app = new Hono<AuthEnvironment>()
   const jsonBodyLimit = createJsonBodyLimit()
@@ -140,12 +174,91 @@ function createAuthApp(): Hono<AuthEnvironment> {
 
   app.post('/api/auth/register', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
-    const credentials = validateRegistrationCredentials(body)
+    const registration = validateRegistrationRequest(body)
 
-    await applyRateLimit(context, 'register', credentials)
+    await applyRateLimit(
+      context,
+      context.env.REGISTRATION_EMAIL_RATE_LIMITER,
+      registration.email
+    )
+
+    const { database } = await connectDatabase(context)
+    const token = createVerificationToken()
+    const tokenHash = await hashVerificationToken(token)
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + VERIFICATION_TOKEN_DURATION_MILLISECONDS)
+    // oxlint-disable-next-line eslint/init-declarations -- Database failures are translated below.
+    let verificationTokenIssued: boolean
 
     try {
-      const compromised = await isPasswordCompromised(credentials.password)
+      verificationTokenIssued = await issueVerificationToken(database, {
+        email: registration.email,
+        expiresAt,
+        redirectTo: registration.redirectTo,
+        tokenHash
+      }, now)
+    } catch (error) {
+      throw new AuthHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
+    }
+
+    const message = verificationTokenIssued
+      ? createVerificationEmail({
+          email: registration.email,
+          token,
+          webOrigin: context.env.WEB_ORIGIN
+        })
+      : createExistingAccountEmail({
+          email: registration.email,
+          redirectTo: registration.redirectTo,
+          webOrigin: context.env.WEB_ORIGIN
+        })
+
+    try {
+      await context.env.EMAIL.send(message)
+    } catch (error) {
+      if (verificationTokenIssued) {
+        try {
+          await deleteVerificationToken(database, tokenHash)
+        } catch (cleanupError) {
+          logCleanupError(context, cleanupError)
+        }
+      }
+
+      throw new AuthHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
+    }
+
+    return context.json({ status: 'accepted' }, 202)
+  })
+
+  app.post('/api/auth/register/complete', jsonBodyLimit, async (context) => {
+    const body = await readRequiredJsonBody(context.req.raw)
+    const completion = validateRegistrationCompletionEnvelope(body)
+    const tokenHash = await hashVerificationToken(completion.token)
+    const { database } = await connectDatabase(context)
+    const now = new Date()
+    // oxlint-disable-next-line eslint/init-declarations -- Database failures are translated below.
+    let verification: Awaited<ReturnType<typeof findValidVerificationToken>>
+
+    try {
+      verification = await findValidVerificationToken(database, tokenHash, now)
+    } catch (error) {
+      throw new AuthHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
+    }
+
+    if (verification === null) {
+      throw new AuthHttpError('INVALID_VERIFICATION', 400)
+    }
+
+    await applyRateLimit(
+      context,
+      context.env.REGISTRATION_ACTIVATION_RATE_LIMITER,
+      verification.email
+    )
+
+    const password = validateRegistrationPassword(completion.password)
+
+    try {
+      const compromised = await isPasswordCompromised(password)
 
       if (compromised) {
         throw new AuthHttpError('PASSWORD_COMPROMISED', 400, {
@@ -170,27 +283,44 @@ function createAuthApp(): Hono<AuthEnvironment> {
     let passwordHash: string
 
     try {
-      passwordHash = await hashPassword(credentials.password)
+      passwordHash = await hashPassword(password)
     } catch (error) {
       throw new AuthHttpError('INTERNAL_ERROR', 500, { cause: error })
     }
 
-    const { database } = await connectDatabase(context)
+    // oxlint-disable-next-line eslint/init-declarations -- Database failures are translated below.
+    let account: Awaited<ReturnType<typeof completeRegistration>>
 
     try {
-      await registerUser(database, credentials.email, passwordHash)
+      account = await completeRegistration(database, {
+        email: verification.email,
+        passwordHash,
+        tokenHash
+      }, new Date())
     } catch (error) {
       throw new AuthHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
     }
 
-    return context.json({ status: 'accepted' }, 202)
+    if (account === null) {
+      throw new AuthHttpError('INVALID_VERIFICATION', 400)
+    }
+
+    return context.json({
+      email: account.email,
+      redirectTo: account.redirectTo,
+      status: 'created'
+    }, 201)
   })
 
   app.post('/api/auth/sign-in', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
     const credentials = validateSignInCredentials(body)
 
-    await applyRateLimit(context, 'sign-in', credentials)
+    await applyRateLimit(
+      context,
+      context.env.SIGN_IN_RATE_LIMITER,
+      credentials.email
+    )
 
     const { database } = await connectDatabase(context)
     // oxlint-disable-next-line eslint/init-declarations -- The catch block translates database failures.

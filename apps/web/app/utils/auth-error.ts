@@ -1,11 +1,12 @@
 import { isRecord } from '@tv/shared/type-guards'
 import * as v from 'valibot'
-import type { AuthFieldErrors, ParsedAuthError } from '~/types/auth.ts'
+import type { AuthErrorCode, AuthFieldErrors, ParsedAuthError } from '~/types/auth.ts'
 
 const AUTH_ERROR_MESSAGES = {
   INTERNAL_ERROR: 'An unexpected error occurred.',
   INVALID_CREDENTIALS: 'Invalid email or password.',
   INVALID_REQUEST: 'The request is invalid.',
+  INVALID_VERIFICATION: 'This verification link is invalid or has expired.',
   PASSWORD_COMPROMISED: 'Choose a password that has not appeared in a known data breach.',
   RATE_LIMITED: 'Too many attempts. Try again later.',
   SERVICE_UNAVAILABLE: 'Authentication is temporarily unavailable.'
@@ -13,7 +14,7 @@ const AUTH_ERROR_MESSAGES = {
 
 const FALLBACK_ERROR_MESSAGE = 'Something went wrong. Try again.'
 
-const authErrorCodeSchema = v.custom<keyof typeof AUTH_ERROR_MESSAGES>(
+const authErrorCodeSchema = v.custom<AuthErrorCode>(
   value => typeof value === 'string' && Object.hasOwn(AUTH_ERROR_MESSAGES, value)
 )
 
@@ -59,6 +60,7 @@ function parseAuthError(value: unknown): ParsedAuthError {
   const { code, fields } = result.output.error
 
   return {
+    code,
     fields: parseFieldErrors(fields),
     message: AUTH_ERROR_MESSAGES[code]
   }

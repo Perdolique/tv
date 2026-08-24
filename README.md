@@ -45,10 +45,7 @@ cp .env.example .env
 vp run db:migrate
 ```
 
-Wrangler maps the API's `DATABASE` Hyperdrive binding to the local development
-database. Integration tests create, migrate, and remove a separate
-`tv_test_<uuid>` database on the same PostgreSQL server, so they never truncate
-development data or connect to Neon.
+Wrangler maps the API's `DATABASE` Hyperdrive binding to the local development database. Integration tests create, migrate, and remove a separate `tv_test_<uuid>` database on the same PostgreSQL server, so they never truncate development data or connect to Neon.
 
 Generate a migration after changing the Drizzle schema:
 
@@ -62,31 +59,17 @@ Run the PostgreSQL and Worker integration suites:
 vp run test:integration
 ```
 
-The test runner requires PostgreSQL 18 and a local role allowed to create
-databases. The Docker role has this permission by default. Set
-`TEST_DATABASE_ADMIN_URL` only when the PostgreSQL admin connection differs from
-`postgresql://tv:tv@127.0.0.1:5433/postgres`. The test runner rejects non-loopback
-database hosts.
+The test runner requires PostgreSQL 18 and a local role allowed to create databases. The Docker role has this permission by default. Set `TEST_DATABASE_ADMIN_URL` only when the PostgreSQL admin connection differs from `postgresql://tv:tv@127.0.0.1:5433/postgres`. The test runner rejects non-loopback database hosts.
 
 ### Cloud environments
 
-Production and staging use separate Neon branches and cache-disabled Hyperdrive
-configurations. Automated tests remain local; staging is for deployed smoke
-tests and release verification, not for CI data.
+Production and staging use separate Neon branches and cache-disabled Hyperdrive configurations. Automated tests remain local; staging is for deployed smoke tests and release verification, not for CI data.
 
-GitHub Actions reads the owner connection string from a `DATABASE_URL` secret
-defined separately in the `staging` and `production` environments. A
-same-repository pull request migrates and deploys staging; a push to `master`
-migrates and deploys production. Fork and Dependabot pull requests still run
-checks, but skip migration and deployment.
+GitHub Actions reads the owner connection string from a `DATABASE_URL` secret defined separately in the `staging` and `production` environments. A same-repository pull request migrates and deploys staging; a push to `master` migrates and deploys production. Fork and Dependabot pull requests still run checks, but skip migration and deployment.
 
-The deployment job starts only after its migration job succeeds, then deploys
-the API Worker followed by the web Worker. The owner connection string is
-available only to the migration job. The Worker connects at runtime with the
-restricted `tv_app` role stored in the corresponding Hyperdrive configuration.
+The deployment job starts only after its migration job succeeds, then deploys the API Worker followed by the web Worker. The owner connection string is available only to the migration job. The Worker connects at runtime with the restricted `tv_app` role stored in the corresponding Hyperdrive configuration.
 
-For a manual deployment, authenticate Wrangler and load the owner connection
-string for the intended Neon branch through a hidden prompt:
+For a manual deployment, authenticate Wrangler and load the owner connection string for the intended Neon branch through a hidden prompt:
 
 ```shell
 printf 'Neon owner connection string: '
@@ -95,8 +78,7 @@ printf '\n'
 export DATABASE_URL
 ```
 
-Run exactly one intended environment from the repository root, then remove the
-owner connection string from the environment.
+Run exactly one intended environment from the repository root, then remove the owner connection string from the environment.
 
 #### Staging
 

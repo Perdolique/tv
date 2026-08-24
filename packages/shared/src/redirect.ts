@@ -8,7 +8,8 @@ function sanitizeRedirectTo(value: unknown): string {
   }
 
   try {
-    const target = new globalThis.URL(value, INTERNAL_ORIGIN)
+    // oxlint-disable-next-line eslint/no-undef -- URL is provided by Node.js, browsers, and Workers.
+    const target = new URL(value, INTERNAL_ORIGIN)
 
     const normalizedPath = target.pathname.endsWith('/') && target.pathname !== '/'
       ? target.pathname.slice(0, -1)
@@ -24,6 +25,4 @@ function sanitizeRedirectTo(value: unknown): string {
   }
 }
 
-export {
-  sanitizeRedirectTo
-}
+export { sanitizeRedirectTo }

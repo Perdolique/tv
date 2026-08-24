@@ -5,7 +5,9 @@
   "exports": {
     "./errors": "./src/errors.ts",
     "./network": "./src/network.ts",
-    "./type-guards": "./src/type-guards.ts"
+    "./redirect": "./src/redirect.ts",
+    "./type-guards": "./src/type-guards.ts",
+    "./verification": "./src/verification.ts"
   },
   "scripts": {
     "test:typecheck": "tsc --noEmit",

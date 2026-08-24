@@ -1,4 +1,4 @@
-import { index, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
+import { index, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
 
 const users = pgTable('users', {
   id:
@@ -56,6 +56,38 @@ const passwordCredentials = pgTable('password_credentials', {
     .notNull()
 })
 
+const emailVerificationTokens = pgTable('email_verification_tokens', {
+  tokenHash:
+    varchar('token_hash', { length: 64 })
+    .primaryKey(),
+
+  email:
+    varchar({ length: 254 })
+    .notNull(),
+
+  redirectTo:
+    text('redirect_to')
+    .notNull(),
+
+  createdAt:
+    timestamp('created_at', {
+      mode: 'date',
+      withTimezone: true
+    })
+    .defaultNow()
+    .notNull(),
+
+  expiresAt:
+    timestamp('expires_at', {
+      mode: 'date',
+      withTimezone: true
+    })
+    .notNull()
+}, (table) => [
+  index('email_verification_tokens_email_index').on(table.email),
+  index('email_verification_tokens_expires_at_index').on(table.expiresAt)
+])
+
 const sessions = pgTable('sessions', {
   id:
     uuid()
@@ -92,6 +124,7 @@ const sessions = pgTable('sessions', {
 ])
 
 export {
+  emailVerificationTokens,
   passwordCredentials,
   sessions,
   users

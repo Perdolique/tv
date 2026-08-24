@@ -5,7 +5,7 @@
         v-if="showsRegistrationNotice"
         role="status"
       >
-        If an account can be created for this email, you can sign in now.
+        Account created. Sign in to continue.
       </p>
 
       <p
@@ -76,6 +76,7 @@
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
   import { navigateTo, useHead, useRequestFetch, useRoute, useState } from '#app'
+  import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import * as v from 'valibot'
   import { computed, nextTick, ref, useId, useTemplateRef } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
@@ -85,7 +86,6 @@
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
   import { signInResponseSchema } from '~/utils/auth-response.ts'
   import { validateCredentials } from '~/utils/auth-validation.ts'
-  import { sanitizeRedirectTo } from '~/utils/redirect.ts'
 
   definePageMeta({ middleware: 'guest' })
   useHead({ title: 'Sign in · TV' })
@@ -106,7 +106,7 @@
   const formError = ref('')
   const isSubmitting = ref(false)
   const isPasswordVisible = ref(false)
-  const showsRegistrationNotice = ref(initialNotice?.accepted === true)
+  const showsRegistrationNotice = ref(initialNotice?.created === true)
 
   registrationNotice.value = null
 
