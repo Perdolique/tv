@@ -26,7 +26,7 @@ Install dependencies:
 vp install
 ```
 
-Create the API environment file, then set `TURNSTILE_SECRET` to the secret for the configured Turnstile widget. Authentication intentionally remains unavailable when this secret is missing.
+Create the API environment file. The example uses Cloudflare's public always-pass Turnstile test secret, while the web development server automatically uses the matching test site key. Staging and production use the configured widget and their Wrangler secrets.
 
 ```shell
 cp apps/api/.env.example apps/api/.env
