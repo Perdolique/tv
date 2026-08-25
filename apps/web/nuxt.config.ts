@@ -11,6 +11,8 @@ const compilerOptions = {
   noUnusedParameters: true
 } satisfies TypeScriptCompilerOptions
 
+const TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA'
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-08',
 
@@ -40,6 +42,12 @@ export default defineNuxtConfig({
 
   imports: {
     autoImport: false
+  },
+
+  runtimeConfig: {
+    public: {
+      turnstileSiteKey: TURNSTILE_TEST_SITE_KEY
+    }
   },
 
   typescript: {

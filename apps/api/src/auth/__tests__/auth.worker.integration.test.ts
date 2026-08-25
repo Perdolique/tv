@@ -1,6 +1,7 @@
 /* oxlint-disable eslint/max-lines -- The contract stays readable as one end-to-end auth specification. */
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
+import { TURNSTILE_ACTIONS, TURNSTILE_RESPONSE_FIELD, type TurnstileAction } from '@tv/shared/turnstile'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { VERIFICATION_TOKEN_DURATION_MILLISECONDS } from '../constants.ts'
 import { hashSha1 } from '../hashing.ts'
@@ -9,6 +10,17 @@ import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
 const PASSWORD = 'correct horse battery staple'
 const SAFE_HIBP_SUFFIX = '0'.repeat(35)
+const HIBP_RANGE_URL = 'https://api.pwnedpasswords.com/range/'
+const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+const TURNSTILE_TEST_SECRET = '1x0000000000000000000000000000000AA'
+
+const externalFetchState = vi.hoisted(() => {
+  return {
+    defaultHibpResponse: undefined as (() => Promise<Response>) | undefined,
+    queuedHibpResponses: [] as (() => Promise<Response>)[],
+    usedTurnstileTokens: new Set<string>()
+  }
+})
 
 interface AuthErrorResponse {
   error: {
@@ -44,9 +56,115 @@ function createResponseFactory(
 }
 
 function mockSafeHibp(): void {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(
-    createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`)
-  )
+  externalFetchState.defaultHibpResponse = createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`)
+}
+
+function queueHibpResponse(body: BodyInit, init?: ResponseInit): void {
+  externalFetchState.queuedHibpResponses.push(createResponseFactory(body, init))
+}
+
+function readRequestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') {
+    return input
+  }
+
+  if (input instanceof URL) {
+    return input.href
+  }
+
+  return input.url
+}
+
+function countFetchCalls(urlPrefix: string): number {
+  return vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => (
+    readRequestUrl(input).startsWith(urlPrefix)
+  )).length
+}
+
+function getSiteverifyParameters(
+  options: RequestInit | undefined
+): URLSearchParams | null {
+  const body = options?.body
+
+  if (!(body instanceof URLSearchParams)) {
+    return null
+  }
+
+  return body
+}
+
+function getTurnstileAction(token: string): TurnstileAction {
+  return token.startsWith(`${TURNSTILE_ACTIONS.register}-`)
+    ? TURNSTILE_ACTIONS.register
+    : TURNSTILE_ACTIONS.signIn
+}
+
+async function handleExternalFetch(
+  input: RequestInfo | URL,
+  options?: RequestInit
+): Promise<Response> {
+  const requestUrl = readRequestUrl(input)
+
+  if (requestUrl === SITEVERIFY_URL) {
+    const parameters = getSiteverifyParameters(options)
+    const token = parameters?.get('response') ?? null
+
+    if (parameters?.get('secret') !== TURNSTILE_TEST_SECRET) {
+      return Response.json({
+        success: false,
+        'error-codes': ['invalid-input-secret']
+      })
+    }
+
+    if (token === null) {
+      return Response.json({
+        success: false,
+        'error-codes': ['missing-input-response']
+      })
+    }
+
+    if (token === 'invalid-turnstile') {
+      return Response.json({
+        success: false,
+        'error-codes': ['invalid-input-response']
+      })
+    }
+
+    if (
+      token === 'expired-turnstile'
+      || externalFetchState.usedTurnstileTokens.has(token)
+    ) {
+      return Response.json({
+        success: false,
+        'error-codes': ['timeout-or-duplicate']
+      })
+    }
+
+    externalFetchState.usedTurnstileTokens.add(token)
+
+    return Response.json({
+      action: getTurnstileAction(token),
+      hostname: 'tv-api.test',
+      success: true
+    })
+  }
+
+  if (requestUrl.startsWith(HIBP_RANGE_URL)) {
+    const queuedResponse = externalFetchState.queuedHibpResponses.shift()
+    const responseFactory = queuedResponse ?? externalFetchState.defaultHibpResponse
+
+    if (responseFactory !== undefined) {
+      return responseFactory()
+    }
+
+    throw new Error('Unexpected HIBP request')
+  }
+
+  throw new Error(`Unexpected external request to ${requestUrl}`)
+}
+
+function createTurnstileToken(action: TurnstileAction): string {
+  return `${action}-${crypto.randomUUID()}`
 }
 
 async function authRequest(
@@ -82,9 +200,14 @@ async function authRequest(
   ))
 }
 
-async function verificationRequest(email: string, redirectTo = '/'): Promise<Response> {
+async function verificationRequest(
+  email: string,
+  redirectTo = '/',
+  turnstileToken = createTurnstileToken(TURNSTILE_ACTIONS.register)
+): Promise<Response> {
   return authRequest('/api/auth/register', {
     body: {
+      [TURNSTILE_RESPONSE_FIELD]: turnstileToken,
       email,
       redirectTo
     },
@@ -147,10 +270,17 @@ async function createAccount(email: string, password = PASSWORD): Promise<Respon
 async function signInRequest(
   email: string,
   password = PASSWORD,
-  cookie?: string
+  options: {
+    cookie?: string;
+    turnstileToken?: string;
+  } = {}
 ): Promise<Response> {
+  const turnstileToken = options.turnstileToken
+    ?? createTurnstileToken(TURNSTILE_ACTIONS.signIn)
+
   const requestOptions: Parameters<typeof authRequest>[1] = {
     body: {
+      [TURNSTILE_RESPONSE_FIELD]: turnstileToken,
       email,
       password
     },
@@ -158,8 +288,8 @@ async function signInRequest(
     method: 'POST'
   }
 
-  if (cookie !== undefined && cookie !== '') {
-    requestOptions.cookie = cookie
+  if (options.cookie !== undefined && options.cookie !== '') {
+    requestOptions.cookie = options.cookie
   }
 
   return authRequest('/api/auth/sign-in', requestOptions)
@@ -179,6 +309,22 @@ function expectNoStore(response: Response): void {
   expect(response.headers.get('cache-control')).toBe('no-store')
 }
 
+async function readJson<ResponseBody>(response: Response): Promise<ResponseBody> {
+  return response.json()
+}
+
+async function expectBotVerificationFailed(response: Response): Promise<void> {
+  expect(response.status).toBe(403)
+  expect(response.headers.get('set-cookie')).toBeNull()
+  expectNoStore(response)
+  await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
+    error: {
+      code: 'BOT_VERIFICATION_FAILED',
+      message: 'Complete the security check and try again.'
+    }
+  })
+}
+
 function readStructuredErrorLogs(consoleError: ConsoleErrorMock): unknown[] {
   return consoleError.mock.calls.map((parameters) => {
     expect(parameters).toHaveLength(1)
@@ -189,10 +335,6 @@ function readStructuredErrorLogs(consoleError: ConsoleErrorMock): unknown[] {
 
     return JSON.parse(serializedError) as unknown
   })
-}
-
-async function readJson<ResponseBody>(response: Response): Promise<ResponseBody> {
-  return response.json()
 }
 
 async function countUsers(email: string): Promise<number> {
@@ -253,6 +395,11 @@ async function countAccountState(email: string): Promise<{
 
 describe('auth Worker contract', () => {
   beforeEach(async () => {
+    externalFetchState.defaultHibpResponse = undefined
+    externalFetchState.queuedHibpResponses = []
+    externalFetchState.usedTurnstileTokens.clear()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(handleExternalFetch)
+
     const client = new Client({ connectionString: env.DATABASE.connectionString })
 
     try {
@@ -292,9 +439,7 @@ describe('auth Worker contract', () => {
   })
 
   it('returns the same registration response for new, pending, and occupied email', async () => {
-    const hibpFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(
-      createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`)
-    )
+    mockSafeHibp()
 
     vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit').mockResolvedValue({ success: true })
 
@@ -307,7 +452,7 @@ describe('auth Worker contract', () => {
 
     const occupiedResponse = await verificationRequest(occupiedEmail)
 
-    expect(hibpFetch).toHaveBeenCalledTimes(1)
+    expect(countFetchCalls(HIBP_RANGE_URL)).toBe(1)
 
     const neutralResponses = [newResponse, pendingResponse, occupiedResponse]
 
@@ -460,7 +605,6 @@ describe('auth Worker contract', () => {
 
   it('rejects password-length boundaries without consuming the token or checking HIBP', async () => {
     const email = uniqueEmail('password-length')
-    const hibpFetch = vi.spyOn(globalThis, 'fetch')
 
     await verificationRequest(email)
 
@@ -491,7 +635,7 @@ describe('auth Worker contract', () => {
 
     /* oxlint-enable eslint/no-await-in-loop */
 
-    expect(hibpFetch).not.toHaveBeenCalled()
+    expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 0,
       tokens: 1,
@@ -501,7 +645,6 @@ describe('auth Worker contract', () => {
 
   it('rejects an expired verification link before checking HIBP', async () => {
     const email = uniqueEmail('expired-verification')
-    const hibpFetch = vi.spyOn(globalThis, 'fetch')
 
     await verificationRequest(email)
 
@@ -523,7 +666,7 @@ describe('auth Worker contract', () => {
     const response = await completionRequest(token)
 
     expect(response.status).toBe(400)
-    expect(hibpFetch).not.toHaveBeenCalled()
+    expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_VERIFICATION',
@@ -537,16 +680,13 @@ describe('auth Worker contract', () => {
     const unavailableEmail = uniqueEmail('unavailable')
     const passwordHash = await hashSha1(PASSWORD)
     const passwordSuffix = passwordHash.slice(5)
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
     const consoleError = vi.spyOn(console, 'error').mockReturnValue()
 
-    fetchMock.mockImplementationOnce(createResponseFactory(`${passwordSuffix}:42`))
+    queueHibpResponse(`${passwordSuffix}:42`)
 
     const compromisedResponse = await createAccount(compromisedEmail)
 
-    fetchMock.mockImplementationOnce(
-      createResponseFactory(`${SAFE_HIBP_SUFFIX}:0`, { status: 503 })
-    )
+    queueHibpResponse(`${SAFE_HIBP_SUFFIX}:0`, { status: 503 })
 
     const unavailableResponse = await createAccount(unavailableEmail)
     const unavailableBody = await readJson<AuthErrorResponse>(unavailableResponse)
@@ -763,7 +903,11 @@ describe('auth Worker contract', () => {
     const otherDeviceSignIn = await signInRequest(email)
     const firstCookie = readCookie(firstSignIn)
     const otherDeviceCookie = readCookie(otherDeviceSignIn)
-    const replacementSignIn = await signInRequest(email, PASSWORD, firstCookie)
+
+    const replacementSignIn = await signInRequest(email, PASSWORD, {
+      cookie: firstCookie
+    })
+
     const replacementCookie = readCookie(replacementSignIn)
     const oldSession = await authRequest('/api/auth/session', { cookie: firstCookie })
 
@@ -806,7 +950,6 @@ describe('auth Worker contract', () => {
   })
 
   it('rejects registration completion bodies larger than 8 KiB before downstream work', async () => {
-    const hibpFetch = vi.spyOn(globalThis, 'fetch')
     const rateLimit = vi.spyOn(env.REGISTRATION_ACTIVATION_RATE_LIMITER, 'limit')
 
     const response = await authRequest('/api/auth/register/complete', {
@@ -826,7 +969,7 @@ describe('auth Worker contract', () => {
         message: 'The request is invalid.'
       }
     })
-    expect(hibpFetch).not.toHaveBeenCalled()
+    expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
     expect(rateLimit).not.toHaveBeenCalled()
     expectNoStore(response)
   })
@@ -845,6 +988,104 @@ describe('auth Worker contract', () => {
       }
     })
     expectNoStore(response)
+  })
+
+  it.each([
+    ['missing', {}],
+    ['invalid', { [TURNSTILE_RESPONSE_FIELD]: 'invalid-turnstile' }],
+    ['expired', { [TURNSTILE_RESPONSE_FIELD]: 'expired-turnstile' }]
+  ])('rejects a %s registration challenge before downstream work', async (_scenario, challenge) => {
+    const email = uniqueEmail('turnstile-register')
+
+    const body: Record<string, unknown> = {
+      ...challenge,
+      email,
+      redirectTo: '/'
+    }
+
+    const rateLimit = vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit')
+    const databaseConnect = vi.spyOn(Client.prototype, 'connect')
+    // oxlint-disable-next-line typescript/unbound-method -- Vitest inspects mock metadata without invoking the binding method.
+    const emailSend = vi.mocked(env.EMAIL).send
+
+    const response = await authRequest('/api/auth/register', {
+      body,
+      method: 'POST'
+    })
+
+    await expectBotVerificationFailed(response)
+    expect(rateLimit).not.toHaveBeenCalled()
+    expect(databaseConnect).not.toHaveBeenCalled()
+    expect(emailSend).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['missing', {}],
+    ['invalid', { [TURNSTILE_RESPONSE_FIELD]: 'invalid-turnstile' }],
+    ['expired', { [TURNSTILE_RESPONSE_FIELD]: 'expired-turnstile' }]
+  ])('rejects a %s sign-in challenge before downstream work', async (_scenario, challenge) => {
+    const body: Record<string, unknown> = {
+      ...challenge,
+      email: uniqueEmail('turnstile-sign-in'),
+      password: PASSWORD
+    }
+
+    const rateLimit = vi.spyOn(env.SIGN_IN_RATE_LIMITER, 'limit')
+    const databaseConnect = vi.spyOn(Client.prototype, 'connect')
+    // oxlint-disable-next-line typescript/unbound-method -- Vitest inspects mock metadata without invoking the binding method.
+    const emailSend = vi.mocked(env.EMAIL).send
+
+    const response = await authRequest('/api/auth/sign-in', {
+      body,
+      method: 'POST'
+    })
+
+    await expectBotVerificationFailed(response)
+    expect(rateLimit).not.toHaveBeenCalled()
+    expect(databaseConnect).not.toHaveBeenCalled()
+    expect(emailSend).not.toHaveBeenCalled()
+  })
+
+  it('rejects a replayed registration token before the next limiter, database, or email call', async () => {
+    const email = uniqueEmail('turnstile-register-replay')
+    const turnstileToken = createTurnstileToken(TURNSTILE_ACTIONS.register)
+    const rateLimit = vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit')
+    const databaseConnect = vi.spyOn(Client.prototype, 'connect')
+    // oxlint-disable-next-line typescript/unbound-method -- Vitest inspects mock metadata without invoking the binding method.
+    const emailSend = vi.mocked(env.EMAIL).send
+    const firstResponse = await verificationRequest(email, '/', turnstileToken)
+
+    expect(firstResponse.status).toBe(202)
+
+    rateLimit.mockClear()
+    databaseConnect.mockClear()
+    emailSend.mockClear()
+
+    const replayResponse = await verificationRequest(email, '/', turnstileToken)
+
+    await expectBotVerificationFailed(replayResponse)
+    expect(rateLimit).not.toHaveBeenCalled()
+    expect(databaseConnect).not.toHaveBeenCalled()
+    expect(emailSend).not.toHaveBeenCalled()
+  })
+
+  it('rejects a replayed sign-in token before the next limiter, database, or session call', async () => {
+    const email = uniqueEmail('turnstile-sign-in-replay')
+    const turnstileToken = createTurnstileToken(TURNSTILE_ACTIONS.signIn)
+    const rateLimit = vi.spyOn(env.SIGN_IN_RATE_LIMITER, 'limit')
+    const databaseConnect = vi.spyOn(Client.prototype, 'connect')
+    const firstResponse = await signInRequest(email, PASSWORD, { turnstileToken })
+
+    expect(firstResponse.status).toBe(401)
+
+    rateLimit.mockClear()
+    databaseConnect.mockClear()
+
+    const replayResponse = await signInRequest(email, PASSWORD, { turnstileToken })
+
+    await expectBotVerificationFailed(replayResponse)
+    expect(rateLimit).not.toHaveBeenCalled()
+    expect(databaseConnect).not.toHaveBeenCalled()
   })
 
   it('rejects insecure deployed auth requests', async () => {
@@ -1013,7 +1254,6 @@ describe('auth Worker contract', () => {
 
   it('preserves a live token when the activation rate limit is exhausted', async () => {
     const email = uniqueEmail('limited-activation')
-    const hibpFetch = vi.spyOn(globalThis, 'fetch')
 
     await verificationRequest(email)
 
@@ -1032,7 +1272,7 @@ describe('auth Worker contract', () => {
     expect(response.status).toBe(429)
     expect(response.headers.get('retry-after')).toBe('60')
     expect(rateLimitOptions.key).toMatch(/^[0-9a-f]{64}$/u)
-    expect(hibpFetch).not.toHaveBeenCalled()
+    expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 0,
       tokens: 1,

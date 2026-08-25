@@ -59,7 +59,13 @@
         {{ formError }}
       </p>
 
-      <button :disabled="isSubmitting" type="submit">
+      <TurnstileWidget
+        ref="turnstileWidget"
+        v-model="turnstileToken"
+        :action="TURNSTILE_ACTIONS.signIn"
+      />
+
+      <button :disabled="isSubmitDisabled" type="submit">
         Sign in
       </button>
     </form>
@@ -77,10 +83,12 @@
   import { definePageMeta } from '#app/composables/pages'
   import { navigateTo, useHead, useRequestFetch, useRoute, useState } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
+  import { TURNSTILE_ACTIONS, TURNSTILE_RESPONSE_FIELD } from '@tv/shared/turnstile'
   import * as v from 'valibot'
   import { computed, nextTick, ref, useId, useTemplateRef } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
+  import TurnstileWidget from '~/components/auth/TurnstileWidget.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import type { AuthFieldErrors, RegistrationNotice } from '~/types/auth.ts'
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
@@ -106,6 +114,7 @@
   const formError = ref('')
   const isSubmitting = ref(false)
   const isPasswordVisible = ref(false)
+  const turnstileToken = ref('')
   const showsRegistrationNotice = ref(initialNotice?.created === true)
 
   registrationNotice.value = null
@@ -113,6 +122,7 @@
   const emailInput = useTemplateRef('emailInput')
   const passwordField = useTemplateRef('passwordField')
   const formErrorElement = useTemplateRef('formError')
+  const turnstileWidget = useTemplateRef('turnstileWidget')
   const emailId = useId()
   const emailErrorId = useId()
   const redirectTo = computed(() => sanitizeRedirectTo(route.query.redirectTo))
@@ -130,6 +140,10 @@
   const emailDescribedBy = computed(() => isEmailInvalid.value ? emailErrorId : undefined)
   const hasFormError = computed(() => formError.value !== '')
   const hasSessionWarning = computed(() => state.value.status === 'error')
+
+  const isSubmitDisabled = computed(() => (
+    isSubmitting.value || turnstileToken.value === ''
+  ))
 
   const passwordToggleLabel = computed(() => isPasswordVisible.value
     ? 'Hide password'
@@ -174,7 +188,12 @@
 
     try {
       const response = await requestFetch('/api/auth/sign-in', {
-        body: validation.payload,
+        body: {
+          [TURNSTILE_RESPONSE_FIELD]: turnstileToken.value,
+          email: validation.payload.email,
+          password: validation.payload.password
+        },
+
         method: 'POST'
       })
 
@@ -189,6 +208,7 @@
       formError.value = parsedError.message
       await focusFirstError()
     } finally {
+      turnstileWidget.value?.reset()
       isSubmitting.value = false
     }
   }

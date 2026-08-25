@@ -10,6 +10,11 @@
   "limits": {
     "cpu_ms": 1000
   },
+  "secrets": {
+    "required": [
+      "TURNSTILE_SECRET"
+    ]
+  },
   "hyperdrive": [
     {
       "binding": "DATABASE",
@@ -74,6 +79,11 @@
       "name": "tv-api-staging",
       "limits": {
         "cpu_ms": 1000
+      },
+      "secrets": {
+        "required": [
+          "TURNSTILE_SECRET"
+        ]
       },
       "hyperdrive": [
         {

@@ -2,6 +2,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { AuthErrorCode, AuthErrorEnvelope } from './types.ts'
 
 const ERROR_MESSAGES = {
+  BOT_VERIFICATION_FAILED: 'Complete the security check and try again.',
   INTERNAL_ERROR: 'An unexpected error occurred.',
   INVALID_CREDENTIALS: 'Invalid email or password.',
   INVALID_REQUEST: 'The request is invalid.',

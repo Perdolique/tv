@@ -4,6 +4,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { getCookie, setCookie } from 'hono/cookie'
 import { requestId, type RequestIdVariables } from 'hono/request-id'
 import { findRootCause, serializeError } from '@tv/shared/errors'
+import { TURNSTILE_ACTIONS, type TurnstileAction } from '@tv/shared/turnstile'
 // oxlint-disable-next-line import/no-relative-parent-imports -- Auth uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 
@@ -51,6 +52,7 @@ import {
 } from './validation.ts'
 
 import { createVerificationToken, hashVerificationToken } from './verification.ts'
+import { readTurnstileToken, verifyTurnstileToken } from './turnstile.ts'
 
 interface AuthVariables extends RequestIdVariables {
   emailHash: string | undefined;
@@ -86,6 +88,24 @@ async function applyRateLimit(
   )
 
   context.set('emailHash', emailHash)
+}
+
+async function requireTurnstile(
+  context: AuthContext,
+  body: unknown,
+  expectedAction: TurnstileAction
+): Promise<void> {
+  const token = readTurnstileToken(body)
+  const expectedHostname = new URL(context.req.url).hostname
+  const remoteIp = context.req.header('CF-Connecting-IP')
+
+  await verifyTurnstileToken({
+    expectedAction,
+    expectedHostname,
+    remoteIp,
+    secret: context.env.TURNSTILE_SECRET,
+    token
+  })
 }
 
 async function connectDatabase(context: AuthContext) {
@@ -175,6 +195,8 @@ function createAuthApp(): Hono<AuthEnvironment> {
   app.post('/api/auth/register', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
     const registration = validateRegistrationRequest(body)
+
+    await requireTurnstile(context, body, TURNSTILE_ACTIONS.register)
 
     await applyRateLimit(
       context,
@@ -315,6 +337,8 @@ function createAuthApp(): Hono<AuthEnvironment> {
   app.post('/api/auth/sign-in', jsonBodyLimit, async (context) => {
     const body = await readRequiredJsonBody(context.req.raw)
     const credentials = validateSignInCredentials(body)
+
+    await requireTurnstile(context, body, TURNSTILE_ACTIONS.signIn)
 
     await applyRateLimit(
       context,

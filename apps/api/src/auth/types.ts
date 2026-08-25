@@ -19,6 +19,7 @@ interface RegistrationCompletionEnvelope {
 }
 
 type AuthErrorCode =
+  | 'BOT_VERIFICATION_FAILED'
   | 'INTERNAL_ERROR'
   | 'INVALID_CREDENTIALS'
   | 'INVALID_REQUEST'

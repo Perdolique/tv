@@ -1,5 +1,7 @@
 /* oxlint-disable eslint/max-lines -- The auth browser contract stays readable as one lifecycle specification. */
 import type { BrowserContext, Page } from '@playwright/test'
+import { TURNSTILE_RESPONSE_FIELD } from '../../../packages/shared/src/turnstile.ts'
+import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { longEmail } from './constants.ts'
@@ -117,6 +119,14 @@ interface VueRootElement extends HTMLElement {
   __vue_app__?: VueApplication;
 }
 
+function readTurnstileToken(value: unknown): string {
+  if (!isRecord(value) || typeof value[TURNSTILE_RESPONSE_FIELD] !== 'string') {
+    throw new Error('Expected a Turnstile token in the auth request')
+  }
+
+  return value[TURNSTILE_RESPONSE_FIELD]
+}
+
 async function fillSignIn(
   page: Page,
   email = 'viewer@example.com',
@@ -134,9 +144,22 @@ async function signIn(page: Page, options: SignInOptions = {}): Promise<void> {
     response.url() === `${appBaseUrl}/api/auth/sign-in`
   ))
 
+  const signInRequestPromise = page.waitForRequest((request) => (
+    request.url() === `${appBaseUrl}/api/auth/sign-in`
+  ))
+
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   const signInResponse = await signInResponsePromise
+  const signInRequest = await signInRequestPromise
+  const signInBody: unknown = signInRequest.postDataJSON()
+  const turnstileToken = readTurnstileToken(signInBody)
+
+  expect(signInBody).toStrictEqual({
+    [TURNSTILE_RESPONSE_FIELD]: turnstileToken,
+    email: options.email ?? 'viewer@example.com',
+    password: validPassword
+  })
 
   expect(signInResponse.status()).toBe(200)
   expect(signInResponse.headers()['cache-control']).toBe('no-store')
@@ -304,9 +327,11 @@ test.describe('Authentication forms', () => {
 
     const registrationRequest = await registrationRequestPromise
     const registrationBody: unknown = registrationRequest.postDataJSON()
+    const turnstileToken = readTurnstileToken(registrationBody)
 
     expect(registrationRequest.method()).toBe('POST')
     expect(registrationBody).toStrictEqual({
+      [TURNSTILE_RESPONSE_FIELD]: turnstileToken,
       email: 'viewer@example.com',
       redirectTo: '/?view=recent'
     })
@@ -393,6 +418,16 @@ test.describe('Authentication forms', () => {
   })
 
   expectedRegistrationUnavailableTest('shows a safe registration service error', async ({ page }) => {
+    const turnstileTokens: string[] = []
+
+    page.on('request', (request) => {
+      if (request.url() === `${appBaseUrl}/api/auth/register`) {
+        const body: unknown = request.postDataJSON()
+
+        turnstileTokens.push(readTurnstileToken(body))
+      }
+    })
+
     await page.goto('/register')
 
     const emailInput = page.getByLabel('Email')
@@ -406,6 +441,13 @@ test.describe('Authentication forms', () => {
     await expect(formError).toHaveText('Authentication is temporarily unavailable.')
     await expect(formError).toBeFocused()
     await expect(page).toHaveURL(`${appBaseUrl}/register`)
+
+    await emailInput.fill('viewer@example.com')
+    await page.getByRole('button', { name: 'Email me a verification link' }).click()
+    await expect(page.getByText(/Check your email for the next step/u)).toBeVisible()
+
+    expect(turnstileTokens).toHaveLength(2)
+    expect(turnstileTokens[1]).not.toBe(turnstileTokens[0])
   })
 
   expectedRegistrationValidationTest('shows a compromised-password field error', async ({ page }) => {
@@ -459,6 +501,16 @@ test.describe('Authentication forms', () => {
   })
 
   expectedSignInErrorsTest('shows safe invalid-credential and unavailable messages', async ({ page }) => {
+    const turnstileTokens: string[] = []
+
+    page.on('request', (request) => {
+      if (request.url() === `${appBaseUrl}/api/auth/sign-in`) {
+        const body: unknown = request.postDataJSON()
+
+        turnstileTokens.push(readTurnstileToken(body))
+      }
+    })
+
     await page.goto('/sign-in')
     await fillSignIn(page, 'viewer@example.com', 'wrong password')
     await page.getByRole('button', { name: 'Sign in' }).click()
@@ -473,6 +525,9 @@ test.describe('Authentication forms', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.getByRole('alert')).toHaveText('Authentication is temporarily unavailable.')
     await expect(page.getByText(/connection|stack|database/iu)).toHaveCount(0)
+
+    expect(turnstileTokens).toHaveLength(2)
+    expect(turnstileTokens[1]).not.toBe(turnstileTokens[0])
   })
 
 })

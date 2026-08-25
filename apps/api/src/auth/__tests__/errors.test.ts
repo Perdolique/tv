@@ -36,4 +36,15 @@ describe(createErrorEnvelope, () => {
       }
     })
   })
+
+  it('exposes the dedicated bot-verification contract', () => {
+    const error = new AuthHttpError('BOT_VERIFICATION_FAILED', 403)
+
+    expect(createErrorEnvelope(error)).toStrictEqual({
+      error: {
+        code: 'BOT_VERIFICATION_FAILED',
+        message: 'Complete the security check and try again.'
+      }
+    })
+  })
 })
