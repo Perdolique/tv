@@ -6,6 +6,7 @@ import { SITEVERIFY_URL, TURNSTILE_TOKEN_MAX_LENGTH, verifyTurnstileToken } from
 
 const SECRET = 'test-secret-value'
 const TOKEN = 'test-token-value'
+const TURNSTILE_TEST_SECRET = '1x0000000000000000000000000000000AA'
 
 function createSiteverifyResponse(body: unknown, status = 200): Response {
   return Response.json(body, { status })
@@ -162,6 +163,27 @@ describe(verifyTurnstileToken, () => {
     expect(fetchImplementation).toHaveBeenCalledTimes(1)
   })
 
+  it('accepts Cloudflare test-key responses without production action and hostname fields', async () => {
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      createSiteverifyResponse({
+        hostname: 'example.com',
+        metadata: { result_with_testing_key: true },
+        success: true
+      })
+    )
+
+    await verifyWith(fetchImplementation, {
+      expectedHostname: '127.0.0.1',
+      secret: TURNSTILE_TEST_SECRET,
+      token: 'XXXX.DUMMY.TOKEN.XXXX'
+    })
+
+    const parameters = readUrlEncodedRequestBody(fetchImplementation)
+
+    expect(parameters.get('secret')).toBe(TURNSTILE_TEST_SECRET)
+    expect(parameters.get('response')).toBe('XXXX.DUMMY.TOKEN.XXXX')
+  })
+
   it.each([
     [createValidResult({
       success: false,
@@ -175,6 +197,7 @@ describe(verifyTurnstileToken, () => {
       success: false,
       'error-codes': ['timeout-or-duplicate']
     }],
+    [{ success: true }],
     [createValidResult({ action: TURNSTILE_ACTIONS.register })],
     [createValidResult({ hostname: 'tv-staging.perd.dev' })]
   ])('rejects a failed or mismatched challenge', async (result) => {

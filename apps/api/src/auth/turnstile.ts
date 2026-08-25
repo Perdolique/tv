@@ -5,6 +5,7 @@ import { AuthHttpError } from './errors.ts'
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 const TURNSTILE_TOKEN_MAX_LENGTH = 2048
 const SITEVERIFY_TIMEOUT_MILLISECONDS = 10_000
+const TURNSTILE_TEST_SECRET = '1x0000000000000000000000000000000AA'
 
 const CONFIGURATION_ERROR_CODES = new Set([
   'bad-request',
@@ -178,8 +179,13 @@ async function verifyTurnstileToken(options: VerifyTurnstileOptions): Promise<vo
 
   if (
     !result.success
-    || result.action !== options.expectedAction
-    || result.hostname !== options.expectedHostname
+    || (
+      options.secret !== TURNSTILE_TEST_SECRET
+      && (
+        result.action !== options.expectedAction
+        || result.hostname !== options.expectedHostname
+      )
+    )
   ) {
     throw createBotVerificationError()
   }
