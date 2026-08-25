@@ -26,6 +26,12 @@ Install dependencies:
 vp install
 ```
 
+Create the API environment file, then set `TURNSTILE_SECRET` to the secret for the configured Turnstile widget. Authentication intentionally remains unavailable when this secret is missing.
+
+```shell
+cp apps/api/.env.example apps/api/.env
+```
+
 Run both applications:
 
 ```shell

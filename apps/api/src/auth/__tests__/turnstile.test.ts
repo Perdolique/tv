@@ -163,10 +163,10 @@ describe(verifyTurnstileToken, () => {
   })
 
   it.each([
-    [{
+    [createValidResult({
       success: false,
       'error-codes': ['invalid-input-response']
-    }],
+    })],
     [{
       success: false,
       'error-codes': ['missing-input-response']
