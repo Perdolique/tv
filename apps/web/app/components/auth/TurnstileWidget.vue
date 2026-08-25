@@ -22,6 +22,7 @@
 
   interface TurnstileRenderOptions {
     action: TurnstileAction;
+    appearance: 'interaction-only';
     callback: (token: string) => void;
     'error-callback': () => void;
     'expired-callback': () => void;
@@ -79,6 +80,7 @@
 
     widgetId.value = turnstile.render(container.value, {
       action,
+      appearance: 'interaction-only',
       callback: handleSuccess,
       'error-callback': handleError,
       'expired-callback': clearToken,
