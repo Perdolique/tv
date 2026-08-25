@@ -10,6 +10,11 @@
   "limits": {
     "cpu_ms": 1000
   },
+  "secrets": {
+    "required": [
+      "TURNSTILE_SECRET"
+    ]
+  },
   "hyperdrive": [
     {
       "binding": "DATABASE",
@@ -61,6 +66,7 @@
     }
   ],
   "dev": {
+    "host": "127.0.0.1",
     "ip": "127.0.0.1",
     "port": 8788
   },
@@ -74,6 +80,11 @@
       "name": "tv-api-staging",
       "limits": {
         "cpu_ms": 1000
+      },
+      "secrets": {
+        "required": [
+          "TURNSTILE_SECRET"
+        ]
       },
       "hyperdrive": [
         {

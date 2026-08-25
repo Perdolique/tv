@@ -1,11 +1,15 @@
-import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
+import { cloudflareTest } from '@cloudflare/vitest-plugin'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [
     cloudflareTest({
       miniflare: {
-        compatibilityDate: '2026-08-04'
+        compatibilityDate: '2026-08-04',
+
+        bindings: {
+          TURNSTILE_SECRET: '1x0000000000000000000000000000000AA'
+        }
       },
 
       wrangler: {

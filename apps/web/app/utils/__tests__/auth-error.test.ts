@@ -55,6 +55,19 @@ describe(parseAuthError, () => {
     })
   })
 
+  it('accepts the dedicated bot-verification error', () => {
+    expect(parseAuthError({
+      error: {
+        code: 'BOT_VERIFICATION_FAILED',
+        message: 'Complete the security check and try again.'
+      }
+    })).toStrictEqual({
+      code: 'BOT_VERIFICATION_FAILED',
+      fields: {},
+      message: 'Complete the security check and try again.'
+    })
+  })
+
   it.each([
     null,
     { error: 'broken' },

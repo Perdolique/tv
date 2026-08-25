@@ -13,6 +13,45 @@ interface TestOptions {
   expectedHttpErrors: ExpectedHttpErrors;
 }
 
+const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+
+const TURNSTILE_SCRIPT = `
+(() => {
+  const widgets = new Map()
+
+  function createToken(action) {
+    return \`test-turnstile-\${action}-\${globalThis.crypto.randomUUID()}\`
+  }
+
+  globalThis.turnstile = {
+    render(container, options) {
+      const widgetId = globalThis.crypto.randomUUID()
+
+      widgets.set(widgetId, { container, options })
+      container.dataset.turnstileWidget = widgetId
+      globalThis.queueMicrotask(() => options.callback(createToken(options.action)))
+
+      return widgetId
+    },
+
+    remove(widgetId) {
+      const widget = widgets.get(widgetId)
+
+      widget?.container.removeAttribute('data-turnstile-widget')
+      widgets.delete(widgetId)
+    },
+
+    reset(widgetId) {
+      const widget = widgets.get(widgetId)
+
+      if (widget !== undefined) {
+        globalThis.queueMicrotask(() => widget.options.callback(createToken(widget.options.action)))
+      }
+    }
+  }
+})()
+`
+
 const expect = playwrightExpect
 
 function getPathname(url: string): string | undefined {
@@ -33,6 +72,14 @@ const test = base.extend<TestOptions>({
   page: async ({ expectedHttpErrors, page }, use) => {
     const browserErrors: string[] = []
     const pendingHttpErrors = [...expectedHttpErrors.values]
+
+    await page.route(TURNSTILE_SCRIPT_URL, async (route) => {
+      await route.fulfill({
+        body: TURNSTILE_SCRIPT,
+        contentType: 'application/javascript',
+        status: 200
+      })
+    })
 
     page.on('pageerror', (error) => {
       browserErrors.push(error.stack ?? error.message)

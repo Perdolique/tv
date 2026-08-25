@@ -1,5 +1,5 @@
 import { env } from 'node:process'
-import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
+import { cloudflareTest } from '@cloudflare/vitest-plugin'
 import { defineConfig } from 'vitest/config'
 
 const TEST_DATABASE_NAME_PATTERN = /^tv_test_[0-9a-f]{32}$/u
@@ -20,6 +20,10 @@ export default defineConfig({
     cloudflareTest({
       miniflare: {
         compatibilityDate: '2026-08-04',
+
+        bindings: {
+          TURNSTILE_SECRET: '1x0000000000000000000000000000000AA'
+        },
 
         hyperdrives: {
           DATABASE: databaseUrl

@@ -7,7 +7,7 @@
     "types": [
       "./worker-configuration.d.ts",
       "node",
-      "@cloudflare/vitest-pool-workers/types"
+      "@cloudflare/vitest-plugin/types"
     ]
   },
   "include": [

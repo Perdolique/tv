@@ -3,6 +3,7 @@ import * as v from 'valibot'
 import type { AuthErrorCode, AuthFieldErrors, ParsedAuthError } from '~/types/auth.ts'
 
 const AUTH_ERROR_MESSAGES = {
+  BOT_VERIFICATION_FAILED: 'Complete the security check and try again.',
   INTERNAL_ERROR: 'An unexpected error occurred.',
   INVALID_CREDENTIALS: 'Invalid email or password.',
   INVALID_REQUEST: 'The request is invalid.',

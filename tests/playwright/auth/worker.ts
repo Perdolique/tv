@@ -1,13 +1,24 @@
+/* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
 import { longEmail } from './constants.ts'
+
+import {
+  TURNSTILE_ACTIONS,
+  TURNSTILE_RESPONSE_FIELD,
+  type TurnstileAction
+} from '../../../packages/shared/src/turnstile.ts'
+
+import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 
 interface Credentials {
   email: string;
   password: string;
+  turnstileToken: unknown;
 }
 
 interface RegistrationRequest {
   email: string;
   redirectTo: string;
+  turnstileToken: unknown;
 }
 
 interface RegistrationCompletionRequest {
@@ -17,6 +28,7 @@ interface RegistrationCompletionRequest {
 
 interface SafeErrorOptions {
   code:
+    | 'BOT_VERIFICATION_FAILED'
     | 'INVALID_CREDENTIALS'
     | 'INVALID_REQUEST'
     | 'INVALID_VERIFICATION'
@@ -43,6 +55,8 @@ const LONG_EMAIL_USER = {
   email: longEmail,
   id: 'user-e2e-long-email'
 } as const
+
+const usedTurnstileTokens = new Set<string>()
 
 function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers)
@@ -83,8 +97,7 @@ async function readCredentials(request: Request): Promise<Credentials | null> {
   }
 
   if (
-    typeof value !== 'object'
-    || value === null
+    !isRecord(value)
     || !('email' in value)
     || !('password' in value)
     || typeof value.email !== 'string'
@@ -95,7 +108,8 @@ async function readCredentials(request: Request): Promise<Credentials | null> {
 
   return {
     email: value.email,
-    password: value.password
+    password: value.password,
+    turnstileToken: value[TURNSTILE_RESPONSE_FIELD]
   }
 }
 
@@ -103,8 +117,7 @@ async function readRegistrationRequest(request: Request): Promise<RegistrationRe
   const value: unknown = await request.json().catch(() => null)
 
   if (
-    typeof value !== 'object'
-    || value === null
+    !isRecord(value)
     || !('email' in value)
     || !('redirectTo' in value)
     || typeof value.email !== 'string'
@@ -115,7 +128,8 @@ async function readRegistrationRequest(request: Request): Promise<RegistrationRe
 
   return {
     email: value.email,
-    redirectTo: value.redirectTo
+    redirectTo: value.redirectTo,
+    turnstileToken: value[TURNSTILE_RESPONSE_FIELD]
   }
 }
 
@@ -141,6 +155,33 @@ async function readRegistrationCompletionRequest(
   }
 }
 
+function consumeTurnstileToken(
+  value: unknown,
+  expectedAction: TurnstileAction
+): boolean {
+  const expectedPrefix = `test-turnstile-${expectedAction}-`
+
+  if (
+    typeof value !== 'string'
+    || !value.startsWith(expectedPrefix)
+    || usedTurnstileTokens.has(value)
+  ) {
+    return false
+  }
+
+  usedTurnstileTokens.add(value)
+
+  return true
+}
+
+function botVerificationError(): Response {
+  return safeError({
+    code: 'BOT_VERIFICATION_FAILED',
+    message: 'Complete the security check and try again.',
+    status: 403
+  })
+}
+
 async function handleRegister(request: Request): Promise<Response> {
   const registration = await readRegistrationRequest(request)
 
@@ -150,6 +191,13 @@ async function handleRegister(request: Request): Promise<Response> {
       message: 'The request is invalid.',
       status: 400
     })
+  }
+
+  if (!consumeTurnstileToken(
+    registration.turnstileToken,
+    TURNSTILE_ACTIONS.register
+  )) {
+    return botVerificationError()
   }
 
   if (registration.email === 'registration-unavailable@example.com') {
@@ -212,6 +260,16 @@ async function handleRegistrationCompletion(request: Request): Promise<Response>
 
 async function handleSignIn(request: Request): Promise<Response> {
   const credentials = await readCredentials(request)
+
+  if (
+    credentials !== null
+    && !consumeTurnstileToken(
+      credentials.turnstileToken,
+      TURNSTILE_ACTIONS.signIn
+    )
+  ) {
+    return botVerificationError()
+  }
 
   if (credentials?.email === 'unavailable@example.com') {
     return safeError({
