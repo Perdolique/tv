@@ -1,8 +1,13 @@
 <template>
-  <AuthCard title="Welcome back">
-    <template #notice>
+  <AuthCard
+    :class="$style.component"
+    description="Sign in to track every story."
+    title="Welcome back"
+  >
+    <template v-if="hasNotice" #notice>
       <p
         v-if="showsRegistrationNotice"
+        :class="$style.notice"
         role="status"
       >
         Account created. Sign in to continue.
@@ -10,34 +15,19 @@
 
       <p
         v-if="hasSessionWarning"
+        :class="$style.notice"
         role="status"
       >
         We couldn’t verify your current session. You can still sign in.
       </p>
     </template>
 
-    <form novalidate @submit.prevent="submit">
-      <div>
-        <label :for="emailId">
-          Email
-        </label>
-
-        <input
-          :id="emailId"
-          ref="emailInput"
-          v-model="email"
-          :aria-describedby="emailDescribedBy"
-          :aria-invalid="isEmailInvalid"
-          autocomplete="email"
-          inputmode="email"
-          required
-          type="email"
-        >
-
-        <p v-if="isEmailInvalid" :id="emailErrorId">
-          {{ emailError }}
-        </p>
-      </div>
+    <form :class="$style.form" novalidate @submit.prevent="submit">
+      <EmailField
+        ref="emailField"
+        v-model="email"
+        :error="emailError"
+      />
 
       <PasswordField
         ref="passwordField"
@@ -53,6 +43,7 @@
       <p
         v-if="hasFormError"
         ref="formError"
+        :class="$style.formError"
         role="alert"
         tabindex="-1"
       >
@@ -65,14 +56,18 @@
         :action="TURNSTILE_ACTIONS.signIn"
       />
 
-      <button :disabled="isSubmitDisabled" type="submit">
+      <button
+        :class="$style.primaryButton"
+        :disabled="isSubmitDisabled"
+        type="submit"
+      >
         Sign in
       </button>
     </form>
 
     <template #footer>
       New to TV?
-      <NuxtLink :to="registerLocation">
+      <NuxtLink :class="$style.footerLink" :to="registerLocation">
         Create an account
       </NuxtLink>
     </template>
@@ -85,8 +80,9 @@
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { TURNSTILE_ACTIONS, TURNSTILE_RESPONSE_FIELD } from '@tv/shared/turnstile'
   import * as v from 'valibot'
-  import { computed, nextTick, ref, useId, useTemplateRef } from 'vue'
+  import { computed, nextTick, ref, useTemplateRef } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
+  import EmailField from '~/components/auth/EmailField.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import TurnstileWidget from '~/components/auth/TurnstileWidget.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
@@ -119,12 +115,10 @@
 
   registrationNotice.value = null
 
-  const emailInput = useTemplateRef('emailInput')
+  const emailField = useTemplateRef('emailField')
   const passwordField = useTemplateRef('passwordField')
   const formErrorElement = useTemplateRef('formError')
   const turnstileWidget = useTemplateRef('turnstileWidget')
-  const emailId = useId()
-  const emailErrorId = useId()
   const redirectTo = computed(() => sanitizeRedirectTo(route.query.redirectTo))
 
   const registerLocation = computed(() => {
@@ -136,10 +130,9 @@
 
   const emailError = computed(() => fields.value.email)
   const passwordError = computed(() => fields.value.password)
-  const isEmailInvalid = computed(() => emailError.value !== undefined)
-  const emailDescribedBy = computed(() => isEmailInvalid.value ? emailErrorId : undefined)
   const hasFormError = computed(() => formError.value !== '')
   const hasSessionWarning = computed(() => state.value.status === 'error')
+  const hasNotice = computed(() => showsRegistrationNotice.value || hasSessionWarning.value)
 
   const isSubmitDisabled = computed(() => (
     isSubmitting.value || turnstileToken.value === ''
@@ -153,7 +146,7 @@
     await nextTick()
 
     if (emailError.value !== undefined) {
-      emailInput.value?.focus()
+      emailField.value?.focus()
 
       return
     }
@@ -213,3 +206,61 @@
     }
   }
 </script>
+
+<style module>
+  @layer reset, vendor, tokens, base, components, utilities;
+
+  @layer components {
+    .component {
+      --auth-form-gap: var(--space-5);
+    }
+
+    .form {
+      display: grid;
+      gap: var(--auth-form-gap);
+    }
+
+    .notice,
+    .formError {
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-sm);
+      background: var(--color-surface-muted);
+    }
+
+    .formError {
+      color: var(--color-danger);
+    }
+
+    .primaryButton {
+      min-block-size: 3.5rem;
+      padding: var(--space-3) var(--space-6);
+      border: 0;
+      border-radius: var(--radius-md);
+      background: var(--color-accent-fill);
+      color: var(--color-on-accent);
+      font-weight: 700;
+      cursor: pointer;
+      transition:
+        filter var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-standard);
+    }
+
+    .primaryButton:hover:not(:disabled) {
+      filter: brightness(0.96);
+    }
+
+    .primaryButton:active:not(:disabled) {
+      transform: translateY(0.0625rem);
+    }
+
+    .primaryButton:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .footerLink {
+      font-weight: 600;
+      text-underline-offset: 0.2em;
+    }
+  }
+</style>

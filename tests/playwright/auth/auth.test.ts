@@ -222,12 +222,28 @@ test.describe('Authentication routing and SSR', () => {
   test.describe('without JavaScript', () => {
     test.use({ javaScriptEnabled: false })
 
-    test('redirects an anonymous SSR request for the protected page', async ({ page }) => {
+    test('renders the public home for an anonymous SSR request', async ({ page }) => {
       await page.goto('/')
 
-      await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
-      await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
-      await expect(page).toHaveTitle('Sign in · TV')
+      await expect(page).toHaveURL(`${appBaseUrl}/`)
+      await expect(page.getByRole('heading', { name: 'TV' })).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in')
+      await expect(page.getByRole('link', { name: 'Create an account' })).toHaveAttribute('href', '/register')
+      await expect(page).toHaveTitle('TV')
+    })
+
+    test('preserves a deep public target in guest links', async ({ page }) => {
+      await page.goto('/?view=recent')
+
+      await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+        'href',
+        '/sign-in?redirectTo=/?view=recent'
+      )
+
+      await expect(page.getByRole('link', { name: 'Create an account' })).toHaveAttribute(
+        'href',
+        '/register?redirectTo=/?view=recent'
+      )
     })
 
     test('renders an authenticated protected page from an HttpOnly cookie', async ({ context, page }) => {
@@ -252,15 +268,15 @@ test.describe('Authentication routing and SSR', () => {
       await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
       await expect(page.getByLabel('Email')).toBeVisible()
       await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
-      await expect(page.getByText('TV', { exact: true })).toHaveCount(0)
-      await expect(page.getByText('Sign in to search and save your TV catalog.')).toHaveCount(0)
+      await expect(page.getByRole('link', { name: 'TV home' })).toBeVisible()
+      await expect(page.getByText('Sign in to track every story.')).toBeVisible()
 
       await page.goto('/register')
       await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible()
       await expect(page.getByLabel('Email')).toBeVisible()
       await expect(page.locator('input[autocomplete="new-password"]')).toHaveCount(0)
-      await expect(page.getByText('TV', { exact: true })).toHaveCount(0)
-      await expect(page.getByText('Create an account to start building your TV experience.')).toHaveCount(0)
+      await expect(page.getByRole('link', { name: 'TV home' })).toBeVisible()
+      await expect(page.getByText('Build your watchlist in a minute.')).toBeVisible()
     })
   })
 
@@ -314,7 +330,33 @@ test.describe('Authentication forms', () => {
 
     await expect(page.getByText('Enter a valid email address.')).toBeVisible()
     await expect(emailInput).toBeFocused()
+    await expect(emailInput).toHaveAttribute('aria-invalid', 'true')
+    await expect(emailInput).toHaveAccessibleDescription('Enter a valid email address.')
+    await expect(emailInput).toHaveCSS('outline-offset', '3px')
+    await expect(emailInput).toHaveCSS('outline-width', '3px')
     expect(signInRequestCount).toBe(0)
+  })
+
+  test('exposes an accessible registration email error before requesting verification', async ({ page }) => {
+    let registrationRequestCount = 0
+
+    await page.route(`${appBaseUrl}/api/auth/register`, async (route) => {
+      registrationRequestCount += 1
+      await route.continue()
+    })
+
+    await page.goto('/register')
+
+    const emailInput = page.getByLabel('Email')
+
+    await emailInput.fill('person@example.c')
+    await page.getByRole('button', { name: 'Email me a verification link' }).click()
+
+    await expect(page.getByText('Enter a valid email address.')).toBeVisible()
+    await expect(emailInput).toBeFocused()
+    await expect(emailInput).toHaveAttribute('aria-invalid', 'true')
+    await expect(emailInput).toHaveAccessibleDescription('Enter a valid email address.')
+    expect(registrationRequestCount).toBe(0)
   })
 
   test('verifies email, creates an account, and returns through ordinary sign-in', async ({ page }) => {
@@ -572,7 +614,8 @@ test.describe('Authenticated session lifecycle', () => {
 
     await secondPage.goto('/')
     await secondPage.getByRole('button', { name: 'Sign out' }).click()
-    await expect(secondPage).toHaveURL(`${appBaseUrl}/sign-in`)
+    await expect(secondPage).toHaveURL(`${appBaseUrl}/`)
+    await expect(secondPage.getByRole('heading', { name: 'TV' })).toBeFocused()
 
     await navigateWithClientRouter(page, '/sign-in')
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
@@ -580,21 +623,27 @@ test.describe('Authenticated session lifecycle', () => {
     await secondPage.close()
   })
 
-  test('revalidates the session before a client-side protected guard decision', async ({ context, page }) => {
+  test('revalidates the session before rendering the public home after client navigation', async ({ context, page }) => {
     await signIn(page)
 
     const secondPage = await context.newPage()
 
     await secondPage.goto('/')
     await secondPage.getByRole('button', { name: 'Sign out' }).click()
-    await expect(secondPage).toHaveURL(`${appBaseUrl}/sign-in`)
+    await expect(secondPage).toHaveURL(`${appBaseUrl}/`)
+    await expect(secondPage.getByRole('heading', { name: 'TV' })).toBeFocused()
+
+    let sessionRequestCount = 0
+
+    await page.route(`${appBaseUrl}/api/auth/session`, async (route) => {
+      sessionRequestCount += 1
+      await route.continue()
+    })
 
     await navigateWithClientRouter(page, '/?view=recent')
-
-    const redirectedUrl = new URL(page.url())
-
-    expect(redirectedUrl.pathname).toBe('/sign-in')
-    expect(redirectedUrl.searchParams.get('redirectTo')).toBe('/?view=recent')
+    await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
+    await expect(page.getByRole('heading', { name: 'TV' })).toBeVisible()
+    expect(sessionRequestCount).toBe(1)
 
     await secondPage.close()
   })
@@ -628,18 +677,14 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(heading).toBeFocused()
   })
 
-  expectedSessionUnavailableTest('redirects an anonymous user after session retry succeeds', async ({ context, page }) => {
+  expectedSessionUnavailableTest('focuses the public home after an anonymous session retry succeeds', async ({ context, page }) => {
     await addRecoverableSessionCookies(context, { authenticated: false })
     await page.goto('/')
 
     await expect(page.getByRole('heading', { name: 'We couldn’t verify your session.' })).toBeVisible()
     await page.getByRole('button', { name: 'Try again' }).click()
-    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
-
-    const redirectedUrl = new URL(page.url())
-
-    expect(redirectedUrl.pathname).toBe('/sign-in')
-    expect(redirectedUrl.searchParams.get('redirectTo')).toBe('/')
+    await expect(page).toHaveURL(`${appBaseUrl}/`)
+    await expect(page.getByRole('heading', { name: 'TV' })).toBeFocused()
   })
 
   expectedRepeatedSessionUnavailableTest('returns focus to retry after another session failure', async ({ context, page }) => {
@@ -664,19 +709,30 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
 
     await page.getByRole('button', { name: 'Sign out' }).click()
+    await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
+
+    await expect.poll(async () => {
+      const sessionCookies = await context.cookies()
+
+      return sessionCookies.some(cookie => cookie.name === 'tv_session')
+    }).toBe(false)
+
+    await page.goto('/sign-in')
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
     await expect(page.getByText('Account created. Sign in to continue.')).toHaveCount(0)
     await expect(page.getByLabel('Email')).toHaveValue('')
   })
 
-  test('signs out, clears the cookie, and protects the page after reload', async ({ page }) => {
+  test('signs out, clears the cookie, and keeps the public home after reload', async ({ page }) => {
     await signIn(page)
     await page.getByRole('button', { name: 'Sign out' }).click()
 
-    await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
-    await expect(page).toHaveTitle('Sign in · TV')
-    await page.goto('/')
-    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/`)
+    await expect(page).toHaveURL(`${appBaseUrl}/`)
+    await expect(page).toHaveTitle('TV')
+    await expect(page.getByRole('heading', { name: 'TV' })).toBeFocused()
+    await page.reload()
+    await expect(page).toHaveURL(`${appBaseUrl}/`)
+    await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible()
   })
 
   expectedSignOutUnavailableTest('keeps the user signed in when sign-out fails and allows retry', async ({ context, page }) => {
@@ -692,6 +748,7 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(signOutButton).toBeFocused()
 
     await signOutButton.click()
-    await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
+    await expect(page).toHaveURL(`${appBaseUrl}/`)
+    await expect(page.getByRole('heading', { name: 'TV' })).toBeFocused()
   })
 })

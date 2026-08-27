@@ -218,7 +218,7 @@ argument order of CSS `light-dark()`.
 | `--color-text-secondary` | `#62676E` | `#A8ADB6` | Supporting copy and metadata |
 | `--color-text-tertiary` | `#858B92` | `#747B86` | Disabled and low-priority copy |
 | `--color-border` | `#D8DCD3` | `#303744` | Standard separators and outlines |
-| `--color-border-strong` | `#B8BEB4` | `#49515E` | Emphasized boundaries |
+| `--color-border-strong` | `#888F85` | `#606A7A` | Emphasized boundaries |
 | `--color-icon` | `#646A70` | `#B7BDC6` | Default icon color |
 | `--color-overlay` | `rgb(8 12 16 / 58%)` | `rgb(4 8 12 / 72%)` | Artwork text overlay |
 | `--color-accent` | `#667F00` | `#D7FF55` | Accent text, icon, and outline |
@@ -226,6 +226,7 @@ argument order of CSS `light-dark()`.
 | `--color-on-accent` | `#15171A` | `#0B0D12` | Content on an accent fill |
 | `--color-social` | `#7755C6` | `#9A72E8` | Social metadata and activity |
 | `--color-focus` | `#667F00` | `#D7FF55` | Keyboard focus indicator |
+| `--color-artwork-fallback` | `#0B0D12` | `#0B0D12` | Backdrop behind slow or missing artwork |
 
 ### Theme behavior
 
@@ -258,7 +259,7 @@ The token layer is the theme implementation:
     --color-text-secondary: light-dark(#62676e, #a8adb6);
     --color-text-tertiary: light-dark(#858b92, #747b86);
     --color-border: light-dark(#d8dcd3, #303744);
-    --color-border-strong: light-dark(#b8beb4, #49515e);
+    --color-border-strong: light-dark(#888f85, #606a7a);
     --color-icon: light-dark(#646a70, #b7bdc6);
     --color-overlay: light-dark(
       rgb(8 12 16 / 58%),
@@ -268,6 +269,7 @@ The token layer is the theme implementation:
     --color-accent-fill: #d7ff55;
     --color-on-accent: light-dark(#15171a, #0b0d12);
     --color-social: light-dark(#7755c6, #9a72e8);
+    --color-artwork-fallback: #0b0d12;
     --color-focus: light-dark(#667f00, #d7ff55);
   }
 }
@@ -319,6 +321,8 @@ layered imports:
 @import url('./base.css') layer(base);
 @import url('./utilities.css') layer(utilities);
 ```
+
+Repeat the complete order declaration before rules in lazy-loaded Vue CSS modules because a route chunk can reach the browser before the global entry; the repeated declaration preserves the same order without creating new layers.
 
 - `reset` normalizes browser defaults without styling product components.
 - `vendor` contains third-party CSS and stays below product rules.
@@ -631,6 +635,13 @@ Desktop:
 - Use a two-column field grid only when each field remains at least `260px` wide.
 - Keep the primary action visible without shrinking fields or labels.
 - Do not preselect legal consent.
+
+### Approved authentication artwork
+
+- The two collage originals in `designs/artwork/` are the approved production sources for sign-in and registration; generated reference PNG artwork must not be extracted or shipped.
+- Use the portrait composition below `64rem`, keeping forms in its dark lower area, and the landscape composition from `64rem`, keeping forms in its dark left area.
+- Keep the originals unchanged as design inputs. Serve committed content-hashed AVIF and WebP derivatives as static public assets through a native `<picture>` so each viewport downloads one appropriate source.
+- Use the same artwork in light and dark schemes. Preserve text contrast with semantic overlay and surface tokens rather than altering the artwork colors.
 
 ### Personal dashboard
 

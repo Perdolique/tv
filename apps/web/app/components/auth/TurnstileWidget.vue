@@ -1,8 +1,8 @@
 <template>
-  <div>
-    <div ref="container" />
+  <div :class="$style.component">
+    <div ref="container" :class="$style.container" />
 
-    <p v-if="hasChallengeError" role="alert">
+    <p v-if="hasChallengeError" :class="$style.error" role="alert">
       The security check is unavailable. Refresh the page and try again.
     </p>
   </div>
@@ -131,3 +131,25 @@
 
   defineExpose({ reset })
 </script>
+
+<style module>
+  @layer reset, vendor, tokens, base, components, utilities;
+
+  @layer components {
+    .component {
+      display: grid;
+      gap: var(--space-2);
+      min-inline-size: 0;
+    }
+
+    .container {
+      min-inline-size: 0;
+    }
+
+    .error {
+      color: var(--color-danger);
+      font-size: 0.875rem;
+      line-height: 1.43;
+    }
+  }
+</style>

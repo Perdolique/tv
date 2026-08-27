@@ -1,8 +1,12 @@
 <template>
-  <AuthCard :title="title">
-    <template #notice>
+  <AuthCard
+    :class="$style.component"
+    description="Build your watchlist in a minute."
+    :title="title"
+  >
+    <template v-if="hasSessionWarning" #notice>
       <p
-        v-if="hasSessionWarning"
+        :class="$style.notice"
         role="status"
       >
         We couldn’t verify your current session. You can still register.
@@ -11,34 +15,20 @@
 
     <form
       v-if="showsEmailForm"
+      :class="$style.form"
       novalidate
       @submit.prevent="requestVerification"
     >
-      <div>
-        <label :for="emailId">
-          Email
-        </label>
-
-        <input
-          :id="emailId"
-          ref="emailInput"
-          v-model="email"
-          :aria-describedby="emailDescribedBy"
-          :aria-invalid="isEmailInvalid"
-          autocomplete="email"
-          inputmode="email"
-          required
-          type="email"
-        >
-
-        <p v-if="isEmailInvalid" :id="emailErrorId">
-          {{ emailError }}
-        </p>
-      </div>
+      <EmailField
+        ref="emailField"
+        v-model="email"
+        :error="emailError"
+      />
 
       <p
         v-if="hasFormError"
         ref="formError"
+        :class="$style.formError"
         role="alert"
         tabindex="-1"
       >
@@ -51,23 +41,28 @@
         :action="TURNSTILE_ACTIONS.register"
       />
 
-      <button :disabled="isEmailSubmitDisabled" type="submit">
+      <button
+        :class="$style.primaryButton"
+        :disabled="isEmailSubmitDisabled"
+        type="submit"
+      >
         Email me a verification link
       </button>
     </form>
 
-    <div v-else-if="showsCheckEmail">
-      <p role="status">
+    <div v-else-if="showsCheckEmail" :class="$style.state">
+      <p :class="$style.stateMessage" role="status">
         Check your email for the next step. If the address can be used, a message is on its way.
       </p>
 
-      <button type="button" @click="startAgain">
+      <button :class="$style.secondaryButton" type="button" @click="startAgain">
         Use a different email
       </button>
     </div>
 
     <form
       v-else-if="showsPasswordForm"
+      :class="$style.form"
       novalidate
       @submit.prevent="completeRegistration"
     >
@@ -86,34 +81,44 @@
       <p
         v-if="hasFormError"
         ref="formError"
+        :class="$style.formError"
         role="alert"
         tabindex="-1"
       >
         {{ formError }}
       </p>
 
-      <button :disabled="isSubmitting" type="submit">
+      <button
+        :class="$style.primaryButton"
+        :disabled="isSubmitting"
+        type="submit"
+      >
         Create account
       </button>
     </form>
 
-    <div v-else>
+    <div v-else :class="$style.state">
       <p
         ref="verificationError"
+        :class="$style.formError"
         role="alert"
         tabindex="-1"
       >
         This verification link is invalid or has expired.
       </p>
 
-      <NuxtLink :to="registerLocation" @click="startAgain">
+      <NuxtLink
+        :class="$style.stateLink"
+        :to="registerLocation"
+        @click="startAgain"
+      >
         Start registration again
       </NuxtLink>
     </div>
 
     <template #footer>
       Already have an account?
-      <NuxtLink :to="signInLocation">
+      <NuxtLink :class="$style.footerLink" :to="signInLocation">
         Sign in
       </NuxtLink>
     </template>
@@ -126,8 +131,9 @@
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { TURNSTILE_ACTIONS, TURNSTILE_RESPONSE_FIELD } from '@tv/shared/turnstile'
   import * as v from 'valibot'
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
+  import EmailField from '~/components/auth/EmailField.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import TurnstileWidget from '~/components/auth/TurnstileWidget.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
@@ -160,13 +166,11 @@
   const isSubmitting = ref(false)
   const isPasswordVisible = ref(false)
   const turnstileToken = ref('')
-  const emailInput = useTemplateRef('emailInput')
+  const emailField = useTemplateRef('emailField')
   const passwordField = useTemplateRef('passwordField')
   const turnstileWidget = useTemplateRef('turnstileWidget')
   const formErrorElement = useTemplateRef('formError')
   const verificationError = useTemplateRef('verificationError')
-  const emailId = useId()
-  const emailErrorId = useId()
   const redirectTo = computed(() => sanitizeRedirectTo(route.query.redirectTo))
 
   const registerLocation = computed(() => {
@@ -192,8 +196,6 @@
   const showsPasswordForm = computed(() => mode.value === 'password')
   const emailError = computed(() => fields.value.email)
   const passwordError = computed(() => fields.value.password)
-  const isEmailInvalid = computed(() => emailError.value !== undefined)
-  const emailDescribedBy = computed(() => isEmailInvalid.value ? emailErrorId : undefined)
   const hasFormError = computed(() => formError.value !== '')
   const hasSessionWarning = computed(() => state.value.status === 'error')
 
@@ -268,7 +270,7 @@
     await nextTick()
 
     if (emailError.value !== undefined) {
-      emailInput.value?.focus()
+      emailField.value?.focus()
 
       return
     }
@@ -289,7 +291,7 @@
     isPasswordVisible.value = false
     mode.value = 'email'
     await nextTick()
-    emailInput.value?.focus()
+    emailField.value?.focus()
   }
 
   function togglePasswordVisibility(): void {
@@ -393,3 +395,81 @@
     }
   }
 </script>
+
+<style module>
+  @layer reset, vendor, tokens, base, components, utilities;
+
+  @layer components {
+    .component {
+      --auth-form-gap: var(--space-5);
+    }
+
+    .form,
+    .state {
+      display: grid;
+      gap: var(--auth-form-gap);
+    }
+
+    .notice,
+    .formError,
+    .stateMessage {
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-sm);
+      background: var(--color-surface-muted);
+    }
+
+    .formError {
+      color: var(--color-danger);
+    }
+
+    .primaryButton,
+    .secondaryButton {
+      min-block-size: 3.5rem;
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-md);
+      font-weight: 700;
+      cursor: pointer;
+      transition:
+        filter var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-standard);
+    }
+
+    .primaryButton {
+      border: 0;
+      background: var(--color-accent-fill);
+      color: var(--color-on-accent);
+    }
+
+    .secondaryButton {
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-surface);
+      color: var(--color-text-primary);
+    }
+
+    .primaryButton:hover:not(:disabled),
+    .secondaryButton:hover:not(:disabled) {
+      filter: brightness(0.96);
+    }
+
+    .primaryButton:active:not(:disabled),
+    .secondaryButton:active:not(:disabled) {
+      transform: translateY(0.0625rem);
+    }
+
+    .primaryButton:disabled,
+    .secondaryButton:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .stateLink,
+    .footerLink {
+      font-weight: 600;
+      text-underline-offset: 0.2em;
+    }
+
+    .stateLink {
+      justify-self: start;
+    }
+  }
+</style>

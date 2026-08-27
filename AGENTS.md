@@ -4,6 +4,11 @@
 
 - Use `vp` for package manager commands run locally by users, agents, and Git hooks.
 
+## UI implementation
+
+- Read `apps/web/DESIGN.md` before changing UI, styling, themes, or responsive behavior.
+- Treat its semantic tokens and component rules as the design source of truth.
+
 ## Verification
 
 - Run applicable checks in parallel where practical.

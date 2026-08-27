@@ -18,6 +18,8 @@ TV helps people discover movies and series, keep track of what interests them, a
 - Drizzle ORM for schemas, queries, and migrations.
 - Vitest and Playwright for automated testing.
 
+The web application follows the [TV design specification](apps/web/DESIGN.md).
+
 ## Local development
 
 Install dependencies:
