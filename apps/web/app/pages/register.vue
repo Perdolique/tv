@@ -1,49 +1,41 @@
 <template>
-  <AuthCard :title="title">
-    <template #notice>
-      <p
-        v-if="hasSessionWarning"
-        role="status"
-      >
+  <AuthCard
+    description="Build your watchlist in a minute."
+    :marketing-items="registerMarketingItems"
+    marketing-title="Your next obsession starts here."
+    :title="title"
+  >
+    <template v-if="hasSessionWarning" #notice>
+      <AppMessage role="status">
         We couldn’t verify your current session. You can still register.
-      </p>
+      </AppMessage>
     </template>
 
-    <form
+    <AuthForm
       v-if="showsEmailForm"
-      novalidate
-      @submit.prevent="requestVerification"
+      :disabled="isEmailSubmitDisabled"
+      submit-label="Email me a verification link"
+      @submit="requestVerification"
     >
-      <div>
-        <label :for="emailId">
-          Email
-        </label>
+      <AuthTextField
+        ref="emailField"
+        v-model="email"
+        autocomplete="email"
+        :error="emailError"
+        inputmode="email"
+        label="Email"
+        type="email"
+      />
 
-        <input
-          :id="emailId"
-          ref="emailInput"
-          v-model="email"
-          :aria-describedby="emailDescribedBy"
-          :aria-invalid="isEmailInvalid"
-          autocomplete="email"
-          inputmode="email"
-          required
-          type="email"
-        >
-
-        <p v-if="isEmailInvalid" :id="emailErrorId">
-          {{ emailError }}
-        </p>
-      </div>
-
-      <p
+      <AppMessage
         v-if="hasFormError"
         ref="formError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         {{ formError }}
-      </p>
+      </AppMessage>
 
       <TurnstileWidget
         ref="turnstileWidget"
@@ -51,25 +43,23 @@
         :action="TURNSTILE_ACTIONS.register"
       />
 
-      <button :disabled="isEmailSubmitDisabled" type="submit">
-        Email me a verification link
-      </button>
-    </form>
+    </AuthForm>
 
-    <div v-else-if="showsCheckEmail">
-      <p role="status">
+    <div v-else-if="showsCheckEmail" :class="$style.state">
+      <AppMessage role="status">
         Check your email for the next step. If the address can be used, a message is on its way.
-      </p>
+      </AppMessage>
 
-      <button type="button" @click="startAgain">
+      <AppButton variant="secondary" @click="startAgain">
         Use a different email
-      </button>
+      </AppButton>
     </div>
 
-    <form
+    <AuthForm
       v-else-if="showsPasswordForm"
-      novalidate
-      @submit.prevent="completeRegistration"
+      :disabled="isSubmitting"
+      submit-label="Create account"
+      @submit="completeRegistration"
     >
       <PasswordField
         ref="passwordField"
@@ -83,30 +73,32 @@
         @toggle="togglePasswordVisibility"
       />
 
-      <p
+      <AppMessage
         v-if="hasFormError"
         ref="formError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         {{ formError }}
-      </p>
+      </AppMessage>
+    </AuthForm>
 
-      <button :disabled="isSubmitting" type="submit">
-        Create account
-      </button>
-    </form>
-
-    <div v-else>
-      <p
+    <div v-else :class="$style.state">
+      <AppMessage
         ref="verificationError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         This verification link is invalid or has expired.
-      </p>
+      </AppMessage>
 
-      <NuxtLink :to="registerLocation" @click="startAgain">
+      <NuxtLink
+        :class="$style.stateLink"
+        :to="registerLocation"
+        @click="startAgain"
+      >
         Start registration again
       </NuxtLink>
     </div>
@@ -126,11 +118,16 @@
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { TURNSTILE_ACTIONS, TURNSTILE_RESPONSE_FIELD } from '@tv/shared/turnstile'
   import * as v from 'valibot'
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
+  import AuthForm from '~/components/auth/AuthForm.vue'
+  import AuthTextField from '~/components/auth/AuthTextField.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import TurnstileWidget from '~/components/auth/TurnstileWidget.vue'
+  import AppButton from '~/components/ui/AppButton.vue'
+  import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
+  import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
   import type { AuthFieldErrors, RegistrationNotice } from '~/types/auth.ts'
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
   import { registrationCompletionResponseSchema, registrationResponseSchema } from '~/utils/auth-response.ts'
@@ -142,9 +139,16 @@
   definePageMeta({ middleware: 'guest' })
   useHead({ title: 'Create account · TV' })
 
+  const registerMarketingItems = [
+    'Personal calendar',
+    'Ratings that matter',
+    'Watch with friends'
+  ] as const
+
   const route = useRoute()
   const requestFetch = useRequestFetch()
   const { state } = useAuthSession()
+  const requestCancellation = useRequestCancellation()
 
   const registrationNotice = useState<RegistrationNotice | null>(
     'registration-notice',
@@ -160,13 +164,11 @@
   const isSubmitting = ref(false)
   const isPasswordVisible = ref(false)
   const turnstileToken = ref('')
-  const emailInput = useTemplateRef('emailInput')
+  const emailField = useTemplateRef('emailField')
   const passwordField = useTemplateRef('passwordField')
   const turnstileWidget = useTemplateRef('turnstileWidget')
   const formErrorElement = useTemplateRef('formError')
   const verificationError = useTemplateRef('verificationError')
-  const emailId = useId()
-  const emailErrorId = useId()
   const redirectTo = computed(() => sanitizeRedirectTo(route.query.redirectTo))
 
   const registerLocation = computed(() => {
@@ -192,8 +194,6 @@
   const showsPasswordForm = computed(() => mode.value === 'password')
   const emailError = computed(() => fields.value.email)
   const passwordError = computed(() => fields.value.password)
-  const isEmailInvalid = computed(() => emailError.value !== undefined)
-  const emailDescribedBy = computed(() => isEmailInvalid.value ? emailErrorId : undefined)
   const hasFormError = computed(() => formError.value !== '')
   const hasSessionWarning = computed(() => state.value.status === 'error')
 
@@ -268,7 +268,7 @@
     await nextTick()
 
     if (emailError.value !== undefined) {
-      emailInput.value?.focus()
+      emailField.value?.focus()
 
       return
     }
@@ -289,7 +289,7 @@
     isPasswordVisible.value = false
     mode.value = 'email'
     await nextTick()
-    emailInput.value?.focus()
+    emailField.value?.focus()
   }
 
   function togglePasswordVisibility(): void {
@@ -297,6 +297,10 @@
   }
 
   async function requestVerification(): Promise<void> {
+    if (isSubmitting.value) {
+      return
+    }
+
     resetErrors()
 
     const validation = validateEmail(email.value)
@@ -310,6 +314,8 @@
 
     isSubmitting.value = true
 
+    const controller = requestCancellation.start()
+
     try {
       const response = await requestFetch('/api/auth/register', {
         body: {
@@ -318,24 +324,39 @@
           redirectTo: redirectTo.value
         },
 
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       })
+
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
 
       v.parse(registrationResponseSchema, response)
       mode.value = 'check-email'
     } catch (error) {
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
+
       const parsedError = parseAuthError(getFetchErrorData(error))
 
       fields.value = parsedError.fields
       formError.value = parsedError.message
       await focusFirstError()
     } finally {
-      turnstileWidget.value?.reset()
-      isSubmitting.value = false
+      if (requestCancellation.finish(controller)) {
+        turnstileWidget.value?.reset()
+        isSubmitting.value = false
+      }
     }
   }
 
   async function completeRegistration(): Promise<void> {
+    if (isSubmitting.value) {
+      return
+    }
+
     resetErrors()
 
     const validation = validatePassword(password.value)
@@ -349,6 +370,8 @@
 
     isSubmitting.value = true
 
+    const controller = requestCancellation.start()
+
     try {
       const response = await requestFetch('/api/auth/register/complete', {
         body: {
@@ -356,8 +379,13 @@
           token: token.value
         },
 
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       })
+
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
 
       const account = v.parse(registrationCompletionResponseSchema, response)
       const safeRedirectTo = sanitizeRedirectTo(account.redirectTo)
@@ -375,6 +403,10 @@
 
       registrationNotice.value = null
     } catch (error) {
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
+
       const parsedError = parseAuthError(getFetchErrorData(error))
 
       if (parsedError.code === 'INVALID_VERIFICATION') {
@@ -389,7 +421,26 @@
       formError.value = parsedError.message
       await focusFirstError()
     } finally {
-      isSubmitting.value = false
+      if (requestCancellation.finish(controller)) {
+        isSubmitting.value = false
+      }
     }
   }
 </script>
+
+<style module>
+  @layer reset, vendor, tokens, base, components, utilities;
+
+  @layer components {
+    .state {
+      display: grid;
+      gap: var(--space-5);
+    }
+
+    .stateLink {
+      font-weight: 600;
+      text-underline-offset: 0.2em;
+      justify-self: start;
+    }
+  }
+</style>

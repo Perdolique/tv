@@ -1,43 +1,40 @@
 <template>
-  <AuthCard title="Welcome back">
-    <template #notice>
-      <p
+  <AuthCard
+    description="Sign in to track every story."
+    :marketing-items="signInMarketingItems"
+    marketing-title="Every story, right on time."
+    title="Welcome back"
+  >
+    <template v-if="hasNotice" #notice>
+      <AppMessage
         v-if="showsRegistrationNotice"
         role="status"
       >
         Account created. Sign in to continue.
-      </p>
+      </AppMessage>
 
-      <p
+      <AppMessage
         v-if="hasSessionWarning"
         role="status"
       >
         We couldn’t verify your current session. You can still sign in.
-      </p>
+      </AppMessage>
     </template>
 
-    <form novalidate @submit.prevent="submit">
-      <div>
-        <label :for="emailId">
-          Email
-        </label>
-
-        <input
-          :id="emailId"
-          ref="emailInput"
-          v-model="email"
-          :aria-describedby="emailDescribedBy"
-          :aria-invalid="isEmailInvalid"
-          autocomplete="email"
-          inputmode="email"
-          required
-          type="email"
-        >
-
-        <p v-if="isEmailInvalid" :id="emailErrorId">
-          {{ emailError }}
-        </p>
-      </div>
+    <AuthForm
+      :disabled="isSubmitDisabled"
+      submit-label="Sign in"
+      @submit="submit"
+    >
+      <AuthTextField
+        ref="emailField"
+        v-model="email"
+        autocomplete="email"
+        :error="emailError"
+        inputmode="email"
+        label="Email"
+        type="email"
+      />
 
       <PasswordField
         ref="passwordField"
@@ -50,14 +47,15 @@
         @toggle="togglePasswordVisibility"
       />
 
-      <p
+      <AppMessage
         v-if="hasFormError"
         ref="formError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         {{ formError }}
-      </p>
+      </AppMessage>
 
       <TurnstileWidget
         ref="turnstileWidget"
@@ -65,10 +63,7 @@
         :action="TURNSTILE_ACTIONS.signIn"
       />
 
-      <button :disabled="isSubmitDisabled" type="submit">
-        Sign in
-      </button>
-    </form>
+    </AuthForm>
 
     <template #footer>
       New to TV?
@@ -85,11 +80,15 @@
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { TURNSTILE_ACTIONS, TURNSTILE_RESPONSE_FIELD } from '@tv/shared/turnstile'
   import * as v from 'valibot'
-  import { computed, nextTick, ref, useId, useTemplateRef } from 'vue'
+  import { computed, nextTick, ref, useTemplateRef } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
+  import AuthForm from '~/components/auth/AuthForm.vue'
+  import AuthTextField from '~/components/auth/AuthTextField.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import TurnstileWidget from '~/components/auth/TurnstileWidget.vue'
+  import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
+  import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
   import type { AuthFieldErrors, RegistrationNotice } from '~/types/auth.ts'
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
   import { signInResponseSchema } from '~/utils/auth-response.ts'
@@ -98,9 +97,16 @@
   definePageMeta({ middleware: 'guest' })
   useHead({ title: 'Sign in · TV' })
 
+  const signInMarketingItems = [
+    'Track releases',
+    'Rate what you watch',
+    'Follow friends'
+  ] as const
+
   const route = useRoute()
   const requestFetch = useRequestFetch()
   const { setAuthenticated, state } = useAuthSession()
+  const requestCancellation = useRequestCancellation()
 
   const registrationNotice = useState<RegistrationNotice | null>(
     'registration-notice',
@@ -119,12 +125,10 @@
 
   registrationNotice.value = null
 
-  const emailInput = useTemplateRef('emailInput')
+  const emailField = useTemplateRef('emailField')
   const passwordField = useTemplateRef('passwordField')
   const formErrorElement = useTemplateRef('formError')
   const turnstileWidget = useTemplateRef('turnstileWidget')
-  const emailId = useId()
-  const emailErrorId = useId()
   const redirectTo = computed(() => sanitizeRedirectTo(route.query.redirectTo))
 
   const registerLocation = computed(() => {
@@ -136,10 +140,9 @@
 
   const emailError = computed(() => fields.value.email)
   const passwordError = computed(() => fields.value.password)
-  const isEmailInvalid = computed(() => emailError.value !== undefined)
-  const emailDescribedBy = computed(() => isEmailInvalid.value ? emailErrorId : undefined)
   const hasFormError = computed(() => formError.value !== '')
   const hasSessionWarning = computed(() => state.value.status === 'error')
+  const hasNotice = computed(() => showsRegistrationNotice.value || hasSessionWarning.value)
 
   const isSubmitDisabled = computed(() => (
     isSubmitting.value || turnstileToken.value === ''
@@ -153,7 +156,7 @@
     await nextTick()
 
     if (emailError.value !== undefined) {
-      emailInput.value?.focus()
+      emailField.value?.focus()
 
       return
     }
@@ -172,6 +175,10 @@
   }
 
   async function submit(): Promise<void> {
+    if (isSubmitting.value) {
+      return
+    }
+
     formError.value = ''
     fields.value = {}
 
@@ -186,6 +193,8 @@
 
     isSubmitting.value = true
 
+    const controller = requestCancellation.start()
+
     try {
       const response = await requestFetch('/api/auth/sign-in', {
         body: {
@@ -194,22 +203,33 @@
           password: validation.payload.password
         },
 
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       })
+
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
 
       const { user } = v.parse(signInResponseSchema, response)
 
       setAuthenticated(user)
       await navigateTo(redirectTo.value, { replace: true })
     } catch (error) {
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
+
       const parsedError = parseAuthError(getFetchErrorData(error))
 
       fields.value = parsedError.fields
       formError.value = parsedError.message
       await focusFirstError()
     } finally {
-      turnstileWidget.value?.reset()
-      isSubmitting.value = false
+      if (requestCancellation.finish(controller)) {
+        turnstileWidget.value?.reset()
+        isSubmitting.value = false
+      }
     }
   }
 </script>

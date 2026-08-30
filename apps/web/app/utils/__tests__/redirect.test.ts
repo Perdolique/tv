@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest'
 
 describe(sanitizeRedirectTo, () => {
   it.each([
-    ['/catalog?query=dark#results', '/catalog?query=dark#results'],
+    ['/catalog?query=dark#results', '/catalog?query=dark'],
     ['/', '/'],
     ['/shows/42', '/shows/42']
-  ])('keeps the internal target %s', (value, expected) => {
+  ])('keeps the safe part of internal target %s', (value, expected) => {
     expect(sanitizeRedirectTo(value)).toBe(expected)
   })
 

@@ -1,40 +1,43 @@
 <template>
-  <div>
-    <label :for="inputId">
-      {{ label }}
-    </label>
-
-    <input
-      :id="inputId"
-      ref="input"
-      v-model="model"
-      :aria-describedby="describedBy"
-      :aria-invalid="isInvalid"
-      :autocomplete="autocomplete"
-      required
-      :type="inputType"
-    >
-
-    <p v-if="hasHint" :id="hintId">
-      {{ hint }}
-    </p>
-
-    <p v-if="hasError" :id="errorId">
-      {{ error }}
-    </p>
-
-    <button
-      v-if="hasToggle"
-      type="button"
-      @click="toggleVisibility"
-    >
-      {{ toggleLabel }}
-    </button>
-  </div>
+  <AuthTextField
+    ref="field"
+    v-model="model"
+    :autocomplete="autocomplete"
+    :error="error"
+    :hint="hint"
+    :label="label"
+    :type="inputType"
+  >
+    <template v-if="hasToggle" #trailing>
+      <button
+        :aria-label="toggleLabel"
+        :class="$style.toggle"
+        type="button"
+        @click="toggleVisibility"
+      >
+        <Icon
+          v-if="visible"
+          :class="$style.toggleIcon"
+          aria-hidden="true"
+          mode="svg"
+          name="hugeicons:view-off-slash"
+        />
+        <Icon
+          v-else
+          :class="$style.toggleIcon"
+          aria-hidden="true"
+          mode="svg"
+          name="hugeicons:view"
+        />
+      </button>
+    </template>
+  </AuthTextField>
 </template>
 
 <script lang="ts" setup>
-  import { computed, useId, useTemplateRef } from 'vue'
+  import { Icon } from '#components'
+  import { computed, useTemplateRef } from 'vue'
+  import AuthTextField from '~/components/auth/AuthTextField.vue'
 
   interface Props {
     autocomplete: 'current-password' | 'new-password';
@@ -60,32 +63,12 @@
 
   const emit = defineEmits<Emits>()
   const model = defineModel<string>({ required: true })
-  const input = useTemplateRef('input')
-  const inputId = useId()
-  const hintId = useId()
-  const errorId = useId()
+  const field = useTemplateRef('field')
   const inputType = computed(() => visible ? 'text' : 'password')
-  const isInvalid = computed(() => error !== undefined)
-  const hasError = computed(() => error !== undefined)
-  const hasHint = computed(() => hint !== undefined)
   const hasToggle = computed(() => toggleLabel !== undefined)
 
-  const describedBy = computed(() => {
-    const ids: string[] = []
-
-    if (hasHint.value) {
-      ids.push(hintId)
-    }
-
-    if (hasError.value) {
-      ids.push(errorId)
-    }
-
-    return ids.length > 0 ? ids.join(' ') : undefined
-  })
-
   function focus(): void {
-    input.value?.focus()
+    field.value?.focus()
   }
 
   function toggleVisibility(): void {
@@ -94,3 +77,45 @@
 
   defineExpose({ focus })
 </script>
+
+<style module>
+  @layer reset, vendor, tokens, base, components, utilities;
+
+  @layer components {
+    .toggle {
+      position: absolute;
+      inset-block-start: var(--space-1);
+      inset-inline-end: var(--space-2);
+      display: grid;
+      place-items: center;
+      block-size: 2.75rem;
+      inline-size: 2.75rem;
+      padding: 0;
+      border: 0;
+      border-radius: var(--radius-round);
+      background: transparent;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition:
+        background-color var(--duration-fast) var(--ease-standard),
+        color var(--duration-fast) var(--ease-standard);
+    }
+
+    .toggle:hover {
+      background: var(--color-surface-muted);
+      color: var(--color-text-primary);
+    }
+
+    .toggleIcon {
+      display: block;
+      block-size: 1.5rem;
+      inline-size: 1.5rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .toggle {
+        transition: none;
+      }
+    }
+  }
+</style>

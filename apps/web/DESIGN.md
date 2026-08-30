@@ -1,8 +1,6 @@
 # TV design specification
 
-> Status: active design source of truth  
-> Version: 1.1  
-> Last updated: 2026-08-20
+> Status: active design source of truth · Version: 1.4 · Last updated: 2026-08-30
 
 ## Purpose
 
@@ -218,7 +216,7 @@ argument order of CSS `light-dark()`.
 | `--color-text-secondary` | `#62676E` | `#A8ADB6` | Supporting copy and metadata |
 | `--color-text-tertiary` | `#858B92` | `#747B86` | Disabled and low-priority copy |
 | `--color-border` | `#D8DCD3` | `#303744` | Standard separators and outlines |
-| `--color-border-strong` | `#B8BEB4` | `#49515E` | Emphasized boundaries |
+| `--color-border-strong` | `#888F85` | `#606A7A` | Emphasized boundaries |
 | `--color-icon` | `#646A70` | `#B7BDC6` | Default icon color |
 | `--color-overlay` | `rgb(8 12 16 / 58%)` | `rgb(4 8 12 / 72%)` | Artwork text overlay |
 | `--color-accent` | `#667F00` | `#D7FF55` | Accent text, icon, and outline |
@@ -226,6 +224,8 @@ argument order of CSS `light-dark()`.
 | `--color-on-accent` | `#15171A` | `#0B0D12` | Content on an accent fill |
 | `--color-social` | `#7755C6` | `#9A72E8` | Social metadata and activity |
 | `--color-focus` | `#667F00` | `#D7FF55` | Keyboard focus indicator |
+| `--color-danger` | `#A82F2F` | `#FF8A8A` | Validation and destructive text and outlines |
+| `--color-artwork-fallback` | `#0B0D12` | `#0B0D12` | Backdrop behind slow or missing artwork |
 
 ### Theme behavior
 
@@ -258,7 +258,7 @@ The token layer is the theme implementation:
     --color-text-secondary: light-dark(#62676e, #a8adb6);
     --color-text-tertiary: light-dark(#858b92, #747b86);
     --color-border: light-dark(#d8dcd3, #303744);
-    --color-border-strong: light-dark(#b8beb4, #49515e);
+    --color-border-strong: light-dark(#888f85, #606a7a);
     --color-icon: light-dark(#646a70, #b7bdc6);
     --color-overlay: light-dark(
       rgb(8 12 16 / 58%),
@@ -268,7 +268,9 @@ The token layer is the theme implementation:
     --color-accent-fill: #d7ff55;
     --color-on-accent: light-dark(#15171a, #0b0d12);
     --color-social: light-dark(#7755c6, #9a72e8);
+    --color-artwork-fallback: #0b0d12;
     --color-focus: light-dark(#667f00, #d7ff55);
+    --color-danger: light-dark(#a82f2f, #ff8a8a);
   }
 }
 ```
@@ -319,6 +321,8 @@ layered imports:
 @import url('./base.css') layer(base);
 @import url('./utilities.css') layer(utilities);
 ```
+
+Repeat the complete order declaration before rules in lazy-loaded Vue CSS modules because a route chunk can reach the browser before the global entry; the repeated declaration preserves the same order without creating new layers.
 
 - `reset` normalizes browser defaults without styling product components.
 - `vendor` contains third-party CSS and stays below product rules.
@@ -385,11 +389,10 @@ Vue single-file component styles belong to the component layer:
 Use one variable sans-serif family throughout the product.
 
 ```css
---font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+--font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
 ```
 
-If Inter is not bundled, use the system stack until font loading is implemented.
-Do not mix Inter and Manrope across screens.
+Bundle one normal Inter variable face covering weights 100 through 900 with Nuxt Fonts and the Fontsource provider. Keep the system stack as a fallback and do not mix Inter and Manrope across screens.
 
 | Style | Mobile | Tablet and desktop | Weight | Use |
 | --- | --- | --- | ---: | --- |
@@ -505,7 +508,7 @@ profile access, safe-area handling, and content gutters.
 - Mobile authenticated pages use a compact top bar and four-item bottom bar.
 - Tablet application pages use the compact navigation rail.
 - Desktop application pages use the labeled sidebar.
-- Auth pages use only the TV wordmark and Back action.
+- Auth pages use only the TV wordmark; they do not show Back or authenticated application navigation.
 - Focused add/request flow may hide mobile global navigation.
 
 ### Buttons
@@ -532,9 +535,9 @@ but must remain readable.
 ### Inputs
 
 - Default height is `52px`; compact desktop filters may use `40px`.
-- Labels remain visible outside the field when a value exists.
+- Authentication fields show their label inside while empty, then compact it above the value inside the same fixed-height control on focus, value, or error; focus and label state changes never move the control or surrounding content. Other product forms keep visible labels outside the field.
 - Placeholder text is never the only accessible label.
-- Error state includes message, icon, and danger border; not color alone.
+- Error state includes a message and danger border rather than relying on color alone; a semantic status icon is optional, and authentication fields do not use decorative leading icons.
 - Search uses a leading search icon and a clear action when populated.
 - Text areas expose character limits only when limits matter.
 
@@ -617,20 +620,26 @@ Desktop:
 ### Login
 
 - Ask for email and password.
-- Include password visibility, remember-me, password recovery, primary sign-in,
-  provider sign-in, and sign-up link.
-- Keep Back and TV wordmark available.
+- Include password visibility, primary sign-in, and the sign-up link.
+- Keep the TV wordmark available without adding Back.
+- Do not add remember-me, password recovery, or provider sign-in until those destinations and behaviors are delivered.
 - Do not show authenticated application navigation.
-- On tablet and desktop, pair the form with cinematic artwork without placing
-  fields over the artwork.
+- On tablet, center the form card on a quiet semantic surface without reserving empty space for unavailable artwork.
+- On desktop, center the form on a separate canvas in the left half and keep page-specific marketing on a muted right panel; approved artwork may replace the muted panel later.
 
 ### Sign-up
 
-- Ask for display name, email, password, confirmation, and terms consent.
-- Show password strength with bars and text.
-- Use a two-column field grid only when each field remains at least `260px` wide.
-- Keep the primary action visible without shrinking fields or labels.
-- Do not preselect legal consent.
+- Use the delivered email-first sequence: email entry, check-email confirmation, password choice, and invalid or expired verification link.
+- Ask only for the data required by the active state; do not add display name, password confirmation, terms consent, or provider sign-in from the generated references.
+- Keep the primary action visible without shrinking fields or labels, and use the same responsive auth shell as Login.
+
+### Authentication media surface
+
+- No production authentication artwork is currently approved or shipped; generated reference PNG artwork must not be extracted or served.
+- Do not imitate missing artwork with decorative gradients, overlays, or an empty media band.
+- Until replacement artwork is approved, mobile uses the canvas directly, tablet uses a centered surface card on a muted canvas, and desktop uses the form on the canvas at left with a muted editorial panel on the right.
+- Keep fields on an opaque surface rather than over future artwork, and preserve the current layout geometry when artwork loads.
+- Generated Back actions, decorative field icons, marketing icons, and unsupported authentication controls are illustrative rather than production requirements.
 
 ### Personal dashboard
 
@@ -818,6 +827,7 @@ Verify at minimum:
 - `390 x 844` in light and dark themes;
 - `768 x 1024` in light and dark themes;
 - `1440 x 1024` in light and dark themes;
+- `1366 x 768` for authentication pages without vertical scrolling;
 - one narrow viewport near `320px`;
 - one width immediately before and after each breakpoint.
 

@@ -31,7 +31,7 @@ export default defineNuxtConfig({
   },
 
   css: [
-    '~/assets/styles/reset.css'
+    '~/assets/styles/app.css'
   ],
 
   experimental: {
@@ -49,9 +49,35 @@ export default defineNuxtConfig({
     compatibilityVersion: 5
   },
 
+  icon: {
+    clientBundle: {
+      scan: true,
+      sizeLimitKb: 64
+    },
+
+    provider: 'none'
+  },
+
+  fonts: {
+    families: [{
+      name: 'Inter',
+      provider: 'fontsource',
+      styles: ['normal'],
+      subsets: ['latin'],
+      weights: ['100 900']
+    }],
+
+    provider: 'fontsource'
+  },
+
   imports: {
     autoImport: false
   },
+
+  modules: [
+    '@nuxt/fonts',
+    '@nuxt/icon'
+  ],
 
   runtimeConfig: {
     public: {
@@ -100,6 +126,11 @@ export default defineNuxtConfig({
       htmlAttrs: {
         lang: 'en'
       },
+
+      meta: [{
+        content: 'light dark',
+        name: 'color-scheme'
+      }],
 
       title: 'TV'
     }

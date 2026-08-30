@@ -19,7 +19,7 @@ function sanitizeRedirectTo(value: unknown): string {
       return FALLBACK_REDIRECT
     }
 
-    return `${target.pathname}${target.search}${target.hash}`
+    return `${target.pathname}${target.search}`
   } catch {
     return FALLBACK_REDIRECT
   }
