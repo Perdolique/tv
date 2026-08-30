@@ -13,15 +13,13 @@
         Try again.
       </p>
 
-      <button
+      <AppButton
         ref="retryButton"
-        :class="$style.primaryButton"
         :disabled="isRetrying"
-        type="button"
         @click="retrySession"
       >
         Try again
-      </button>
+      </AppButton>
     </section>
 
     <section v-else-if="isAuthenticated" :class="$style.panel">
@@ -41,19 +39,17 @@
         Signed in as <strong>{{ userEmail }}</strong>
       </p>
 
-      <p v-if="hasSignOutError" :class="$style.error" role="alert">
+      <AppMessage v-if="hasSignOutError" role="alert" tone="danger">
         {{ signOutError }}
-      </p>
+      </AppMessage>
 
-      <button
+      <AppButton
         ref="signOutButton"
-        :class="$style.primaryButton"
         :disabled="isSigningOut"
-        type="button"
         @click="signOut"
       >
         Sign out
-      </button>
+      </AppButton>
     </section>
 
     <section v-else-if="isAnonymous" :class="$style.panel">
@@ -82,6 +78,8 @@
   import { useHead, useRequestFetch, useResponseHeader, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
+  import AppButton from '~/components/ui/AppButton.vue'
+  import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
 
   definePageMeta({ middleware: 'session' })
@@ -241,19 +239,11 @@
       color: var(--color-text-secondary);
     }
 
-    .error {
-      padding: var(--space-3) var(--space-4);
-      border-radius: var(--radius-sm);
-      background: var(--color-surface-muted);
-      color: var(--color-danger);
-    }
-
     .navigation {
       display: grid;
       gap: var(--space-3);
     }
 
-    .primaryButton,
     .primaryLink,
     .secondaryLink {
       min-block-size: 3.5rem;
@@ -264,20 +254,10 @@
       text-decoration: none;
     }
 
-    .primaryButton,
     .primaryLink {
       border: 0;
       background: var(--color-accent-fill);
       color: var(--color-on-accent);
-    }
-
-    .primaryButton {
-      cursor: pointer;
-    }
-
-    .primaryButton:disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
     }
 
     .secondaryLink {

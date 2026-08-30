@@ -1,5 +1,5 @@
 /* oxlint-disable eslint/max-lines -- The auth browser contract stays readable as one lifecycle specification. */
-import type { BrowserContext, Page } from '@playwright/test'
+import type { BrowserContext, Page, Route } from '@playwright/test'
 import { TURNSTILE_RESPONSE_FIELD } from '../../../packages/shared/src/turnstile.ts'
 import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 import { appBaseUrl } from '../constants.ts'
@@ -119,6 +119,11 @@ interface VueRootElement extends HTMLElement {
   __vue_app__?: VueApplication;
 }
 
+interface PausedRequest {
+  readonly count: number;
+  release: () => Promise<void>;
+}
+
 function readTurnstileToken(value: unknown): string {
   if (!isRecord(value) || typeof value[TURNSTILE_RESPONSE_FIELD] !== 'string') {
     throw new Error('Expected a Turnstile token in the auth request')
@@ -210,6 +215,41 @@ async function navigateWithClientRouter(page: Page, target: string): Promise<voi
   }, target)
 }
 
+async function pauseFirstRequest(page: Page, url: string): Promise<PausedRequest> {
+  let firstRoute: Route | null = null
+  let requestCount = 0
+
+  await page.route(url, async (route) => {
+    requestCount += 1
+
+    if (firstRoute === null) {
+      firstRoute = route
+
+      return
+    }
+
+    await route.continue()
+  })
+
+  return {
+    get count() {
+      return requestCount
+    },
+
+    async release() {
+      if (firstRoute === null) {
+        throw new Error('Expected a paused request')
+      }
+
+      try {
+        await firstRoute.continue()
+      } catch {
+        // The application may have already aborted the obsolete request.
+      }
+    }
+  }
+}
+
 test.describe('Authentication routing and SSR', () => {
   test('sets a distinct title after client-side guest navigation', async ({ page }) => {
     await page.goto('/sign-in')
@@ -292,6 +332,66 @@ test.describe('Authentication routing and SSR', () => {
 })
 
 test.describe('Authentication forms', () => {
+  test('blocks repeated registration submissions while the request is pending', async ({ page }) => {
+    const pendingRequest = await pauseFirstRequest(
+      page,
+      `${appBaseUrl}/api/auth/register`
+    )
+
+    await page.goto('/register')
+    await page.getByLabel('Email').fill('viewer@example.com')
+
+    const submitButton = page.getByRole('button', {
+      name: 'Email me a verification link'
+    })
+
+    await expect(submitButton).toBeEnabled()
+    await submitButton.click()
+    await expect.poll(() => pendingRequest.count).toBe(1)
+    await expect(submitButton).toBeDisabled()
+
+    await submitButton.evaluate((button: HTMLButtonElement) => {
+      button.click()
+    })
+
+    await page.waitForTimeout(50)
+    expect(pendingRequest.count).toBe(1)
+
+    await pendingRequest.release()
+    await expect(page.getByText(/Check your email for the next step/u)).toBeVisible()
+  })
+
+  test('cancels an obsolete sign-in before a newer account can be overwritten', async ({ page }) => {
+    const pendingRequest = await pauseFirstRequest(
+      page,
+      `${appBaseUrl}/api/auth/sign-in`
+    )
+
+    await page.goto('/sign-in')
+    await fillSignIn(page, longEmail)
+
+    const firstSubmitButton = page.getByRole('button', { name: 'Sign in' })
+
+    await firstSubmitButton.click()
+    await expect.poll(() => pendingRequest.count).toBe(1)
+    await expect(firstSubmitButton).toBeDisabled()
+    await page.getByRole('link', { name: 'TV home' }).click()
+    await expect(page).toHaveURL(`${appBaseUrl}/`)
+
+    await page.getByRole('link', { name: 'Sign in' }).click()
+    await fillSignIn(page)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect.poll(() => pendingRequest.count).toBe(2)
+    await expect(page.getByText('viewer@example.com')).toBeVisible()
+
+    await pendingRequest.release()
+    await page.waitForTimeout(100)
+    await page.reload()
+
+    await expect(page.getByText('viewer@example.com')).toBeVisible()
+    await expect(page.getByText(longEmail)).toHaveCount(0)
+  })
+
   test('toggles password visibility with an accessible name', async ({ page }) => {
     await page.goto('/sign-in')
 

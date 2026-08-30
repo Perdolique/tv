@@ -5,7 +5,6 @@
 
     --brand-lime-300: #d7ff55;
     --brand-lime-700: #667f00;
-    --status-danger: #d94c4c;
 
     --color-canvas: light-dark(#f7f7f4, #0b0d12);
     --color-surface: light-dark(#ffffff, #151922);
@@ -16,10 +15,9 @@
     --color-border-strong: light-dark(#888f85, #606a7a);
     --color-accent: light-dark(var(--brand-lime-700), var(--brand-lime-300));
     --color-accent-fill: var(--brand-lime-300);
-    --color-on-accent: #15171a;
+    --color-on-accent: light-dark(#15171a, #0b0d12);
     --color-focus: light-dark(var(--brand-lime-700), var(--brand-lime-300));
     --color-danger: light-dark(#a82f2f, #ff8a8a);
-    --color-on-art: #f7f8f4;
     --color-artwork-fallback: #0b0d12;
 
     --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;

@@ -224,6 +224,7 @@ argument order of CSS `light-dark()`.
 | `--color-on-accent` | `#15171A` | `#0B0D12` | Content on an accent fill |
 | `--color-social` | `#7755C6` | `#9A72E8` | Social metadata and activity |
 | `--color-focus` | `#667F00` | `#D7FF55` | Keyboard focus indicator |
+| `--color-danger` | `#A82F2F` | `#FF8A8A` | Validation and destructive text and outlines |
 | `--color-artwork-fallback` | `#0B0D12` | `#0B0D12` | Backdrop behind slow or missing artwork |
 
 ### Theme behavior
@@ -269,6 +270,7 @@ The token layer is the theme implementation:
     --color-social: light-dark(#7755c6, #9a72e8);
     --color-artwork-fallback: #0b0d12;
     --color-focus: light-dark(#667f00, #d7ff55);
+    --color-danger: light-dark(#a82f2f, #ff8a8a);
   }
 }
 ```
@@ -387,11 +389,10 @@ Vue single-file component styles belong to the component layer:
 Use one variable sans-serif family throughout the product.
 
 ```css
---font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+--font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
 ```
 
-If Inter is not bundled, use the system stack until font loading is implemented.
-Do not mix Inter and Manrope across screens.
+Bundle one normal Inter variable face covering weights 100 through 900 with Nuxt Fonts and the Fontsource provider. Keep the system stack as a fallback and do not mix Inter and Manrope across screens.
 
 | Style | Mobile | Tablet and desktop | Weight | Use |
 | --- | --- | --- | ---: | --- |

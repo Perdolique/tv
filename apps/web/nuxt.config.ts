@@ -51,15 +51,23 @@ export default defineNuxtConfig({
 
   icon: {
     clientBundle: {
-      icons: [
-        'hugeicons:view',
-        'hugeicons:view-off-slash'
-      ],
-
-      scan: false
+      scan: true,
+      sizeLimitKb: 64
     },
 
     provider: 'none'
+  },
+
+  fonts: {
+    families: [{
+      name: 'Inter',
+      provider: 'fontsource',
+      styles: ['normal'],
+      subsets: ['latin'],
+      weights: ['100 900']
+    }],
+
+    provider: 'fontsource'
   },
 
   imports: {
@@ -67,6 +75,7 @@ export default defineNuxtConfig({
   },
 
   modules: [
+    '@nuxt/fonts',
     '@nuxt/icon'
   ],
 

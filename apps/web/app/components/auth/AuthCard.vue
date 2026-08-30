@@ -89,7 +89,6 @@
     .navigation {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       inline-size: min(100%, var(--layout-content-max));
       margin-inline: auto;
       padding: var(--space-5) var(--layout-page-mobile);
@@ -168,6 +167,11 @@
       text-align: center;
     }
 
+    .footer :where(a) {
+      font-weight: 600;
+      text-underline-offset: 0.2em;
+    }
+
     @media (width >= 40rem) {
       .component {
         background: var(--color-surface-muted);
@@ -204,17 +208,12 @@
 
     @media (width >= 64rem) {
       .component {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
         background: var(--color-canvas);
       }
 
       .navigation {
-        position: absolute;
-        inset-block-start: 0;
         inset-inline-start: 0;
         inset-inline-end: auto;
-        z-index: 1;
         inline-size: 50%;
         margin-inline: 0;
         padding: var(--space-8) var(--layout-page-wide);
@@ -223,10 +222,8 @@
       .layout {
         align-content: stretch;
         align-items: stretch;
-        grid-column: 1 / -1;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0;
-        min-block-size: 100svh;
         padding: 0;
       }
 

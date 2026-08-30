@@ -1,41 +1,41 @@
 <template>
   <AuthCard
-    :class="$style.component"
     description="Build your watchlist in a minute."
     :marketing-items="registerMarketingItems"
     marketing-title="Your next obsession starts here."
     :title="title"
   >
     <template v-if="hasSessionWarning" #notice>
-      <p
-        :class="$style.notice"
-        role="status"
-      >
+      <AppMessage role="status">
         We couldn’t verify your current session. You can still register.
-      </p>
+      </AppMessage>
     </template>
 
-    <form
+    <AuthForm
       v-if="showsEmailForm"
-      :class="$style.form"
-      novalidate
-      @submit.prevent="requestVerification"
+      :disabled="isEmailSubmitDisabled"
+      submit-label="Email me a verification link"
+      @submit="requestVerification"
     >
-      <EmailField
+      <AuthTextField
         ref="emailField"
         v-model="email"
+        autocomplete="email"
         :error="emailError"
+        inputmode="email"
+        label="Email"
+        type="email"
       />
 
-      <p
+      <AppMessage
         v-if="hasFormError"
         ref="formError"
-        :class="$style.formError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         {{ formError }}
-      </p>
+      </AppMessage>
 
       <TurnstileWidget
         ref="turnstileWidget"
@@ -43,30 +43,23 @@
         :action="TURNSTILE_ACTIONS.register"
       />
 
-      <button
-        :class="$style.primaryButton"
-        :disabled="isEmailSubmitDisabled"
-        type="submit"
-      >
-        Email me a verification link
-      </button>
-    </form>
+    </AuthForm>
 
     <div v-else-if="showsCheckEmail" :class="$style.state">
-      <p :class="$style.stateMessage" role="status">
+      <AppMessage role="status">
         Check your email for the next step. If the address can be used, a message is on its way.
-      </p>
+      </AppMessage>
 
-      <button :class="$style.secondaryButton" type="button" @click="startAgain">
+      <AppButton variant="secondary" @click="startAgain">
         Use a different email
-      </button>
+      </AppButton>
     </div>
 
-    <form
+    <AuthForm
       v-else-if="showsPasswordForm"
-      :class="$style.form"
-      novalidate
-      @submit.prevent="completeRegistration"
+      :disabled="isSubmitting"
+      submit-label="Create account"
+      @submit="completeRegistration"
     >
       <PasswordField
         ref="passwordField"
@@ -80,34 +73,26 @@
         @toggle="togglePasswordVisibility"
       />
 
-      <p
+      <AppMessage
         v-if="hasFormError"
         ref="formError"
-        :class="$style.formError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         {{ formError }}
-      </p>
-
-      <button
-        :class="$style.primaryButton"
-        :disabled="isSubmitting"
-        type="submit"
-      >
-        Create account
-      </button>
-    </form>
+      </AppMessage>
+    </AuthForm>
 
     <div v-else :class="$style.state">
-      <p
+      <AppMessage
         ref="verificationError"
-        :class="$style.formError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         This verification link is invalid or has expired.
-      </p>
+      </AppMessage>
 
       <NuxtLink
         :class="$style.stateLink"
@@ -120,7 +105,7 @@
 
     <template #footer>
       Already have an account?
-      <NuxtLink :class="$style.footerLink" :to="signInLocation">
+      <NuxtLink :to="signInLocation">
         Sign in
       </NuxtLink>
     </template>
@@ -135,10 +120,14 @@
   import * as v from 'valibot'
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
-  import EmailField from '~/components/auth/EmailField.vue'
+  import AuthForm from '~/components/auth/AuthForm.vue'
+  import AuthTextField from '~/components/auth/AuthTextField.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import TurnstileWidget from '~/components/auth/TurnstileWidget.vue'
+  import AppButton from '~/components/ui/AppButton.vue'
+  import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
+  import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
   import type { AuthFieldErrors, RegistrationNotice } from '~/types/auth.ts'
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
   import { registrationCompletionResponseSchema, registrationResponseSchema } from '~/utils/auth-response.ts'
@@ -159,6 +148,7 @@
   const route = useRoute()
   const requestFetch = useRequestFetch()
   const { state } = useAuthSession()
+  const requestCancellation = useRequestCancellation()
 
   const registrationNotice = useState<RegistrationNotice | null>(
     'registration-notice',
@@ -307,6 +297,10 @@
   }
 
   async function requestVerification(): Promise<void> {
+    if (isSubmitting.value) {
+      return
+    }
+
     resetErrors()
 
     const validation = validateEmail(email.value)
@@ -320,6 +314,8 @@
 
     isSubmitting.value = true
 
+    const controller = requestCancellation.start()
+
     try {
       const response = await requestFetch('/api/auth/register', {
         body: {
@@ -328,24 +324,39 @@
           redirectTo: redirectTo.value
         },
 
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       })
+
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
 
       v.parse(registrationResponseSchema, response)
       mode.value = 'check-email'
     } catch (error) {
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
+
       const parsedError = parseAuthError(getFetchErrorData(error))
 
       fields.value = parsedError.fields
       formError.value = parsedError.message
       await focusFirstError()
     } finally {
-      turnstileWidget.value?.reset()
-      isSubmitting.value = false
+      if (requestCancellation.finish(controller)) {
+        turnstileWidget.value?.reset()
+        isSubmitting.value = false
+      }
     }
   }
 
   async function completeRegistration(): Promise<void> {
+    if (isSubmitting.value) {
+      return
+    }
+
     resetErrors()
 
     const validation = validatePassword(password.value)
@@ -359,6 +370,8 @@
 
     isSubmitting.value = true
 
+    const controller = requestCancellation.start()
+
     try {
       const response = await requestFetch('/api/auth/register/complete', {
         body: {
@@ -366,8 +379,13 @@
           token: token.value
         },
 
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       })
+
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
 
       const account = v.parse(registrationCompletionResponseSchema, response)
       const safeRedirectTo = sanitizeRedirectTo(account.redirectTo)
@@ -385,6 +403,10 @@
 
       registrationNotice.value = null
     } catch (error) {
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
+
       const parsedError = parseAuthError(getFetchErrorData(error))
 
       if (parsedError.code === 'INVALID_VERIFICATION') {
@@ -399,7 +421,9 @@
       formError.value = parsedError.message
       await focusFirstError()
     } finally {
-      isSubmitting.value = false
+      if (requestCancellation.finish(controller)) {
+        isSubmitting.value = false
+      }
     }
   }
 </script>
@@ -408,75 +432,14 @@
   @layer reset, vendor, tokens, base, components, utilities;
 
   @layer components {
-    .component {
-      --auth-form-gap: var(--space-5);
-    }
-
-    .form,
     .state {
       display: grid;
-      gap: var(--auth-form-gap);
-    }
-
-    .notice,
-    .formError,
-    .stateMessage {
-      padding: var(--space-3) var(--space-4);
-      border-radius: var(--radius-sm);
-      background: var(--color-surface-muted);
-    }
-
-    .formError {
-      color: var(--color-danger);
-    }
-
-    .primaryButton,
-    .secondaryButton {
-      min-block-size: 3.5rem;
-      padding: var(--space-3) var(--space-6);
-      border-radius: var(--radius-md);
-      font-weight: 700;
-      cursor: pointer;
-      transition:
-        filter var(--duration-fast) var(--ease-standard),
-        transform var(--duration-fast) var(--ease-standard);
-    }
-
-    .primaryButton {
-      border: 0;
-      background: var(--color-accent-fill);
-      color: var(--color-on-accent);
-    }
-
-    .secondaryButton {
-      border: 1px solid var(--color-border-strong);
-      background: var(--color-surface);
-      color: var(--color-text-primary);
-    }
-
-    .primaryButton:hover:not(:disabled),
-    .secondaryButton:hover:not(:disabled) {
-      filter: brightness(0.96);
-    }
-
-    .primaryButton:active:not(:disabled),
-    .secondaryButton:active:not(:disabled) {
-      transform: translateY(0.0625rem);
-    }
-
-    .primaryButton:disabled,
-    .secondaryButton:disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
-    }
-
-    .stateLink,
-    .footerLink {
-      font-weight: 600;
-      text-underline-offset: 0.2em;
+      gap: var(--space-5);
     }
 
     .stateLink {
+      font-weight: 600;
+      text-underline-offset: 0.2em;
       justify-self: start;
     }
   }

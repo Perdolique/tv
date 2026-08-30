@@ -1,34 +1,39 @@
 <template>
   <AuthCard
-    :class="$style.component"
     description="Sign in to track every story."
     :marketing-items="signInMarketingItems"
     marketing-title="Every story, right on time."
     title="Welcome back"
   >
     <template v-if="hasNotice" #notice>
-      <p
+      <AppMessage
         v-if="showsRegistrationNotice"
-        :class="$style.notice"
         role="status"
       >
         Account created. Sign in to continue.
-      </p>
+      </AppMessage>
 
-      <p
+      <AppMessage
         v-if="hasSessionWarning"
-        :class="$style.notice"
         role="status"
       >
         We couldn’t verify your current session. You can still sign in.
-      </p>
+      </AppMessage>
     </template>
 
-    <form :class="$style.form" novalidate @submit.prevent="submit">
-      <EmailField
+    <AuthForm
+      :disabled="isSubmitDisabled"
+      submit-label="Sign in"
+      @submit="submit"
+    >
+      <AuthTextField
         ref="emailField"
         v-model="email"
+        autocomplete="email"
         :error="emailError"
+        inputmode="email"
+        label="Email"
+        type="email"
       />
 
       <PasswordField
@@ -42,15 +47,15 @@
         @toggle="togglePasswordVisibility"
       />
 
-      <p
+      <AppMessage
         v-if="hasFormError"
         ref="formError"
-        :class="$style.formError"
         role="alert"
         tabindex="-1"
+        tone="danger"
       >
         {{ formError }}
-      </p>
+      </AppMessage>
 
       <TurnstileWidget
         ref="turnstileWidget"
@@ -58,18 +63,11 @@
         :action="TURNSTILE_ACTIONS.signIn"
       />
 
-      <button
-        :class="$style.primaryButton"
-        :disabled="isSubmitDisabled"
-        type="submit"
-      >
-        Sign in
-      </button>
-    </form>
+    </AuthForm>
 
     <template #footer>
       New to TV?
-      <NuxtLink :class="$style.footerLink" :to="registerLocation">
+      <NuxtLink :to="registerLocation">
         Create an account
       </NuxtLink>
     </template>
@@ -84,10 +82,13 @@
   import * as v from 'valibot'
   import { computed, nextTick, ref, useTemplateRef } from 'vue'
   import AuthCard from '~/components/auth/AuthCard.vue'
-  import EmailField from '~/components/auth/EmailField.vue'
+  import AuthForm from '~/components/auth/AuthForm.vue'
+  import AuthTextField from '~/components/auth/AuthTextField.vue'
   import PasswordField from '~/components/auth/PasswordField.vue'
   import TurnstileWidget from '~/components/auth/TurnstileWidget.vue'
+  import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
+  import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
   import type { AuthFieldErrors, RegistrationNotice } from '~/types/auth.ts'
   import { getFetchErrorData, parseAuthError } from '~/utils/auth-error.ts'
   import { signInResponseSchema } from '~/utils/auth-response.ts'
@@ -105,6 +106,7 @@
   const route = useRoute()
   const requestFetch = useRequestFetch()
   const { setAuthenticated, state } = useAuthSession()
+  const requestCancellation = useRequestCancellation()
 
   const registrationNotice = useState<RegistrationNotice | null>(
     'registration-notice',
@@ -173,6 +175,10 @@
   }
 
   async function submit(): Promise<void> {
+    if (isSubmitting.value) {
+      return
+    }
+
     formError.value = ''
     fields.value = {}
 
@@ -187,6 +193,8 @@
 
     isSubmitting.value = true
 
+    const controller = requestCancellation.start()
+
     try {
       const response = await requestFetch('/api/auth/sign-in', {
         body: {
@@ -195,80 +203,33 @@
           password: validation.payload.password
         },
 
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       })
+
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
 
       const { user } = v.parse(signInResponseSchema, response)
 
       setAuthenticated(user)
       await navigateTo(redirectTo.value, { replace: true })
     } catch (error) {
+      if (!requestCancellation.isCurrent(controller)) {
+        return
+      }
+
       const parsedError = parseAuthError(getFetchErrorData(error))
 
       fields.value = parsedError.fields
       formError.value = parsedError.message
       await focusFirstError()
     } finally {
-      turnstileWidget.value?.reset()
-      isSubmitting.value = false
+      if (requestCancellation.finish(controller)) {
+        turnstileWidget.value?.reset()
+        isSubmitting.value = false
+      }
     }
   }
 </script>
-
-<style module>
-  @layer reset, vendor, tokens, base, components, utilities;
-
-  @layer components {
-    .component {
-      --auth-form-gap: var(--space-5);
-    }
-
-    .form {
-      display: grid;
-      gap: var(--auth-form-gap);
-    }
-
-    .notice,
-    .formError {
-      padding: var(--space-3) var(--space-4);
-      border-radius: var(--radius-sm);
-      background: var(--color-surface-muted);
-    }
-
-    .formError {
-      color: var(--color-danger);
-    }
-
-    .primaryButton {
-      min-block-size: 3.5rem;
-      padding: var(--space-3) var(--space-6);
-      border: 0;
-      border-radius: var(--radius-md);
-      background: var(--color-accent-fill);
-      color: var(--color-on-accent);
-      font-weight: 700;
-      cursor: pointer;
-      transition:
-        filter var(--duration-fast) var(--ease-standard),
-        transform var(--duration-fast) var(--ease-standard);
-    }
-
-    .primaryButton:hover:not(:disabled) {
-      filter: brightness(0.96);
-    }
-
-    .primaryButton:active:not(:disabled) {
-      transform: translateY(0.0625rem);
-    }
-
-    .primaryButton:disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
-    }
-
-    .footerLink {
-      font-weight: 600;
-      text-underline-offset: 0.2em;
-    }
-  }
-</style>

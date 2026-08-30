@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-lines -- The auth visual contract stays readable as one responsive specification. */
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 
@@ -64,6 +65,10 @@ async function expectNoHorizontalClipping(page: Page, locator: Locator): Promise
     main.scrollWidth - main.clientWidth
   ))
 
+  const documentOverflow = await page.evaluate(() => (
+    globalThis.document.documentElement.scrollWidth - globalThis.innerWidth
+  ))
+
   const bounds = await locator.evaluate((element) => {
     const rectangle = element.getBoundingClientRect()
 
@@ -75,6 +80,7 @@ async function expectNoHorizontalClipping(page: Page, locator: Locator): Promise
   })
 
   expect(mainOverflow).toBeLessThanOrEqual(0)
+  expect(documentOverflow).toBeLessThanOrEqual(0)
   expect(bounds.left).toBeGreaterThanOrEqual(0)
   expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth)
 }
@@ -194,6 +200,38 @@ test.describe('Authentication responsive boundaries', () => {
       await expect(marketing).toBeVisible()
     })
   }
+
+  test('stacks the auth card below marketing at 1023px', async ({ page }) => {
+    await page.setViewportSize({
+      height: 844,
+      width: 1023
+    })
+    await page.goto(`/register#token=${validVerificationToken}`)
+
+    const marketingBounds = await readElementBounds(
+      page.getByRole('region', { name: 'TV highlights' })
+    )
+
+    const cardBounds = await readElementBounds(authCard(page))
+
+    expect(cardBounds.top).toBeGreaterThanOrEqual(marketingBounds.bottom)
+  })
+
+  test('splits the auth card and marketing at 1024px', async ({ page }) => {
+    await page.setViewportSize({
+      height: 844,
+      width: 1024
+    })
+    await page.goto(`/register#token=${validVerificationToken}`)
+
+    const marketingBounds = await readElementBounds(
+      page.getByRole('region', { name: 'TV highlights' })
+    )
+
+    const cardBounds = await readElementBounds(authCard(page))
+
+    expect(cardBounds.right).toBeLessThanOrEqual(marketingBounds.left)
+  })
 
   test('reflows without horizontal scrolling at a 200% zoom-equivalent viewport', async ({ page }) => {
     await page.setViewportSize({
