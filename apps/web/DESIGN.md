@@ -1,8 +1,6 @@
 # TV design specification
 
-> Status: active design source of truth  
-> Version: 1.1  
-> Last updated: 2026-08-20
+> Status: active design source of truth · Version: 1.4 · Last updated: 2026-08-30
 
 ## Purpose
 
@@ -509,7 +507,7 @@ profile access, safe-area handling, and content gutters.
 - Mobile authenticated pages use a compact top bar and four-item bottom bar.
 - Tablet application pages use the compact navigation rail.
 - Desktop application pages use the labeled sidebar.
-- Auth pages use only the TV wordmark and Back action.
+- Auth pages use only the TV wordmark; they do not show Back or authenticated application navigation.
 - Focused add/request flow may hide mobile global navigation.
 
 ### Buttons
@@ -536,9 +534,9 @@ but must remain readable.
 ### Inputs
 
 - Default height is `52px`; compact desktop filters may use `40px`.
-- Labels remain visible outside the field when a value exists.
+- Authentication fields show their label inside while empty, then compact it above the value inside the same fixed-height control on focus, value, or error; focus and label state changes never move the control or surrounding content. Other product forms keep visible labels outside the field.
 - Placeholder text is never the only accessible label.
-- Error state includes message, icon, and danger border; not color alone.
+- Error state includes a message and danger border rather than relying on color alone; a semantic status icon is optional, and authentication fields do not use decorative leading icons.
 - Search uses a leading search icon and a clear action when populated.
 - Text areas expose character limits only when limits matter.
 
@@ -621,27 +619,26 @@ Desktop:
 ### Login
 
 - Ask for email and password.
-- Include password visibility, remember-me, password recovery, primary sign-in,
-  provider sign-in, and sign-up link.
-- Keep Back and TV wordmark available.
+- Include password visibility, primary sign-in, and the sign-up link.
+- Keep the TV wordmark available without adding Back.
+- Do not add remember-me, password recovery, or provider sign-in until those destinations and behaviors are delivered.
 - Do not show authenticated application navigation.
-- On tablet and desktop, pair the form with cinematic artwork without placing
-  fields over the artwork.
+- On tablet, center the form card on a quiet semantic surface without reserving empty space for unavailable artwork.
+- On desktop, center the form on a separate canvas in the left half and keep page-specific marketing on a muted right panel; approved artwork may replace the muted panel later.
 
 ### Sign-up
 
-- Ask for display name, email, password, confirmation, and terms consent.
-- Show password strength with bars and text.
-- Use a two-column field grid only when each field remains at least `260px` wide.
-- Keep the primary action visible without shrinking fields or labels.
-- Do not preselect legal consent.
+- Use the delivered email-first sequence: email entry, check-email confirmation, password choice, and invalid or expired verification link.
+- Ask only for the data required by the active state; do not add display name, password confirmation, terms consent, or provider sign-in from the generated references.
+- Keep the primary action visible without shrinking fields or labels, and use the same responsive auth shell as Login.
 
-### Approved authentication artwork
+### Authentication media surface
 
-- The two collage originals in `designs/artwork/` are the approved production sources for sign-in and registration; generated reference PNG artwork must not be extracted or shipped.
-- Use the portrait composition below `64rem`, keeping forms in its dark lower area, and the landscape composition from `64rem`, keeping forms in its dark left area.
-- Keep the originals unchanged as design inputs. Serve committed content-hashed AVIF and WebP derivatives as static public assets through a native `<picture>` so each viewport downloads one appropriate source.
-- Use the same artwork in light and dark schemes. Preserve text contrast with semantic overlay and surface tokens rather than altering the artwork colors.
+- No production authentication artwork is currently approved or shipped; generated reference PNG artwork must not be extracted or served.
+- Do not imitate missing artwork with decorative gradients, overlays, or an empty media band.
+- Until replacement artwork is approved, mobile uses the canvas directly, tablet uses a centered surface card on a muted canvas, and desktop uses the form on the canvas at left with a muted editorial panel on the right.
+- Keep fields on an opaque surface rather than over future artwork, and preserve the current layout geometry when artwork loads.
+- Generated Back actions, decorative field icons, marketing icons, and unsupported authentication controls are illustrative rather than production requirements.
 
 ### Personal dashboard
 
@@ -829,6 +826,7 @@ Verify at minimum:
 - `390 x 844` in light and dark themes;
 - `768 x 1024` in light and dark themes;
 - `1440 x 1024` in light and dark themes;
+- `1366 x 768` for authentication pages without vertical scrolling;
 - one narrow viewport near `320px`;
 - one width immediately before and after each breakpoint.
 

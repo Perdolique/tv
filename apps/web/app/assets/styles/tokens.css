@@ -10,7 +10,6 @@
     --color-canvas: light-dark(#f7f7f4, #0b0d12);
     --color-surface: light-dark(#ffffff, #151922);
     --color-surface-muted: light-dark(#eff1ec, #222833);
-    --color-auth-panel: light-dark(rgb(255 255 255 / 92%), rgb(15 19 27 / 88%));
     --color-text-primary: light-dark(#15171a, #f7f8f4);
     --color-text-secondary: light-dark(#62676e, #a8adb6);
     --color-border: light-dark(#d8dcd3, #303744);
@@ -22,11 +21,6 @@
     --color-danger: light-dark(#a82f2f, #ff8a8a);
     --color-on-art: #f7f8f4;
     --color-artwork-fallback: #0b0d12;
-    --color-auth-overlay-mobile: light-dark(rgb(9 13 18 / 38%), rgb(3 7 11 / 58%));
-    --color-auth-overlay-desktop: light-dark(rgb(9 13 18 / 50%), rgb(3 7 11 / 70%));
-    --color-art-shadow: rgb(0 0 0 / 55%);
-    --color-art-feature-border: rgb(255 255 255 / 28%);
-    --color-art-feature-surface: rgb(255 255 255 / 12%);
 
     --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
 

@@ -2,6 +2,8 @@
   <AuthCard
     :class="$style.component"
     description="Sign in to track every story."
+    :marketing-items="signInMarketingItems"
+    marketing-title="Every story, right on time."
     title="Welcome back"
   >
     <template v-if="hasNotice" #notice>
@@ -93,6 +95,12 @@
 
   definePageMeta({ middleware: 'guest' })
   useHead({ title: 'Sign in · TV' })
+
+  const signInMarketingItems = [
+    'Track releases',
+    'Rate what you watch',
+    'Follow friends'
+  ] as const
 
   const route = useRoute()
   const requestFetch = useRequestFetch()

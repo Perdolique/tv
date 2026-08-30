@@ -49,9 +49,26 @@ export default defineNuxtConfig({
     compatibilityVersion: 5
   },
 
+  icon: {
+    clientBundle: {
+      icons: [
+        'hugeicons:view',
+        'hugeicons:view-off-slash'
+      ],
+
+      scan: false
+    },
+
+    provider: 'none'
+  },
+
   imports: {
     autoImport: false
   },
+
+  modules: [
+    '@nuxt/icon'
+  ],
 
   runtimeConfig: {
     public: {

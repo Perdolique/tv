@@ -1,19 +1,9 @@
 <template>
   <div :class="$style.component">
-    <label :class="$style.label" :for="inputId">
-      Email
-    </label>
-
     <div :class="$style.control">
-      <svg
-        :class="$style.icon"
-        aria-hidden="true"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <rect height="16" rx="2" stroke="currentColor" stroke-width="1.75" width="20" x="2" y="4" />
-        <path d="m4 7 8 6 8-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" />
-      </svg>
+      <label :class="$style.label" :for="inputId">
+        <span :class="$style.labelText">Email</span>
+      </label>
 
       <input
         :id="inputId"
@@ -24,6 +14,7 @@
         autocomplete="email"
         :class="$style.input"
         inputmode="email"
+        placeholder=" "
         required
         type="email"
       >
@@ -67,31 +58,48 @@
       gap: var(--space-2);
     }
 
-    .label {
-      font-weight: 600;
-    }
-
     .control {
       position: relative;
-      display: flex;
-      align-items: center;
     }
 
-    .icon {
+    .label {
       position: absolute;
       inset-inline-start: var(--space-4);
-      block-size: 1.35rem;
-      inline-size: 1.35rem;
+      inset-block-start: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      block-size: 3.25rem;
       color: var(--color-text-secondary);
+      line-height: 1.5;
       pointer-events: none;
+      transition: color var(--duration-fast) var(--ease-standard);
+    }
+
+    .labelText {
+      display: block;
+      transform-origin: left center;
+      transition: transform var(--duration-fast) var(--ease-standard);
+    }
+
+    .control:has(.input:focus, .input:not(:placeholder-shown), .input[aria-invalid='true']) .label {
+      color: var(--color-text-primary);
+    }
+
+    .control:has(.input:focus, .input:not(:placeholder-shown), .input[aria-invalid='true']) .labelText {
+      transform: translateY(-0.875rem) scale(0.75);
+    }
+
+    .control:has(.input[aria-invalid='true']) .label {
+      color: var(--color-danger);
     }
 
     .input {
       min-inline-size: 0;
       inline-size: 100%;
-      min-block-size: 3.5rem;
-      padding: var(--space-3) var(--space-4) var(--space-3) var(--space-12);
-      border: 1px solid var(--color-border-strong);
+      block-size: 3.25rem;
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--color-border);
       border-radius: var(--radius-md);
       background: var(--color-surface);
       color: var(--color-text-primary);
@@ -99,12 +107,20 @@
         border-color var(--duration-fast) var(--ease-standard);
     }
 
+    .input:focus,
+    .input:not(:placeholder-shown),
+    .input[aria-invalid='true'] {
+      padding-block: 1.25rem var(--space-1);
+    }
+
     .input:hover {
-      border-color: var(--color-accent);
+      border-color: var(--color-border-strong);
     }
 
     .input:focus-visible {
-      border-color: var(--color-focus);
+      border-color: var(--color-border-strong);
+      outline: 0.125rem solid var(--color-focus);
+      outline-offset: 0.125rem;
     }
 
     .input[aria-invalid='true'] {
@@ -115,6 +131,13 @@
       color: var(--color-danger);
       font-size: 0.875rem;
       line-height: 1.43;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .label,
+      .labelText {
+        transition: none;
+      }
     }
   }
 </style>

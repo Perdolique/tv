@@ -296,12 +296,26 @@ test.describe('Authentication forms', () => {
     await page.goto('/sign-in')
 
     const signInPassword = page.getByLabel('Password', { exact: true })
+    const showPasswordButton = page.getByRole('button', { name: 'Show password' })
+    const shownIcon = showPasswordButton.locator('svg')
 
     await expect(signInPassword).toHaveAttribute('type', 'password')
+    await expect(shownIcon).toHaveAttribute('viewBox', '0 0 24 24')
+    expect(await shownIcon.locator('path').count()).toBeGreaterThan(0)
 
-    await page.getByRole('button', { name: 'Show password' }).click()
+    const buttonBoundsBeforeToggle = await showPasswordButton.boundingBox()
+    const iconBoundsBeforeToggle = await shownIcon.boundingBox()
+
+    await showPasswordButton.click()
+
+    const hidePasswordButton = page.getByRole('button', { name: 'Hide password' })
+    const hiddenIcon = hidePasswordButton.locator('svg')
+
     await expect(signInPassword).toHaveAttribute('type', 'text')
-    await expect(page.getByRole('button', { name: 'Hide password' })).toBeVisible()
+    await expect(hiddenIcon).toHaveAttribute('viewBox', '0 0 24 24')
+    expect(await hiddenIcon.locator('path').count()).toBeGreaterThan(0)
+    expect(await hidePasswordButton.boundingBox()).toStrictEqual(buttonBoundsBeforeToggle)
+    expect(await hiddenIcon.boundingBox()).toStrictEqual(iconBoundsBeforeToggle)
 
     await page.goto(`/register#token=${validVerificationToken}`)
 
@@ -332,8 +346,8 @@ test.describe('Authentication forms', () => {
     await expect(emailInput).toBeFocused()
     await expect(emailInput).toHaveAttribute('aria-invalid', 'true')
     await expect(emailInput).toHaveAccessibleDescription('Enter a valid email address.')
-    await expect(emailInput).toHaveCSS('outline-offset', '3px')
-    await expect(emailInput).toHaveCSS('outline-width', '3px')
+    await expect(emailInput).toHaveCSS('outline-offset', '2px')
+    await expect(emailInput).toHaveCSS('outline-width', '2px')
     expect(signInRequestCount).toBe(0)
   })
 

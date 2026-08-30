@@ -2,6 +2,8 @@
   <AuthCard
     :class="$style.component"
     description="Build your watchlist in a minute."
+    :marketing-items="registerMarketingItems"
+    marketing-title="Your next obsession starts here."
     :title="title"
   >
     <template v-if="hasSessionWarning" #notice>
@@ -147,6 +149,12 @@
 
   definePageMeta({ middleware: 'guest' })
   useHead({ title: 'Create account · TV' })
+
+  const registerMarketingItems = [
+    'Personal calendar',
+    'Ratings that matter',
+    'Watch with friends'
+  ] as const
 
   const route = useRoute()
   const requestFetch = useRequestFetch()
