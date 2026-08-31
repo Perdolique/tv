@@ -76,6 +76,8 @@ describe('postgreSQL auth schema', () => {
         `)
 
         expect(tables.rows.map((row) => row.table_name)).toStrictEqual([
+          'catalog_item_titles',
+          'catalog_items',
           'email_verification_tokens',
           'password_credentials',
           'sessions',
@@ -83,7 +85,8 @@ describe('postgreSQL auth schema', () => {
         ])
         expect(migrations.rows).toStrictEqual([
           { name: '20260810215442_ambiguous_shinobi_shaw' },
-          { name: '20260823211151_eager_hawkeye' }
+          { name: '20260823211151_eager_hawkeye' },
+          { name: '20260831183823_great_lilith' }
         ])
       } finally {
         await migrationClient.end()
@@ -146,6 +149,10 @@ describe('postgreSQL auth schema', () => {
       }
     ]))
     expect(foreignKeys.rows).toStrictEqual([
+      {
+        confdeltype: 'c',
+        conname: 'catalog_item_titles_catalog_item_id_catalog_items_id_fkey'
+      },
       {
         confdeltype: 'c',
         conname: 'password_credentials_user_id_users_id_fkey'
