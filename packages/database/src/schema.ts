@@ -1,4 +1,58 @@
-import { index, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+
+import {
+  boolean,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar
+} from 'drizzle-orm/pg-core'
+
+const catalogItemType = pgEnum('catalog_item_type', ['movie', 'series'])
+
+const catalogItems = pgTable('catalog_items', {
+  id:
+    uuid()
+    .defaultRandom()
+    .primaryKey(),
+
+  type:
+    catalogItemType()
+    .notNull(),
+
+  releaseYear: integer('release_year')
+})
+
+const catalogItemTitles = pgTable('catalog_item_titles', {
+  catalogItemId:
+    uuid('catalog_item_id')
+    .notNull()
+    .references(() => catalogItems.id, { onDelete: 'cascade' }),
+
+  locale:
+    varchar({ length: 35 })
+    .notNull(),
+
+  title:
+    text()
+    .notNull(),
+
+  isOriginal:
+    boolean('is_original')
+    .default(false)
+    .notNull()
+}, (table) => [
+  primaryKey({ columns: [table.catalogItemId, table.locale] }),
+  uniqueIndex('catalog_item_titles_original_unique')
+    .on(table.catalogItemId)
+    .where(sql`${table.isOriginal}`)
+])
 
 const users = pgTable('users', {
   id:
@@ -124,6 +178,9 @@ const sessions = pgTable('sessions', {
 ])
 
 export {
+  catalogItemTitles,
+  catalogItems,
+  catalogItemType,
   emailVerificationTokens,
   passwordCredentials,
   sessions,

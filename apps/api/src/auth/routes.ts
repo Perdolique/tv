@@ -22,6 +22,7 @@ import { hashPassword, verifyPassword } from './password.ts'
 import { isPasswordCompromised, PwnedPasswordsUnavailableError } from './pwned-passwords.ts'
 import { readRequiredJsonBody, requireEmptyBody } from './request-body.ts'
 import { enforceRateLimit } from './rate-limit.ts'
+import { clearSessionCookie, resolveCurrentSession } from './current-session.ts'
 
 import {
   completeRegistration,
@@ -29,14 +30,12 @@ import {
   deleteSession,
   deleteVerificationToken,
   findPasswordCredential,
-  findUserBySession,
   findValidVerificationToken,
   issueVerificationToken
 } from './repository.ts'
 
 import {
   createSessionToken,
-  getExpiredSessionCookieOptions,
   getSessionCookieName,
   getSessionCookieOptions,
   hashSessionToken,
@@ -132,13 +131,6 @@ function setSessionCookie(context: AuthContext, token: string): void {
   const options = getSessionCookieOptions(context.req.url)
 
   setCookie(context, cookieName, token, options)
-}
-
-function clearSessionCookie(context: AuthContext): void {
-  const cookieName = getSessionCookieName(context.req.url)
-  const options = getExpiredSessionCookieOptions(context.req.url)
-
-  setCookie(context, cookieName, '', options)
 }
 
 function logServerError(context: AuthContext, error: AuthHttpError): void {
@@ -393,35 +385,20 @@ function createAuthApp(): Hono<AuthEnvironment> {
   })
 
   app.get('/api/auth/session', async (context) => {
-    const cookieName = getSessionCookieName(context.req.url)
-    const token = getCookie(context, cookieName)
-
-    if (token === undefined || token.length === 0) {
-      return context.json({ user: null })
-    }
-
-    if (!isSessionToken(token)) {
-      clearSessionCookie(context)
-
-      return context.json({ user: null })
-    }
-
-    const tokenHash = await hashSessionToken(token)
-    const { database } = await connectDatabase(context)
     // oxlint-disable-next-line eslint/init-declarations -- The catch block translates database failures.
-    let user: Awaited<ReturnType<typeof findUserBySession>>
+    let session: Awaited<ReturnType<typeof resolveCurrentSession>>
 
     try {
-      user = await findUserBySession(database, tokenHash, new Date())
+      session = await resolveCurrentSession(context, async () => {
+        const { database } = await connectDatabase(context)
+
+        return database
+      })
     } catch (error) {
       throw new AuthHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
     }
 
-    if (user === null) {
-      clearSessionCookie(context)
-    }
-
-    return context.json({ user })
+    return context.json({ user: session?.user ?? null })
   })
 
   app.post('/api/auth/sign-out', jsonBodyLimit, async (context) => {

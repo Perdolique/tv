@@ -108,6 +108,7 @@ export default defineConfig({
       'src/**/__tests__/*.worker.integration.test.ts'
     ],
 
+    fileParallelism: false,
     testTimeout: 30_000
   }
 })
