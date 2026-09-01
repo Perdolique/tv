@@ -8,7 +8,7 @@ import { isSessionTransportAllowed } from '../auth/session.ts'
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
-import { searchCatalogTitleRows } from './repository.ts'
+import { findTitleRowsForMatchingCatalogItems } from './repository.ts'
 import { canonicalizeTitleLocale, createCatalogSearchItems, normalizeCatalogQuery } from './search.ts'
 
 interface CatalogEnvironment {
@@ -80,10 +80,13 @@ function createCatalogApp(): Hono<CatalogEnvironment> {
     )
 
     // oxlint-disable-next-line eslint/init-declarations -- Catalog database failures are translated below.
-    let rows: Awaited<ReturnType<typeof searchCatalogTitleRows>>
+    let rows: Awaited<ReturnType<typeof findTitleRowsForMatchingCatalogItems>>
 
     try {
-      rows = await searchCatalogTitleRows(session.database, query)
+      rows = await findTitleRowsForMatchingCatalogItems(
+        session.database,
+        query
+      )
     } catch (error) {
       throw new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
     }

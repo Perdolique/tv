@@ -23,3 +23,5 @@ minimumReleaseAgeExclude:
   - worsier-win32-x64-msvc@3.0.1
   - worsier@3.0.1
   - eslint-config-greenpie@17.7.0
+  - wrangler@4.128.0
+  - miniflare@5.20260831.0-alpha

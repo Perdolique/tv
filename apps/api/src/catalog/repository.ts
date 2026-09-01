@@ -1,17 +1,17 @@
 import type { Database } from '@tv/database'
 import { catalogItemTitles, catalogItems } from '@tv/database/schema'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { escapeLikePattern } from './search.ts'
 import type { CatalogTitleRow } from './types.ts'
 
-async function searchCatalogTitleRows(
+async function findTitleRowsForMatchingCatalogItems(
   database: Database,
   query: string
 ): Promise<CatalogTitleRow[]> {
   const escapedQuery = escapeLikePattern(query)
   const pattern = `%${escapedQuery}%`
 
-  const matches = await database
+  const matchingCatalogItems = database
     .selectDistinct({
       catalogItemId: catalogItemTitles.catalogItemId
     })
@@ -19,12 +19,7 @@ async function searchCatalogTitleRows(
     .where(
       sql`${catalogItemTitles.title} ILIKE ${pattern} ESCAPE '\\'`
     )
-
-  const catalogItemIds = matches.map(match => match.catalogItemId)
-
-  if (catalogItemIds.length === 0) {
-    return []
-  }
+    .as('matching_catalog_items')
 
   return database
     .select({
@@ -40,10 +35,11 @@ async function searchCatalogTitleRows(
       catalogItems,
       eq(catalogItems.id, catalogItemTitles.catalogItemId)
     )
-    .where(
-      inArray(catalogItems.id, catalogItemIds)
+    .innerJoin(
+      matchingCatalogItems,
+      eq(matchingCatalogItems.catalogItemId, catalogItems.id)
     )
     .orderBy(catalogItemTitles.catalogItemId, catalogItemTitles.locale)
 }
 
-export { searchCatalogTitleRows }
+export { findTitleRowsForMatchingCatalogItems }

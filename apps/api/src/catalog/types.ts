@@ -42,7 +42,6 @@ interface CatalogErrorEnvelope {
 export type {
   CatalogErrorCode,
   CatalogErrorEnvelope,
-  CatalogItemType,
   CatalogSearchItem,
   CatalogSearchResponse,
   CatalogTitleRow

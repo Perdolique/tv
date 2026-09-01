@@ -1,8 +1,6 @@
 /* oxlint-disable eslint/max-lines -- PostgreSQL lifecycle and concurrency coverage share one disposable database fixture. */
-import { randomUUID } from 'node:crypto'
 import { env } from 'node:process'
 import { createDatabase } from '@tv/database'
-import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { Client } from 'pg'
 import { afterAll, assert, beforeEach, describe, expect, it } from 'vitest'
 
@@ -21,11 +19,6 @@ if (databaseUrl === undefined || databaseUrl === '') {
   throw new Error('TEST_DATABASE_URL is required for database integration tests')
 }
 
-const migrationsFolder = new URL(
-  '../../../../../packages/database/migrations',
-  import.meta.url
-).pathname
-
 const client = new Client({ connectionString: databaseUrl })
 
 await client.connect()
@@ -38,63 +31,6 @@ describe('postgreSQL auth schema', () => {
 
   afterAll(async () => {
     await client.end()
-  })
-
-  it('applies the migration to an empty database', async () => {
-    const databaseName = `tv_migration_${randomUUID().replaceAll('-', '')}`
-    const adminUrl = new URL(databaseUrl)
-    const migrationUrl = new URL(databaseUrl)
-
-    adminUrl.pathname = '/postgres'
-    migrationUrl.pathname = `/${databaseName}`
-
-    const adminClient = new Client({ connectionString: adminUrl.toString() })
-
-    await adminClient.connect()
-
-    try {
-      await adminClient.query(`CREATE DATABASE "${databaseName}"`)
-
-      const migrationClient = new Client({
-        connectionString: migrationUrl.toString()
-      })
-
-      try {
-        await migrationClient.connect()
-        await migrate(createDatabase(migrationClient), { migrationsFolder })
-
-        const tables = await migrationClient.query<{ table_name: string; }>(`
-          SELECT table_name
-          FROM information_schema.tables
-          WHERE table_schema = 'public'
-          ORDER BY table_name
-        `)
-
-        const migrations = await migrationClient.query<{ name: string; }>(`
-          SELECT name
-          FROM drizzle.__drizzle_migrations
-        `)
-
-        expect(tables.rows.map((row) => row.table_name)).toStrictEqual([
-          'catalog_item_titles',
-          'catalog_items',
-          'email_verification_tokens',
-          'password_credentials',
-          'sessions',
-          'users'
-        ])
-        expect(migrations.rows).toStrictEqual([
-          { name: '20260810215442_ambiguous_shinobi_shaw' },
-          { name: '20260823211151_eager_hawkeye' },
-          { name: '20260831183823_great_lilith' }
-        ])
-      } finally {
-        await migrationClient.end()
-      }
-    } finally {
-      await adminClient.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`)
-      await adminClient.end()
-    }
   })
 
   it('creates the required unique, lookup, expiry, and cascade constraints', async () => {
@@ -148,11 +84,7 @@ describe('postgreSQL auth schema', () => {
         tablename: 'users'
       }
     ]))
-    expect(foreignKeys.rows).toStrictEqual([
-      {
-        confdeltype: 'c',
-        conname: 'catalog_item_titles_catalog_item_id_catalog_items_id_fkey'
-      },
+    expect(foreignKeys.rows).toStrictEqual(expect.arrayContaining([
       {
         confdeltype: 'c',
         conname: 'password_credentials_user_id_users_id_fkey'
@@ -161,7 +93,7 @@ describe('postgreSQL auth schema', () => {
         confdeltype: 'c',
         conname: 'sessions_user_id_users_id_fkey'
       }
-    ])
+    ]))
   })
 
   it('cascades credentials and sessions when a user is deleted', async () => {

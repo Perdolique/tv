@@ -109,16 +109,28 @@ describe(getLocaleFallbacks, () => {
 })
 
 describe(createCatalogSearchItems, () => {
-  it('uses the exact locale, its fallback, English, then the original title', () => {
-    const russianRows = [
+  it('prefers an exact ru-RU title over its ru fallback', () => {
+    const rows = [
       createTitleRow(),
       createTitleRow({
         isOriginal: false,
         locale: 'ru',
-        title: 'Локализованное название'
+        title: 'Название'
+      }),
+      createTitleRow({
+        isOriginal: false,
+        locale: 'ru-RU',
+        title: 'Точное название'
       })
     ]
 
+    expect(createCatalogSearchItems(rows, 'ru-RU')[0]).toMatchObject({
+      title: 'Точное название',
+      titleLocale: 'ru-RU'
+    })
+  })
+
+  it('uses English, then the original title when localized titles are absent', () => {
     const englishRows = [
       createTitleRow({
         isOriginal: true,
@@ -139,10 +151,6 @@ describe(createCatalogSearchItems, () => {
       })
     ]
 
-    expect(createCatalogSearchItems(russianRows, 'ru-RU')[0]).toMatchObject({
-      title: 'Локализованное название',
-      titleLocale: 'ru'
-    })
     expect(createCatalogSearchItems(englishRows, 'de-DE')[0]).toMatchObject({
       title: 'English title',
       titleLocale: 'en'
@@ -177,7 +185,39 @@ describe(createCatalogSearchItems, () => {
     })
   })
 
-  it('sorts localized titles with UUID as a stable tie-breaker', () => {
+  it('sorts different items by their localized display titles', () => {
+    const rows = [
+      createTitleRow({
+        catalogItemId: '20000000-0000-4000-8000-000000000001',
+        title: 'First original'
+      }),
+      createTitleRow({
+        catalogItemId: '20000000-0000-4000-8000-000000000001',
+        isOriginal: false,
+        locale: 'ru',
+        title: 'Бета'
+      }),
+      createTitleRow({
+        catalogItemId: '20000000-0000-4000-8000-000000000002',
+        title: 'Second original'
+      }),
+      createTitleRow({
+        catalogItemId: '20000000-0000-4000-8000-000000000002',
+        isOriginal: false,
+        locale: 'ru',
+        title: 'Альфа'
+      })
+    ]
+
+    const items = createCatalogSearchItems(rows, 'ru')
+
+    expect(items.map(item => item.id)).toStrictEqual([
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000001'
+    ])
+  })
+
+  it('uses UUID as a stable tie-breaker for equal display titles', () => {
     const rows = [
       createTitleRow({
         catalogItemId: '20000000-0000-4000-8000-000000000002',

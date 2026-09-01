@@ -3,30 +3,11 @@ import { Client } from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
+import type { CatalogErrorEnvelope, CatalogSearchResponse } from '../types.ts'
 
 const TEST_SESSION_TOKEN = 'c'.repeat(43)
 const TEST_USER_ID = '40000000-0000-4000-8000-000000000001'
 const TEST_COOKIE = `__Host-tv_session=${TEST_SESSION_TOKEN}`
-
-interface CatalogErrorResponse {
-  error: {
-    code: string;
-    fields?: Record<string, string>;
-    message: string;
-  };
-}
-
-interface CatalogSearchResponse {
-  items: {
-    id: string;
-    originalTitle: string;
-    originalTitleLocale: string;
-    releaseYear: number | null;
-    title: string;
-    titleLocale: string;
-    type: 'movie' | 'series';
-  }[];
-}
 
 interface ConsoleErrorMock {
   mock: {
@@ -51,7 +32,8 @@ async function connectTestDatabase(): Promise<Client> {
 
 async function catalogRequest(
   path: string,
-  cookie: string | null = TEST_COOKIE
+  cookie: string | null = TEST_COOKIE,
+  origin = 'https://tv-api.test'
 ): Promise<Response> {
   const headers = new Headers()
 
@@ -60,7 +42,7 @@ async function catalogRequest(
   }
 
   return exports.default.fetch(new Request(
-    `https://tv-api.test${path}`,
+    `${origin}${path}`,
     { headers }
   ))
 }
@@ -192,6 +174,23 @@ describe('catalog search Worker contract', () => {
     expectNoStore(malformedResponse)
   })
 
+  it('rejects insecure non-loopback HTTP with a safe no-store error', async () => {
+    const response = await catalogRequest(
+      '/api/catalog/search?query=dead',
+      TEST_COOKIE,
+      'http://tv-api.test'
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: 'INVALID_REQUEST',
+        message: 'The request is invalid.'
+      }
+    })
+    expectNoStore(response)
+  })
+
   it('rejects an expired session and clears its cookie', async () => {
     await expireTestSession()
 
@@ -281,7 +280,7 @@ describe('catalog search Worker contract', () => {
   it('returns a safe 503 and logs the raw database error without the query', async () => {
     const consoleError = vi.spyOn(console, 'error').mockReturnValue()
     const response = await requestWithUnavailableCatalogTitles()
-    const body = await response.json<CatalogErrorResponse>()
+    const body = await response.json<CatalogErrorEnvelope>()
     const logs = JSON.stringify(readStructuredErrorLogs(consoleError))
 
     expect(response.status).toBe(503)

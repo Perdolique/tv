@@ -3,7 +3,7 @@ import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, assert, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
-import { searchCatalogTitleRows } from '../repository.ts'
+import { findTitleRowsForMatchingCatalogItems } from '../repository.ts'
 import { createCatalogSearchItems } from '../search.ts'
 
 const databaseUrl = env.TEST_DATABASE_URL
@@ -84,7 +84,25 @@ describe('postgreSQL catalog schema and search', () => {
         WHERE id = $1
       `, [catalogItemId])
 
+      const rows = await findTitleRowsForMatchingCatalogItems(
+        createDatabase(client),
+        'Constraint fixture'
+      )
+
+      const items = createCatalogSearchItems(rows, 'en')
+
       expect(item.rows[0]?.release_year).toBeNull()
+      expect(items).toStrictEqual([
+        {
+          id: catalogItemId,
+          originalTitle: 'Constraint fixture',
+          originalTitleLocale: 'en',
+          releaseYear: null,
+          title: 'Constraint fixture',
+          titleLocale: 'en',
+          type: 'movie'
+        }
+      ])
       await expect(client.query(`
         INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
         VALUES ($1, 'en', 'Duplicate locale', false)
@@ -96,6 +114,15 @@ describe('postgreSQL catalog schema and search', () => {
     } finally {
       await client.query('DELETE FROM catalog_items WHERE id = $1', [catalogItemId])
     }
+  })
+
+  it('rejects unsupported catalog item types', async () => {
+    await assertDisposableTestDatabase(client)
+
+    await expect(client.query(`
+      INSERT INTO catalog_items (id, type)
+      VALUES ('30000000-0000-4000-8000-000000000004', 'documentary')
+    `)).rejects.toMatchObject({ code: '22P02' })
   })
 
   it('allows duplicate title text and cascades titles when an item is deleted', async () => {
@@ -139,14 +166,17 @@ describe('postgreSQL catalog schema and search', () => {
     ['dead', 'en', 'Dead Man'],
     ['DEAD', 'ru', 'Мертвец'],
     ['Мертв', 'en', 'Dead Man'],
-    ['Кин-дза', 'en', 'Kin-dza-dza!'],
-    ['킹', 'en', 'Kingdom']
+    ['Кин-дза', 'en', 'Kin-dza-dza!']
   ])('finds %s across languages and displays %s', async (
     query,
     titleLocale,
     expectedTitle
   ) => {
-    const rows = await searchCatalogTitleRows(createDatabase(client), query)
+    const rows = await findTitleRowsForMatchingCatalogItems(
+      createDatabase(client),
+      query
+    )
+
     const items = createCatalogSearchItems(rows, titleLocale)
 
     expect(items).toHaveLength(1)
@@ -154,13 +184,20 @@ describe('postgreSQL catalog schema and search', () => {
   })
 
   it.each(['%', '_', '\\', 'Unknown title'])('searches %s literally', async (query) => {
-    const rows = await searchCatalogTitleRows(createDatabase(client), query)
+    const rows = await findTitleRowsForMatchingCatalogItems(
+      createDatabase(client),
+      query
+    )
 
     expect(rows).toStrictEqual([])
   })
 
   it('deduplicates a match present in multiple locale rows', async () => {
-    const rows = await searchCatalogTitleRows(createDatabase(client), '1923')
+    const rows = await findTitleRowsForMatchingCatalogItems(
+      createDatabase(client),
+      '1923'
+    )
+
     const items = createCatalogSearchItems(rows, 'ru')
 
     expect(items).toHaveLength(1)
@@ -174,5 +211,26 @@ describe('postgreSQL catalog schema and search', () => {
 
     assert(original !== undefined)
     expect(original.locale).toBe('en')
+  })
+
+  it('returns the complete localized Kingdom payload', async () => {
+    const rows = await findTitleRowsForMatchingCatalogItems(
+      createDatabase(client),
+      '킹'
+    )
+
+    const items = createCatalogSearchItems(rows, 'ru-RU')
+
+    expect(items).toStrictEqual([
+      {
+        id: '10000000-0000-4000-8000-000000000012',
+        originalTitle: '킹덤',
+        originalTitleLocale: 'ko',
+        releaseYear: 2019,
+        title: 'Королевство зомби',
+        titleLocale: 'ru',
+        type: 'series'
+      }
+    ])
   })
 })

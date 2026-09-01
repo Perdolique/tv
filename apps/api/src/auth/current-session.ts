@@ -10,6 +10,7 @@ interface ActiveSession {
 }
 
 type ConnectDatabase = () => Promise<Database>
+type Clock = () => Date
 
 function clearSessionCookie(context: Context): void {
   const cookieName = getSessionCookieName(context.req.url)
@@ -21,7 +22,7 @@ function clearSessionCookie(context: Context): void {
 async function resolveCurrentSession(
   context: Context,
   connectDatabase: ConnectDatabase,
-  now = new Date()
+  clock: Clock = () => new Date()
 ): Promise<ActiveSession | null> {
   const cookieName = getSessionCookieName(context.req.url)
   const token = getCookie(context, cookieName)
@@ -38,7 +39,7 @@ async function resolveCurrentSession(
 
   const tokenHash = await hashSessionToken(token)
   const database = await connectDatabase()
-  const user = await findUserBySession(database, tokenHash, now)
+  const user = await findUserBySession(database, tokenHash, clock())
 
   if (user === null) {
     clearSessionCookie(context)
@@ -51,8 +52,6 @@ async function resolveCurrentSession(
     user
   }
 }
-
-export type { ActiveSession }
 
 export {
   clearSessionCookie,
