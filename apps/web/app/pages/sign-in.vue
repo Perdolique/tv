@@ -186,6 +186,7 @@
 
     if (validation.payload === null) {
       fields.value = validation.fields
+
       await focusFirstError()
 
       return
@@ -224,10 +225,12 @@
 
       fields.value = parsedError.fields
       formError.value = parsedError.message
+
       await focusFirstError()
     } finally {
       if (requestCancellation.finish(controller)) {
         turnstileWidget.value?.reset()
+
         isSubmitting.value = false
       }
     }

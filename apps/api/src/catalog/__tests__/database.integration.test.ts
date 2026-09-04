@@ -59,6 +59,7 @@ describe('postgreSQL catalog schema and search', () => {
       series: '6',
       titles: '27'
     })
+
     expect(originalCounts.rows).toHaveLength(12)
     expect(originalCounts.rows.every(row => row.originals === '1')).toBe(true)
   })
@@ -73,12 +74,13 @@ describe('postgreSQL catalog schema and search', () => {
         INSERT INTO catalog_items (id, type, release_year)
         VALUES ($1, 'movie', NULL)
       `, [catalogItemId])
+
       await client.query(`
         INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
         VALUES ($1, 'en', 'Constraint fixture', true)
       `, [catalogItemId])
 
-      const item = await client.query<{ release_year: number | null; }>(`
+      const item = await client.query<{ release_year: number | null }>(`
         SELECT release_year
         FROM catalog_items
         WHERE id = $1
@@ -92,6 +94,7 @@ describe('postgreSQL catalog schema and search', () => {
       const items = createCatalogSearchItems(rows, 'en')
 
       expect(item.rows[0]?.release_year).toBeNull()
+
       expect(items).toStrictEqual([
         {
           id: catalogItemId,
@@ -103,10 +106,12 @@ describe('postgreSQL catalog schema and search', () => {
           type: 'movie'
         }
       ])
+
       await expect(client.query(`
         INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
         VALUES ($1, 'en', 'Duplicate locale', false)
       `, [catalogItemId])).rejects.toMatchObject({ code: '23505' })
+
       await expect(client.query(`
         INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
         VALUES ($1, 'ru', 'Second original', true)
@@ -135,12 +140,14 @@ describe('postgreSQL catalog schema and search', () => {
       INSERT INTO catalog_items (id, type)
       VALUES ($1, 'movie'), ($2, 'series')
     `, [firstItemId, secondItemId])
+
     await client.query(`
       INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
       VALUES
         ($1, 'en', 'Shared title', true),
         ($2, 'en', 'Shared title', true)
     `, [firstItemId, secondItemId])
+
     await client.query('DELETE FROM catalog_items WHERE id = $1', [firstItemId])
 
     const titleCounts = await client.query<{
@@ -201,6 +208,7 @@ describe('postgreSQL catalog schema and search', () => {
     const items = createCatalogSearchItems(rows, 'ru')
 
     expect(items).toHaveLength(1)
+
     expect(items[0]).toMatchObject({
       id: '10000000-0000-4000-8000-000000000008',
       title: '1923',

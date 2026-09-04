@@ -104,6 +104,7 @@ describe(getLocaleFallbacks, () => {
       'zh',
       'en'
     ])
+
     expect(getLocaleFallbacks('ru-RU')).toStrictEqual(['ru-RU', 'ru', 'en'])
   })
 })
@@ -155,6 +156,7 @@ describe(createCatalogSearchItems, () => {
       title: 'English title',
       titleLocale: 'en'
     })
+
     expect(createCatalogSearchItems(originalRows, 'de-DE')[0]).toMatchObject({
       title: '원제',
       titleLocale: 'ko'
@@ -174,6 +176,7 @@ describe(createCatalogSearchItems, () => {
     const items = createCatalogSearchItems(rows, 'ru')
 
     expect(items).toHaveLength(1)
+
     expect(items[0]).toStrictEqual({
       id: '10000000-0000-4000-8000-000000000001',
       originalTitle: 'Original title',

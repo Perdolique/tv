@@ -84,6 +84,7 @@ describe('postgreSQL auth schema', () => {
         tablename: 'users'
       }
     ]))
+
     expect(foreignKeys.rows).toStrictEqual(expect.arrayContaining([
       {
         confdeltype: 'c',
@@ -97,7 +98,7 @@ describe('postgreSQL auth schema', () => {
   })
 
   it('cascades credentials and sessions when a user is deleted', async () => {
-    const insertedUser = await client.query<{ id: string; }>(`
+    const insertedUser = await client.query<{ id: string }>(`
       INSERT INTO users (email)
       VALUES ('cascade@example.com')
       RETURNING id
@@ -111,10 +112,12 @@ describe('postgreSQL auth schema', () => {
       INSERT INTO password_credentials (user_id, password_hash)
       VALUES ($1, 'hash')
     `, [userId])
+
     await client.query(`
       INSERT INTO sessions (user_id, token_hash, expires_at)
       VALUES ($1, $2, now() + interval '30 days')
     `, [userId, 'a'.repeat(64)])
+
     await client.query('DELETE FROM users WHERE id = $1', [userId])
 
     const childCounts = await client.query<{
@@ -161,6 +164,7 @@ describe('postgreSQL auth schema', () => {
       tokens: '1',
       users: '0'
     })
+
     await expect(findValidVerificationToken(database, tokenHash, now)).resolves.toStrictEqual({
       email,
       redirectTo: '/?view=recent'
@@ -181,6 +185,7 @@ describe('postgreSQL auth schema', () => {
       redirectTo: '/first',
       tokenHash: firstTokenHash
     }, now)
+
     await issueVerificationToken(database, {
       email,
       expiresAt,
@@ -206,7 +211,7 @@ describe('postgreSQL auth schema', () => {
       now
     )).resolves.toBeNull()
 
-    const remainingTokens = await client.query<{ count: string; }>(`
+    const remainingTokens = await client.query<{ count: string }>(`
       SELECT count(*)
       FROM email_verification_tokens
       WHERE email = $1
@@ -234,6 +239,7 @@ describe('postgreSQL auth schema', () => {
     `, [expiredTokenHash, email, new Date(now.getTime() - 1)])
 
     await expect(findValidVerificationToken(database, expiredTokenHash, now)).resolves.toBeNull()
+
     await expect(completeRegistration(database, {
       email,
       passwordHash: 'password-hash',
@@ -252,6 +258,7 @@ describe('postgreSQL auth schema', () => {
       passwordHash: 'password-hash',
       tokenHash: validTokenHash
     }, now)).resolves.not.toBeNull()
+
     await expect(completeRegistration(database, {
       email,
       passwordHash: 'password-hash',
@@ -272,6 +279,7 @@ describe('postgreSQL auth schema', () => {
       redirectTo: '/first',
       tokenHash: firstTokenHash
     }, now)
+
     await issueVerificationToken(createDatabase(client), {
       email,
       expiresAt,
@@ -330,7 +338,7 @@ describe('postgreSQL auth schema', () => {
   })
 
   it('replaces different expired sessions concurrently without deadlocking', async () => {
-    const insertedUser = await client.query<{ id: string; }>(`
+    const insertedUser = await client.query<{ id: string }>(`
       INSERT INTO users (email)
       VALUES ('concurrent-sessions@example.com')
       RETURNING id
@@ -385,7 +393,7 @@ describe('postgreSQL auth schema', () => {
       ])
     }
 
-    const sessionRows = await client.query<{ token_hash: string; }>(`
+    const sessionRows = await client.query<{ token_hash: string }>(`
       SELECT token_hash
       FROM sessions
       ORDER BY token_hash

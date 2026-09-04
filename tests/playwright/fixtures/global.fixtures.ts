@@ -111,7 +111,6 @@ const test = base.extend<TestOptions>({
     })
 
     await use(page)
-
     expect(browserErrors, 'browser errors').toStrictEqual([])
     expect(pendingHttpErrors, 'expected HTTP errors').toStrictEqual([])
   }

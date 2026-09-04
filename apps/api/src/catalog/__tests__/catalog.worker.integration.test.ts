@@ -52,10 +52,12 @@ async function resetTestSession(tokenHash: string): Promise<void> {
 
   try {
     await client.query('DELETE FROM users WHERE id = $1', [TEST_USER_ID])
+
     await client.query(`
       INSERT INTO users (id, email)
       VALUES ($1, 'catalog-search@example.com')
     `, [TEST_USER_ID])
+
     await client.query(`
       INSERT INTO sessions (user_id, token_hash, expires_at)
       VALUES ($1, $2, now() + interval '30 days')
@@ -94,6 +96,7 @@ async function requestWithUnavailableCatalogTitles(): Promise<Response> {
       ALTER TABLE catalog_item_titles_unavailable
       RENAME TO catalog_item_titles
     `)
+
     await client.end()
   }
 }
@@ -105,6 +108,7 @@ async function requestWithBrokenCatalogItem(catalogItemId: string): Promise<Resp
     INSERT INTO catalog_items (id, type)
     VALUES ($1, 'movie')
   `, [catalogItemId])
+
   await client.query(`
     INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
     VALUES ($1, 'en', 'Broken catalog invariant', false)
@@ -162,12 +166,14 @@ describe('catalog search Worker contract', () => {
 
     expect(missingResponse.status).toBe(401)
     expect(missingResponse.headers.get('set-cookie')).toBeNull()
+
     await expect(missingResponse.json()).resolves.toStrictEqual({
       error: {
         code: 'AUTHENTICATION_REQUIRED',
         message: 'Authentication is required.'
       }
     })
+
     expect(malformedResponse.status).toBe(401)
     expect(malformedResponse.headers.get('set-cookie')).toContain('Max-Age=0')
     expectNoStore(missingResponse)
@@ -182,12 +188,14 @@ describe('catalog search Worker contract', () => {
     )
 
     expect(response.status).toBe(400)
+
     await expect(response.json()).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     expectNoStore(response)
   })
 
@@ -209,6 +217,7 @@ describe('catalog search Worker contract', () => {
     )
 
     expect(emptyQueryResponse.status).toBe(400)
+
     await expect(emptyQueryResponse.json()).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
@@ -220,7 +229,9 @@ describe('catalog search Worker contract', () => {
         message: 'The request is invalid.'
       }
     })
+
     expect(invalidLocaleResponse.status).toBe(400)
+
     await expect(invalidLocaleResponse.json()).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
@@ -232,6 +243,7 @@ describe('catalog search Worker contract', () => {
         message: 'The request is invalid.'
       }
     })
+
     expectNoStore(emptyQueryResponse)
     expectNoStore(invalidLocaleResponse)
   })
@@ -249,6 +261,7 @@ describe('catalog search Worker contract', () => {
     const fallbackBody = await englishFallbackResponse.json<CatalogSearchResponse>()
 
     expect(russianResponse.status).toBe(200)
+
     expect(russianBody.items).toStrictEqual([
       {
         id: '10000000-0000-4000-8000-000000000002',
@@ -260,11 +273,14 @@ describe('catalog search Worker contract', () => {
         type: 'movie'
       }
     ])
+
     expect(englishFallbackResponse.status).toBe(200)
+
     expect(fallbackBody.items[0]).toMatchObject({
       title: 'Dead Man',
       titleLocale: 'en'
     })
+
     expectNoStore(russianResponse)
     expectNoStore(englishFallbackResponse)
   })
@@ -284,12 +300,14 @@ describe('catalog search Worker contract', () => {
     const logs = JSON.stringify(readStructuredErrorLogs(consoleError))
 
     expect(response.status).toBe(503)
+
     expect(body).toStrictEqual({
       error: {
         code: 'SERVICE_UNAVAILABLE',
         message: 'Catalog search is temporarily unavailable.'
       }
     })
+
     expect(logs).toContain('catalog_item_titles')
     expect(logs).toContain('requestId')
     expect(logs).not.toContain('private-search-text')
@@ -303,12 +321,14 @@ describe('catalog search Worker contract', () => {
     const logs = JSON.stringify(readStructuredErrorLogs(consoleError))
 
     expect(response.status).toBe(500)
+
     await expect(response.json()).resolves.toStrictEqual({
       error: {
         code: 'INTERNAL_ERROR',
         message: 'An unexpected error occurred.'
       }
     })
+
     expect(logs).toContain(`Catalog item ${catalogItemId} has no original title`)
     expectNoStore(response)
   })

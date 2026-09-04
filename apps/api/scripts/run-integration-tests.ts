@@ -89,7 +89,7 @@ await adminClient.connect()
 let databaseCreated = false
 
 try {
-  const versionResult = await adminClient.query<{ server_version_num: string; }>(
+  const versionResult = await adminClient.query<{ server_version_num: string }>(
     'SHOW server_version_num'
   )
 

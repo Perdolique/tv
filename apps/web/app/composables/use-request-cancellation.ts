@@ -31,6 +31,7 @@ function useRequestCancellation() {
 
   onBeforeUnmount(() => {
     activeController.value?.abort()
+
     activeController.value = undefined
   })
 

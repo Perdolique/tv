@@ -317,6 +317,7 @@ async function expectBotVerificationFailed(response: Response): Promise<void> {
   expect(response.status).toBe(403)
   expect(response.headers.get('set-cookie')).toBeNull()
   expectNoStore(response)
+
   await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
     error: {
       code: 'BOT_VERIFICATION_FAILED',
@@ -343,7 +344,7 @@ async function countUsers(email: string): Promise<number> {
   try {
     await client.connect()
 
-    const result = await client.query<{ count: string; }>(`
+    const result = await client.query<{ count: string }>(`
       SELECT count(*)
       FROM users
       WHERE email = $1
@@ -397,6 +398,7 @@ describe('auth Worker contract', () => {
   beforeEach(async () => {
     externalFetchState.defaultHibpResponse = undefined
     externalFetchState.queuedHibpResponses = []
+
     externalFetchState.usedTurnstileTokens.clear()
     vi.spyOn(globalThis, 'fetch').mockImplementation(handleExternalFetch)
 
@@ -424,6 +426,7 @@ describe('auth Worker contract', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBeNull()
+
     await expect(response.json()).resolves.toStrictEqual({
       service: 'tv-api',
       status: 'ok'
@@ -440,7 +443,6 @@ describe('auth Worker contract', () => {
 
   it('returns the same registration response for new, pending, and occupied email', async () => {
     mockSafeHibp()
-
     vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit').mockResolvedValue({ success: true })
 
     const pendingEmail = uniqueEmail('pending')
@@ -474,11 +476,13 @@ describe('auth Worker contract', () => {
     expect(existingAccountMessage.subject).toBe('A registration request was made for TV')
     expect(existingAccountMessage.text).toContain('/sign-in?redirectTo=')
     expect(existingAccountMessage.text).not.toContain('/register#token=')
+
     await expect(countAccountState(pendingEmail)).resolves.toStrictEqual({
       credentials: 0,
       tokens: 2,
       users: 0
     })
+
     await expect(countAccountState(occupiedEmail)).resolves.toStrictEqual({
       credentials: 1,
       tokens: 0,
@@ -504,7 +508,7 @@ describe('auth Worker contract', () => {
     try {
       await client.connect()
 
-      const result = await client.query<{ expires_at: Date; }>(`
+      const result = await client.query<{ expires_at: Date }>(`
         SELECT expires_at
         FROM email_verification_tokens
         WHERE token_hash = $1
@@ -528,6 +532,7 @@ describe('auth Worker contract', () => {
     const token = readVerificationToken(getLatestEmailMessage())
 
     expect(registrationResponse.status).toBe(202)
+
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 0,
       tokens: 1,
@@ -537,13 +542,16 @@ describe('auth Worker contract', () => {
     const completionResponse = await completionRequest(token)
 
     expect(completionResponse.status).toBe(201)
+
     await expect(readJson(completionResponse)).resolves.toStrictEqual({
       email,
       redirectTo: '/?view=recent',
       status: 'created'
     })
+
     expect(completionResponse.headers.get('set-cookie')).toBeNull()
     expectNoStore(completionResponse)
+
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 1,
       tokens: 0,
@@ -553,6 +561,7 @@ describe('auth Worker contract', () => {
     const replayResponse = await completionRequest(token)
 
     expect(replayResponse.status).toBe(400)
+
     await expect(readJson<AuthErrorResponse>(replayResponse)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_VERIFICATION',
@@ -566,7 +575,6 @@ describe('auth Worker contract', () => {
     const consoleError = vi.spyOn(console, 'error').mockReturnValue()
 
     vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit').mockResolvedValue({ success: true })
-
     await verificationRequest(email)
 
     const deliveredToken = readVerificationToken(getLatestEmailMessage())
@@ -578,24 +586,27 @@ describe('auth Worker contract', () => {
     const logs = JSON.stringify(readStructuredErrorLogs(consoleError))
 
     expect(response.status).toBe(503)
+
     expect(body.error).toStrictEqual({
       code: 'SERVICE_UNAVAILABLE',
       message: 'Authentication is temporarily unavailable.'
     })
+
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 0,
       tokens: 1,
       users: 0
     })
+
     expect(logs).toContain('email provider unavailable')
     expect(logs).not.toContain(email)
     expectNoStore(response)
-
     mockSafeHibp()
 
     const completionResponse = await completionRequest(deliveredToken)
 
     expect(completionResponse.status).toBe(201)
+
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 1,
       tokens: 0,
@@ -620,6 +631,7 @@ describe('auth Worker contract', () => {
       const response = await completionRequest(token, password)
 
       expect(response.status).toBe(400)
+
       await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
         error: {
           code: 'INVALID_REQUEST',
@@ -636,6 +648,7 @@ describe('auth Worker contract', () => {
     /* oxlint-enable eslint/no-await-in-loop */
 
     expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
+
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 0,
       tokens: 1,
@@ -654,6 +667,7 @@ describe('auth Worker contract', () => {
 
     try {
       await client.connect()
+
       await client.query(`
         UPDATE email_verification_tokens
         SET expires_at = now() - interval '1 second'
@@ -667,6 +681,7 @@ describe('auth Worker contract', () => {
 
     expect(response.status).toBe(400)
     expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
+
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_VERIFICATION',
@@ -693,6 +708,7 @@ describe('auth Worker contract', () => {
     const loggedError = JSON.stringify(readStructuredErrorLogs(consoleError))
 
     expect(compromisedResponse.status).toBe(400)
+
     await expect(readJson<AuthErrorResponse>(compromisedResponse)).resolves.toStrictEqual({
       error: {
         code: 'PASSWORD_COMPROMISED',
@@ -704,11 +720,14 @@ describe('auth Worker contract', () => {
         message: 'Choose a password that has not appeared in a known data breach.'
       }
     })
+
     expect(unavailableResponse.status).toBe(503)
+
     expect(unavailableBody.error).toStrictEqual({
       code: 'SERVICE_UNAVAILABLE',
       message: 'Authentication is temporarily unavailable.'
     })
+
     await expect(countUsers(compromisedEmail)).resolves.toBe(0)
     await expect(countUsers(unavailableEmail)).resolves.toBe(0)
     expect(loggedError).not.toContain(unavailableEmail)
@@ -723,11 +742,13 @@ describe('auth Worker contract', () => {
     const email = uniqueEmail('database-failure')
     const consoleError = vi.spyOn(console, 'error').mockReturnValue()
     const client = new Client({ connectionString: env.DATABASE.connectionString })
+
     // oxlint-disable-next-line eslint/init-declarations -- The finally block must restore the schema before assertions run.
     let response: Response
 
     await client.connect()
     await assertDisposableTestDatabase(client)
+
     await client.query(`
       ALTER TABLE password_credentials
       ALTER COLUMN password_hash TYPE varchar(1)
@@ -740,6 +761,7 @@ describe('auth Worker contract', () => {
         ALTER TABLE password_credentials
         ALTER COLUMN password_hash TYPE varchar(256)
       `)
+
       await client.end()
     }
 
@@ -769,12 +791,14 @@ describe('auth Worker contract', () => {
     expect(unknownResponse.status).toBe(401)
     expect(wrongPasswordResponse.status).toBe(401)
     expect(unknownBody).toStrictEqual(wrongPasswordBody)
+
     expect(unknownBody).toStrictEqual({
       error: {
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password.'
       }
     })
+
     expectNoStore(unknownResponse)
     expectNoStore(wrongPasswordResponse)
   })
@@ -840,6 +864,7 @@ describe('auth Worker contract', () => {
 
     try {
       await client.connect()
+
       await client.query(`
         UPDATE sessions
         SET expires_at = now() - interval '1 second'
@@ -940,12 +965,14 @@ describe('auth Worker contract', () => {
     })
 
     expect(response.status).toBe(413)
+
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     expectNoStore(response)
   })
 
@@ -963,12 +990,14 @@ describe('auth Worker contract', () => {
     })
 
     expect(response.status).toBe(413)
+
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
     expect(rateLimit).not.toHaveBeenCalled()
     expectNoStore(response)
@@ -981,12 +1010,14 @@ describe('auth Worker contract', () => {
     )
 
     expect(response.status).toBe(413)
+
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     expectNoStore(response)
   })
 
@@ -1005,6 +1036,7 @@ describe('auth Worker contract', () => {
 
     const rateLimit = vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit')
     const databaseConnect = vi.spyOn(Client.prototype, 'connect')
+
     // oxlint-disable-next-line typescript/unbound-method -- Vitest inspects mock metadata without invoking the binding method.
     const emailSend = vi.mocked(env.EMAIL).send
 
@@ -1032,6 +1064,7 @@ describe('auth Worker contract', () => {
 
     const rateLimit = vi.spyOn(env.SIGN_IN_RATE_LIMITER, 'limit')
     const databaseConnect = vi.spyOn(Client.prototype, 'connect')
+
     // oxlint-disable-next-line typescript/unbound-method -- Vitest inspects mock metadata without invoking the binding method.
     const emailSend = vi.mocked(env.EMAIL).send
 
@@ -1051,12 +1084,12 @@ describe('auth Worker contract', () => {
     const turnstileToken = createTurnstileToken(TURNSTILE_ACTIONS.register)
     const rateLimit = vi.spyOn(env.REGISTRATION_EMAIL_RATE_LIMITER, 'limit')
     const databaseConnect = vi.spyOn(Client.prototype, 'connect')
+
     // oxlint-disable-next-line typescript/unbound-method -- Vitest inspects mock metadata without invoking the binding method.
     const emailSend = vi.mocked(env.EMAIL).send
     const firstResponse = await verificationRequest(email, '/', turnstileToken)
 
     expect(firstResponse.status).toBe(202)
-
     rateLimit.mockClear()
     databaseConnect.mockClear()
     emailSend.mockClear()
@@ -1077,7 +1110,6 @@ describe('auth Worker contract', () => {
     const firstResponse = await signInRequest(email, PASSWORD, { turnstileToken })
 
     expect(firstResponse.status).toBe(401)
-
     rateLimit.mockClear()
     databaseConnect.mockClear()
 
@@ -1094,12 +1126,14 @@ describe('auth Worker contract', () => {
     )
 
     expect(response.status).toBe(400)
+
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     expect(response.headers.get('set-cookie')).toBeNull()
     expectNoStore(response)
   })
@@ -1122,12 +1156,14 @@ describe('auth Worker contract', () => {
     ))
 
     expect(response.status).toBe(400)
+
     await expect(readJson<AuthErrorResponse>(response)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     expectNoStore(response)
   })
 
@@ -1160,18 +1196,21 @@ describe('auth Worker contract', () => {
 
     expect(nonEmptyResponse.status).toBe(400)
     expect(oversizedResponse.status).toBe(413)
+
     await expect(readJson<AuthErrorResponse>(nonEmptyResponse)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     await expect(readJson<AuthErrorResponse>(oversizedResponse)).resolves.toStrictEqual({
       error: {
         code: 'INVALID_REQUEST',
         message: 'The request is invalid.'
       }
     })
+
     expectNoStore(nonEmptyResponse)
     expectNoStore(oversizedResponse)
   })
@@ -1208,6 +1247,7 @@ describe('auth Worker contract', () => {
     /* oxlint-enable eslint/no-await-in-loop */
 
     expect(registrationResponses[0]?.status).toBe(202)
+
     expect(signInResponses.slice(0, 5).map((response) => response.status)).toStrictEqual([
       401,
       401,
@@ -1231,23 +1271,25 @@ describe('auth Worker contract', () => {
 
     assert(limitedRegistration !== undefined)
     assert(limitedSignIn !== undefined)
-
     expect(limitedRegistration.status).toBe(429)
     expect(limitedSignIn.status).toBe(429)
     expect(limitedRegistration.headers.get('retry-after')).toBe('60')
     expect(limitedSignIn.headers.get('retry-after')).toBe('60')
+
     await expect(readJson<AuthErrorResponse>(limitedRegistration)).resolves.toStrictEqual({
       error: {
         code: 'RATE_LIMITED',
         message: 'Too many attempts. Try again later.'
       }
     })
+
     await expect(readJson<AuthErrorResponse>(limitedSignIn)).resolves.toStrictEqual({
       error: {
         code: 'RATE_LIMITED',
         message: 'Too many attempts. Try again later.'
       }
     })
+
     expectNoStore(limitedRegistration)
     expectNoStore(limitedSignIn)
   })
@@ -1273,11 +1315,13 @@ describe('auth Worker contract', () => {
     expect(response.headers.get('retry-after')).toBe('60')
     expect(rateLimitOptions.key).toMatch(/^[0-9a-f]{64}$/u)
     expect(countFetchCalls(HIBP_RANGE_URL)).toBe(0)
+
     await expect(countAccountState(email)).resolves.toStrictEqual({
       credentials: 0,
       tokens: 1,
       users: 0
     })
+
     expectNoStore(response)
   })
 })

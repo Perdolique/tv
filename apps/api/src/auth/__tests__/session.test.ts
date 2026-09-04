@@ -88,6 +88,7 @@ describe('session tokens and cookies', () => {
     expect(cookie).toBe(
       '__Host-tv_session=; Max-Age=0; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax'
     )
+
     expect(cookie).not.toContain('Domain=')
   })
 
@@ -95,6 +96,7 @@ describe('session tokens and cookies', () => {
     const requestUrl = 'http://tv-api.example.com/api/auth/sign-in'
 
     expect(isSessionTransportAllowed(requestUrl)).toBe(false)
+
     expect(() => getSessionCookieName(requestUrl)).toThrow(
       'Session cookies require HTTPS outside local development'
     )

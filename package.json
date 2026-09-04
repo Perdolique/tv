@@ -25,25 +25,25 @@
     "update:all": "taze --recursive --interactive --include-locked"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.0.0",
-    "@cloudflare/workers-types": "5.20260823.1",
+    "@cloudflare/vitest-plugin": "1.1.4",
+    "@cloudflare/workers-types": "5.20260904.1",
     "@playwright/test": "1.62.1",
-    "@types/node": "26.2.0",
+    "@types/node": "26.4.1",
     "@types/pg": "8.23.1",
     "drizzle-kit": "1.0.0-rc.4",
-    "eslint-config-greenpie": "17.7.0",
+    "eslint-config-greenpie": "17.9.0",
     "husky": "9.1.7",
     "markdownlint": "0.41.1",
     "markdownlint-cli": "0.49.1",
-    "oxlint": "1.79.0",
+    "oxlint": "1.81.0",
     "oxlint-tsgolint": "7.0.2001",
     "taze": "21.1.0",
-    "tsx": "4.23.12",
+    "tsx": "4.23.13",
     "typescript": "6.0.3",
     "vitest": "4.1.11",
     "vue-tsc": "3.3.11",
-    "worsier": "3.0.1",
-    "wrangler": "4.128.0"
+    "worsier": "3.4.0",
+    "wrangler": "4.129.0"
   },
-  "packageManager": "pnpm@11.23.0"
+  "packageManager": "pnpm@12.3.4"
 }

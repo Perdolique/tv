@@ -232,12 +232,14 @@
 
     clearRegistrationFragment()
     resetErrors()
+
     password.value = ''
     token.value = ''
     isPasswordVisible.value = false
 
     if (fragment.status === 'invalid') {
       mode.value = 'invalid'
+
       await focusVerificationError()
 
       return
@@ -245,6 +247,7 @@
 
     token.value = fragment.token
     mode.value = 'password'
+
     await nextTick()
     passwordField.value?.focus()
   }
@@ -284,10 +287,12 @@
 
   async function startAgain(): Promise<void> {
     resetErrors()
+
     password.value = ''
     token.value = ''
     isPasswordVisible.value = false
     mode.value = 'email'
+
     await nextTick()
     emailField.value?.focus()
   }
@@ -307,6 +312,7 @@
 
     if (validation.payload === null) {
       fields.value = validation.fields
+
       await focusFirstError()
 
       return
@@ -333,6 +339,7 @@
       }
 
       v.parse(registrationResponseSchema, response)
+
       mode.value = 'check-email'
     } catch (error) {
       if (!requestCancellation.isCurrent(controller)) {
@@ -343,10 +350,12 @@
 
       fields.value = parsedError.fields
       formError.value = parsedError.message
+
       await focusFirstError()
     } finally {
       if (requestCancellation.finish(controller)) {
         turnstileWidget.value?.reset()
+
         isSubmitting.value = false
       }
     }
@@ -363,6 +372,7 @@
 
     if (validation.payload === null) {
       fields.value = validation.fields
+
       await focusFirstError()
 
       return
@@ -412,6 +422,7 @@
       if (parsedError.code === 'INVALID_VERIFICATION') {
         password.value = ''
         mode.value = 'invalid'
+
         await focusVerificationError()
 
         return
@@ -419,6 +430,7 @@
 
       fields.value = parsedError.fields
       formError.value = parsedError.message
+
       await focusFirstError()
     } finally {
       if (requestCancellation.finish(controller)) {

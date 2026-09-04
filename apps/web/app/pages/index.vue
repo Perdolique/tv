@@ -142,7 +142,9 @@
 
   async function retrySession(): Promise<void> {
     isRetrying.value = true
+
     await restoreSession({ force: true })
+
     isRetrying.value = false
 
     if (state.value.status === 'anonymous') {

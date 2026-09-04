@@ -3,7 +3,7 @@
   "name": "tv-api",
   "account_id": "e19b9bdd14629a58c3f213b37a58281e",
   "main": "src/index.ts",
-  "compatibility_date": "2026-08-10",
+  "compatibility_date": "2026-09-04",
   "compatibility_flags": [
     "nodejs_compat"
   ],

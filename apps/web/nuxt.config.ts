@@ -23,7 +23,7 @@ export default defineNuxtConfig({
     }
   },
 
-  compatibilityDate: '2026-08-08',
+  compatibilityDate: '2026-09-04',
 
   devServer: {
     host: '127.0.0.1',

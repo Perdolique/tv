@@ -10,7 +10,7 @@ interface Deferred<Value> {
 const harness = vi.hoisted(() => {
   return {
     requestFetch: vi.fn(),
-    states: new Map<string, { value: unknown; }>()
+    states: new Map<string, { value: unknown }>()
   }
 })
 
@@ -81,6 +81,7 @@ describe(useAuthSession, () => {
     })
 
     sessionResponse.resolve({ user: null })
+
     await restore
 
     expect(auth.state.value).toStrictEqual({
@@ -103,6 +104,7 @@ describe(useAuthSession, () => {
 
     auth.setAnonymous()
     sessionResponse.reject(new Error('stale failure'))
+
     await restore
 
     expect(auth.state.value).toStrictEqual({ status: 'anonymous' })

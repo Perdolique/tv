@@ -32,7 +32,6 @@ describe(resolveCurrentSession, () => {
 
     const connectDatabase = vi.fn(async () => {
       expect(clock).not.toHaveBeenCalled()
-
       await Promise.resolve()
 
       currentTime = afterConnection
@@ -74,6 +73,7 @@ describe(resolveCurrentSession, () => {
     await expect(response.json()).resolves.toStrictEqual({ user })
     expect(connectDatabase).toHaveBeenCalledTimes(1)
     expect(clock).toHaveBeenCalledTimes(1)
+
     expect(repositoryMocks.findUserBySession).toHaveBeenCalledWith(
       database,
       tokenHash,

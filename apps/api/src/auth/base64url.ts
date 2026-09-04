@@ -9,6 +9,7 @@ function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
 
   return Uint8Array.from(
     binary,
+
     // oxlint-disable-next-line unicorn/prefer-code-point -- atob returns a binary string of UTF-16 code units.
     character => character.charCodeAt(0)
   )
@@ -17,6 +18,7 @@ function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
 function encodeBase64Url(value: Uint8Array): string {
   const binary = Array.from(
     value,
+
     // oxlint-disable-next-line unicorn/prefer-code-point -- btoa consumes a binary string of UTF-16 code units.
     byte => String.fromCharCode(byte)
   ).join('')

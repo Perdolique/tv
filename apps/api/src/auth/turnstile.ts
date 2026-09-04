@@ -33,6 +33,7 @@ interface VerifyTurnstileOptions {
 class TurnstileSiteverifyError extends Error {
   constructor(message: string, options: ErrorOptions = {}) {
     super(message, options)
+
     this.name = 'TurnstileSiteverifyError'
   }
 }
@@ -112,6 +113,7 @@ async function verifyTurnstileToken(options: VerifyTurnstileOptions): Promise<vo
   }
 
   const fetchImplementation = options.fetchImplementation ?? globalThis.fetch
+
   // oxlint-disable-next-line eslint/init-declarations -- Network failures are translated below.
   let response: Response
 
