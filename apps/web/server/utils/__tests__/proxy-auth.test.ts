@@ -65,6 +65,7 @@ describe('auth proxy', () => {
   describe(proxyAuthRequest, () => {
     it('uses the service binding without rewriting the path or query', async () => {
       const fetch = vi.fn()
+
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Mocked h3 helpers only use this event identity and context.
       const event = { context: {} } as H3Event
       const serviceResponse = { user: null }
@@ -105,6 +106,7 @@ describe('auth proxy', () => {
       const result = await proxyAuthRequest(event, true)
 
       expect(result).toBe(localResponse)
+
       expect(proxyRequest).toHaveBeenCalledWith(
         event,
         'http://127.0.0.1:8788/api/auth/session?fresh=true',
@@ -131,6 +133,7 @@ describe('auth proxy', () => {
       expect(proxyRequest).not.toHaveBeenCalled()
       expect(setResponseStatus).toHaveBeenCalledWith(event, 503)
       expect(setResponseHeader).toHaveBeenCalledWith(event, 'Cache-Control', 'no-store')
+
       expect(consoleError).toHaveBeenCalledWith(
         expect.stringContaining('API service binding is unavailable')
       )
@@ -140,6 +143,7 @@ describe('auth proxy', () => {
       const rootError = new Error('connection refused')
       const bindingError = new Error('Network connection lost', { cause: rootError })
       const fetch = vi.fn()
+
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Mocked h3 helpers only use this event identity and context.
       const event = { context: {} } as H3Event
 

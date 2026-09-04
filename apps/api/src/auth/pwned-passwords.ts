@@ -31,6 +31,7 @@ const rangeResponseSchema = v.pipe(
 class PwnedPasswordsUnavailableError extends Error {
   constructor(message: string, options: ErrorOptions = {}) {
     super(message, options)
+
     this.name = 'PwnedPasswordsUnavailableError'
   }
 }
@@ -121,6 +122,7 @@ async function readBoundedResponseBody(response: Response): Promise<string> {
 
       if (bodySize > HIBP_RESPONSE_SIZE_LIMIT) {
         await reader.cancel()
+
         throw new PwnedPasswordsUnavailableError('HIBP returned an oversized response')
       }
 
@@ -179,6 +181,7 @@ async function isPasswordCompromised(
 
     if (!response.ok) {
       await response.body?.cancel()
+
       throw new PwnedPasswordsUnavailableError(`HIBP returned HTTP ${response.status}`)
     }
 

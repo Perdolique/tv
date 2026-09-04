@@ -1,10 +1,13 @@
 import { findRootCause, serializeError } from '@tv/shared/errors'
 import { type Context, Hono } from 'hono'
 import { requestId, type RequestIdVariables } from 'hono/request-id'
+
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog reuses the shared API session resolver.
 import { resolveCurrentSession } from '../auth/current-session.ts'
+
 // oxlint-disable-next-line import/no-relative-parent-imports -- Protected routes share the auth transport contract.
 import { isSessionTransportAllowed } from '../auth/session.ts'
+
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
@@ -48,7 +51,6 @@ function createCatalogApp(): Hono<CatalogEnvironment> {
 
     // oxlint-disable-next-line node/callback-return -- Hono middleware continues after awaiting next().
     await next()
-
     context.header('Cache-Control', 'no-store')
   })
 

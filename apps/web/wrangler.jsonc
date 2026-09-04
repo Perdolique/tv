@@ -2,7 +2,7 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "tv-web",
   "main": ".output/server/index.mjs",
-  "compatibility_date": "2026-08-08",
+  "compatibility_date": "2026-09-04",
   "compatibility_flags": [
     "nodejs_compat"
   ],

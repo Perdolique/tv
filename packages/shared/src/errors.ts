@@ -14,6 +14,7 @@ function findRootCause(error: unknown): unknown {
     && !visitedErrors.has(rootCause)
   ) {
     visitedErrors.add(rootCause)
+
     rootCause = rootCause.cause
   }
 

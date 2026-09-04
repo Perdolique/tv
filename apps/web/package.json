@@ -17,11 +17,11 @@
     "@tv/shared": "workspace:*",
     "nuxt": "4.5.2",
     "valibot": "1.4.2",
-    "vue": "3.5.41",
-    "vue-router": "5.2.0"
+    "vue": "3.5.42",
+    "vue-router": "5.3.1"
   },
   "devDependencies": {
-    "@iconify-json/hugeicons": "1.2.33",
+    "@iconify-json/hugeicons": "1.2.34",
     "@nuxt/fonts": "0.14.0"
   }
 }

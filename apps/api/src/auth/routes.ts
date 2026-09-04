@@ -5,6 +5,7 @@ import { getCookie, setCookie } from 'hono/cookie'
 import { requestId, type RequestIdVariables } from 'hono/request-id'
 import { findRootCause, serializeError } from '@tv/shared/errors'
 import { TURNSTILE_ACTIONS, type TurnstileAction } from '@tv/shared/turnstile'
+
 // oxlint-disable-next-line import/no-relative-parent-imports -- Auth uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 
@@ -180,7 +181,6 @@ function createAuthApp(): Hono<AuthEnvironment> {
 
     // oxlint-disable-next-line node/callback-return -- Hono middleware continues after awaiting next().
     await next()
-
     context.header('Cache-Control', 'no-store')
   })
 
@@ -201,6 +201,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     const tokenHash = await hashVerificationToken(token)
     const now = new Date()
     const expiresAt = new Date(now.getTime() + VERIFICATION_TOKEN_DURATION_MILLISECONDS)
+
     // oxlint-disable-next-line eslint/init-declarations -- Database failures are translated below.
     let verificationTokenIssued: boolean
 
@@ -250,6 +251,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     const tokenHash = await hashVerificationToken(completion.token)
     const { database } = await connectDatabase(context)
     const now = new Date()
+
     // oxlint-disable-next-line eslint/init-declarations -- Database failures are translated below.
     let verification: Awaited<ReturnType<typeof findValidVerificationToken>>
 
@@ -339,6 +341,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     )
 
     const { database } = await connectDatabase(context)
+
     // oxlint-disable-next-line eslint/init-declarations -- The catch block translates database failures.
     let credential: Awaited<ReturnType<typeof findPasswordCredential>>
 
@@ -349,6 +352,7 @@ function createAuthApp(): Hono<AuthEnvironment> {
     }
 
     const passwordHash = credential?.passwordHash ?? DUMMY_PASSWORD_HASH
+
     // oxlint-disable-next-line eslint/init-declarations -- The catch block translates hashing failures.
     let passwordMatches: boolean
 

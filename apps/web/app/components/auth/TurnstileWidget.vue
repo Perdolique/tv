@@ -63,6 +63,7 @@
 
   function handleError(): void {
     clearToken()
+
     challengeError.value = 'unavailable'
   }
 
@@ -118,6 +119,7 @@
 
   onMounted(() => {
     isMounted.value = true
+
     renderWidget()
   })
 

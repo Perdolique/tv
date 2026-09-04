@@ -130,6 +130,7 @@ const cardVisualStates: VisualState[] = [
 
     open: async (page) => {
       await page.goto('/register#token=short')
+
       await expect(page.getByRole('alert')).toHaveText(
         'This verification link is invalid or has expired.'
       )
@@ -175,6 +176,7 @@ test.describe('Authentication responsive boundaries', () => {
         height: 844,
         width
       })
+
       await page.goto(`/register#token=${validVerificationToken}`)
 
       const marketing = page.getByRole('region', { name: 'TV highlights' })
@@ -191,6 +193,7 @@ test.describe('Authentication responsive boundaries', () => {
         height: 844,
         width
       })
+
       await page.goto(`/register#token=${validVerificationToken}`)
 
       const marketing = page.getByRole('region', { name: 'TV highlights' })
@@ -206,6 +209,7 @@ test.describe('Authentication responsive boundaries', () => {
       height: 844,
       width: 1023
     })
+
     await page.goto(`/register#token=${validVerificationToken}`)
 
     const marketingBounds = await readElementBounds(
@@ -222,6 +226,7 @@ test.describe('Authentication responsive boundaries', () => {
       height: 844,
       width: 1024
     })
+
     await page.goto(`/register#token=${validVerificationToken}`)
 
     const marketingBounds = await readElementBounds(
@@ -238,6 +243,7 @@ test.describe('Authentication responsive boundaries', () => {
       height: 360,
       width: 640
     })
+
     await page.goto(`/register#token=${validVerificationToken}`)
 
     await expectNoHorizontalClipping(
@@ -254,6 +260,7 @@ test.describe('Authentication desktop composition', () => {
         height: 768,
         width: 1366
       })
+
       await visualState.open(page)
 
       const marketing = page.getByRole('region', { name: 'TV highlights' })
@@ -319,7 +326,6 @@ test.describe('Authentication field labels', () => {
     expect(await readElementBounds(card)).toEqual(cardBoundsBeforeFocus)
     expect(await readElementBounds(passwordInput)).toEqual(passwordBoundsBeforeFocus)
     expect(await readElementBounds(signInButton)).toEqual(buttonBoundsBeforeFocus)
-
     await emailInput.fill('viewer@example.com')
     await emailInput.press('Tab')
 

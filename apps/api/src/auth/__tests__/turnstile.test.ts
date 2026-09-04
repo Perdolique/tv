@@ -97,13 +97,13 @@ describe(verifyTurnstileToken, () => {
     )
 
     await verifyWith(fetchImplementation)
-
     expect(fetchImplementation).toHaveBeenCalledTimes(1)
 
     const input = fetchImplementation.mock.calls[0]?.[0]
     const requestOptions = fetchImplementation.mock.calls[0]?.[1]
 
     expect(input).toBe(SITEVERIFY_URL)
+
     expect(requestOptions).toMatchObject({
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -111,6 +111,7 @@ describe(verifyTurnstileToken, () => {
 
       method: 'POST'
     })
+
     expect(requestOptions?.signal).toBeInstanceOf(AbortSignal)
 
     const parameters = readUrlEncodedRequestBody(fetchImplementation)
@@ -148,6 +149,7 @@ describe(verifyTurnstileToken, () => {
       message: 'Complete the security check and try again.',
       status: 403
     })
+
     expect(fetchImplementation).not.toHaveBeenCalled()
   })
 
@@ -236,6 +238,7 @@ describe(verifyTurnstileToken, () => {
       code: 'SERVICE_UNAVAILABLE',
       status: 503
     })
+
     expect(String(error.cause)).toContain(errorCode)
   })
 

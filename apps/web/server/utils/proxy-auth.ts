@@ -72,7 +72,6 @@ async function proxyAuthRequest(
     })
   } catch (error) {
     logAuthProxyError(error)
-
     setResponseStatus(event, 503)
     setResponseHeader(event, 'Cache-Control', 'no-store')
 

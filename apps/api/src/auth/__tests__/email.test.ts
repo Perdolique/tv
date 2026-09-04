@@ -36,6 +36,7 @@ describe('registration email content', () => {
       subject: 'Verify your email for TV',
       to: 'person@example.com'
     })
+
     expect(message.text).toContain(`${WEB_ORIGIN}/register#token=${token}`)
     expect(message.text).toContain('expires in one hour')
     expect(message.text).toContain('ignore this email')
@@ -54,11 +55,13 @@ describe('registration email content', () => {
     })
 
     expect(new URL(signInUrl).searchParams.get('redirectTo')).toBe(redirectTo)
+
     expect(message).toMatchObject({
       from: EMAIL_SENDER,
       subject: 'A registration request was made for TV',
       to: 'person@example.com'
     })
+
     expect(message.text).toContain(signInUrl)
     expect(message.html).toContain('Sign in to TV')
     expect(message.html).toContain(`href="${signInUrl}"`)

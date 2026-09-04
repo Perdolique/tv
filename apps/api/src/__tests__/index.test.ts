@@ -11,6 +11,7 @@ describe('get /health contract', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('application/json')
+
     expect(body).toStrictEqual({
       status: 'ok',
       service: 'tv-api'

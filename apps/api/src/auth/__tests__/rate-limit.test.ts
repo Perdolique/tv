@@ -24,6 +24,7 @@ describe(enforceRateLimit, () => {
     )
 
     expect(emailHash).toMatch(/^[0-9a-f]{64}$/u)
+
     expect(limit).toHaveBeenCalledWith({
       key: emailHash
     })

@@ -1,9 +1,9 @@
 import { isVerificationToken } from '@tv/shared/verification'
 
 type RegistrationFragment =
-  | { status: 'absent'; }
-  | { status: 'invalid'; }
-  | { status: 'valid'; token: string; }
+  | { status: 'absent' }
+  | { status: 'invalid' }
+  | { status: 'valid'; token: string }
 
 function parseRegistrationFragment(hash: string): RegistrationFragment {
   if (hash === '') {

@@ -3,7 +3,7 @@ import type { Client } from 'pg'
 const TEST_DATABASE_NAME_PATTERN = /^tv_test_[0-9a-f]{32}$/u
 
 async function assertDisposableTestDatabase(client: Client): Promise<void> {
-  const result = await client.query<{ database_name: string; }>(`
+  const result = await client.query<{ database_name: string }>(`
     SELECT current_database() AS database_name
   `)
 

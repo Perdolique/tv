@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       miniflare: {
-        compatibilityDate: '2026-08-04',
+        compatibilityDate: '2026-09-04',
 
         bindings: {
           TURNSTILE_SECRET: '1x0000000000000000000000000000000AA'

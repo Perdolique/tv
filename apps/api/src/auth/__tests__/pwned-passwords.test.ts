@@ -21,6 +21,7 @@ describe(isPasswordCompromised, () => {
 
     expect(compromised).toBe(true)
     expect(requestUrl).toBe('https://api.pwnedpasswords.com/range/5BAA6')
+
     expect(requestOptions?.headers).toStrictEqual({
       'Add-Padding': 'true'
     })
@@ -126,6 +127,7 @@ describe(isPasswordCompromised, () => {
     await expect(
       isPasswordCompromised('password', fetchImplementation)
     ).rejects.toBeInstanceOf(PwnedPasswordsUnavailableError)
+
     expect(cancel).toHaveBeenCalledTimes(1)
   })
 
@@ -152,7 +154,9 @@ describe(isPasswordCompromised, () => {
     await vi.waitFor(() => {
       expect(fetchImplementation).toHaveBeenCalledTimes(1)
     })
+
     await vi.advanceTimersByTimeAsync(2e3)
+
     await rejection
   })
 
@@ -182,7 +186,9 @@ describe(isPasswordCompromised, () => {
     await vi.waitFor(() => {
       expect(fetchImplementation).toHaveBeenCalledTimes(1)
     })
+
     await vi.advanceTimersByTimeAsync(2e3)
+
     await rejection
   })
 })
