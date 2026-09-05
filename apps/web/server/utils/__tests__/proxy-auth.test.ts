@@ -1,3 +1,5 @@
+import { createApiTargetUrl, proxyApiRequest } from '../proxy-api.ts'
+
 import type {
   getRequestURL as h3GetRequestURL,
   H3Event,
@@ -32,7 +34,6 @@ vi.mock(import('h3'), () => {
 })
 
 const {
-  createAuthTargetUrl,
   proxyAuthRequest
 } = await import('../proxy-auth.ts')
 
@@ -42,9 +43,9 @@ describe('auth proxy', () => {
     vi.resetAllMocks()
   })
 
-  describe(createAuthTargetUrl, () => {
+  describe(createApiTargetUrl, () => {
     it('preserves the canonical path and query on the local API origin', () => {
-      const targetUrl = createAuthTargetUrl(
+      const targetUrl = createApiTargetUrl(
         new URL('http://127.0.0.1:3001/api/auth/session?fresh=true'),
         true
       )
@@ -53,7 +54,7 @@ describe('auth proxy', () => {
     })
 
     it('preserves the canonical URL outside Nuxt development', () => {
-      const targetUrl = createAuthTargetUrl(
+      const targetUrl = createApiTargetUrl(
         new URL('https://tv.example.com/api/auth/session?fresh=true'),
         false
       )
@@ -171,5 +172,60 @@ describe('auth proxy', () => {
       expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('connection refused'))
       expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining('Network connection lost'))
     })
+  })
+})
+
+describe('catalog proxy', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.resetAllMocks()
+  })
+
+  it.each([[true, 'http://127.0.0.1:8788'], [false, 'https://tv.example.com']] as const)('preserves the event, query and upstream response in development=%s', async (development, origin) => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- h3 transport is mocked; only event identity and the binding context are used.
+    const event = { context: {} } as H3Event
+
+    event.context.cloudflare = { env: { API: { fetch: vi.fn() } } }
+
+    const response = { items: [] }
+
+    getRequestURL.mockReturnValue(new URL('https://tv.example.com/api/catalog/search?query=Dark&titleLocale=en'))
+    proxyRequest.mockResolvedValue(response)
+
+    const result = await proxyApiRequest(event, {
+      message: 'Catalog search is temporarily unavailable.',
+      logContext: 'catalog service binding request failed'
+    }, development)
+
+    expect(result).toBe(response)
+    expect(proxyRequest.mock.calls[0]?.[0]).toBe(event)
+    expect(proxyRequest.mock.calls[0]?.[1]).toBe(`${origin}/api/catalog/search?query=Dark&titleLocale=en`)
+  })
+
+  it.each([true, false])('returns a safe catalog message and logs the raw cause in development=%s', async (development) => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- h3 transport is mocked; only event identity and the binding context are used.
+    const event = { context: {} } as H3Event
+
+    event.context.cloudflare = { env: { API: { fetch: vi.fn() } } }
+
+    getRequestURL.mockReturnValue(new URL('https://tv.example.com/api/catalog/search?query=Dark'))
+    proxyRequest.mockRejectedValue(new Error('wrapper', { cause: new Error('raw connection failure') }))
+
+    const log = vi.spyOn(console, 'error').mockReturnValue()
+
+    const result = await proxyApiRequest(event, {
+      message: 'Catalog search is temporarily unavailable.',
+      logContext: 'catalog service binding request failed'
+    }, development)
+
+    expect(result).toStrictEqual({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Catalog search is temporarily unavailable.'
+    } })
+
+    expect(setResponseStatus).toHaveBeenCalledWith(event, 503)
+    expect(setResponseHeader).toHaveBeenCalledWith(event, 'Cache-Control', 'no-store')
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('raw connection failure'))
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('catalog service binding request failed'))
   })
 })

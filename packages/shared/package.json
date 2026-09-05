@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./catalog": "./src/catalog.ts",
     "./errors": "./src/errors.ts",
     "./network": "./src/network.ts",
     "./redirect": "./src/redirect.ts",
