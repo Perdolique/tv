@@ -48,6 +48,8 @@
     --layout-page-mobile: 1rem;
     --layout-page-compact: 1.5rem;
     --layout-page-wide: 2rem;
+    --layout-sidebar-compact: 5rem;
+    --layout-sidebar-wide: 14rem;
     --layout-content-max: 90rem;
   }
 }
