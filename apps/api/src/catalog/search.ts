@@ -1,5 +1,6 @@
 import { CatalogHttpError } from './errors.ts'
-import type { CatalogSearchItem, CatalogTitleRow } from './types.ts'
+import type { CatalogSearchItem } from '@tv/shared/catalog'
+import type { CatalogTitleRow } from './types.ts'
 
 const DEFAULT_TITLE_LOCALE = 'en'
 

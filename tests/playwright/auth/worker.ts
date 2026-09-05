@@ -1,4 +1,5 @@
 /* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
+import { catalogItems } from '../catalog/fixtures.ts'
 import { longEmail } from './constants.ts'
 
 import {
@@ -46,6 +47,7 @@ const AUTHENTICATED_USER = {
 } as const
 
 const VALID_VERIFICATION_TOKEN = 'v'.repeat(43)
+const CATALOG_VERIFICATION_TOKEN = 's'.repeat(43)
 const COMPROMISED_VERIFICATION_TOKEN = 'c'.repeat(43)
 const UNAVAILABLE_VERIFICATION_TOKEN = 'u'.repeat(43)
 const SESSION_COOKIE = 'tv_session=e2e-session'
@@ -57,6 +59,7 @@ const LONG_EMAIL_USER = {
 } as const
 
 const usedTurnstileTokens = new Set<string>()
+const expiredCatalogSessions = new Set<string>()
 
 function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers)
@@ -243,7 +246,7 @@ async function handleRegistrationCompletion(request: Request): Promise<Response>
     })
   }
 
-  if (completion.token !== VALID_VERIFICATION_TOKEN) {
+  if (completion.token !== VALID_VERIFICATION_TOKEN && completion.token !== CATALOG_VERIFICATION_TOKEN) {
     return safeError({
       code: 'INVALID_VERIFICATION',
       message: 'This verification link is invalid or has expired.',
@@ -251,9 +254,11 @@ async function handleRegistrationCompletion(request: Request): Promise<Response>
     })
   }
 
+  const redirectTo = completion.token === CATALOG_VERIFICATION_TOKEN ? '/?query=Dark' : '/?view=recent'
+
   return json({
     email: AUTHENTICATED_USER.email,
-    redirectTo: '/?view=recent',
+    redirectTo,
     status: 'created'
   }, 201)
 }
@@ -303,7 +308,21 @@ async function handleSignIn(request: Request): Promise<Response> {
   })
 }
 
+function getExpiringSession(request: Request): string | undefined {
+  const cookies = request.headers.get('Cookie') ?? ''
+
+  return cookies.split(';').map(cookie => cookie.trim()).find(cookie => cookie.startsWith('tv_session=e2e-expiring-'))
+}
+
 function handleSession(request: Request): Response {
+  const expiringSession = getExpiringSession(request)
+
+  if (expiringSession !== undefined) {
+    const user = expiredCatalogSessions.has(expiringSession) ? null : AUTHENTICATED_USER
+
+    return json({ user })
+  }
+
   if (hasCookie(request, 'fail_session=2')) {
     return safeError({
       code: 'SERVICE_UNAVAILABLE',
@@ -363,10 +382,52 @@ function handleSignOut(request: Request): Response {
   })
 }
 
+async function handleCatalogSearch(request: Request, url: URL): Promise<Response> {
+  const expiringSession = getExpiringSession(request)
+  const hasExpiringSession = expiringSession !== undefined && !expiredCatalogSessions.has(expiringSession)
+  const authenticated = hasCookie(request, SESSION_COOKIE) || hasCookie(request, LONG_EMAIL_SESSION_COOKIE) || hasExpiringSession
+
+  if (!authenticated || hasCookie(request, 'expire_catalog=1')) {
+    if (expiringSession !== undefined) {
+      expiredCatalogSessions.add(expiringSession)
+    }
+
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_catalog=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_catalog=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'slow_catalog=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- Browser tests exercise real request cancellation against a delayed service.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
+  }
+
+  const query = (url.searchParams.get('query') ?? '').trim().normalize('NFC').toLowerCase()
+  const items = catalogItems.filter(item => item.title.toLowerCase().includes(query))
+
+  return json({ items })
+}
+
 // oxlint-disable-next-line import/no-default-export -- Cloudflare Workers require a default entrypoint.
 export default {
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
+
+    if (request.method === 'GET' && url.pathname === '/api/catalog/search') {
+      return handleCatalogSearch(request, url)
+    }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/register') {
       return handleRegister(request)

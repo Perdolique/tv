@@ -8,6 +8,7 @@ import { longEmail } from './constants.ts'
 
 const validPassword = 'correct horse battery staple'
 const validVerificationToken = 'v'.repeat(43)
+const catalogVerificationToken = 's'.repeat(43)
 const expiredVerificationToken = 'e'.repeat(43)
 const compromisedVerificationToken = 'c'.repeat(43)
 const unavailableVerificationToken = 'u'.repeat(43)
@@ -465,7 +466,7 @@ test.describe('Authentication forms', () => {
   })
 
   test('verifies email, creates an account, and returns through ordinary sign-in', async ({ page }) => {
-    await page.goto('/register?redirectTo=%2F%3Fview%3Drecent')
+    await page.goto('/register?redirectTo=%2F%3Fquery%3DDark')
     await page.getByLabel('Email').fill('  viewer@example.com  ')
 
     const registrationRequestPromise = page.waitForRequest(`${appBaseUrl}/api/auth/register`)
@@ -481,14 +482,14 @@ test.describe('Authentication forms', () => {
     expect(registrationBody).toStrictEqual({
       [TURNSTILE_RESPONSE_FIELD]: turnstileToken,
       email: 'viewer@example.com',
-      redirectTo: '/?view=recent'
+      redirectTo: '/?query=Dark'
     })
 
     await expect(page.getByText(/Check your email for the next step/u)).toBeVisible()
-    await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?view=recent`)
-    await page.goto(`/register?redirectTo=%2F%3Fview%3Drecent#token=${validVerificationToken}`)
+    await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?query=Dark`)
+    await page.goto(`/register?redirectTo=%2F%3Fquery%3DDark#token=${catalogVerificationToken}`)
     await expect(page.getByRole('heading', { name: 'Choose your password' })).toBeVisible()
-    await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?view=recent`)
+    await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?query=Dark`)
     await expect(page.getByLabel('Password', { exact: true })).toBeFocused()
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
 
@@ -503,10 +504,10 @@ test.describe('Authentication forms', () => {
 
     expect(completionBody).toStrictEqual({
       password: validPassword,
-      token: validVerificationToken
+      token: catalogVerificationToken
     })
 
-    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/?view=recent`)
+    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/?query=Dark`)
     await expect(page.getByLabel('Email')).toHaveValue('viewer@example.com')
     await expect(page.getByText('Account created. Sign in to continue.')).toBeVisible()
 
@@ -515,7 +516,8 @@ test.describe('Authentication forms', () => {
     expect(sessionCookies.some(cookie => cookie.name === 'tv_session')).toBe(false)
     await fillSignIn(page)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
+    await expect(page).toHaveURL(`${appBaseUrl}/?query=Dark`)
+    await expect(page.getByRole('region', { name: 'Search results' }).getByRole('listitem')).toHaveCount(2)
   })
 
   test('returns focus to the email field when choosing a different address', async ({ page }) => {
@@ -677,8 +679,9 @@ test.describe('Authentication forms', () => {
 
 test.describe('Authenticated session lifecycle', () => {
   test('returns to a safe internal target after sign-in', async ({ page }) => {
-    await signIn(page, { target: '/sign-in?redirectTo=%2F%3Fview%3Drecent' })
-    await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
+    await signIn(page, { target: '/sign-in?redirectTo=%2F%3Fquery%3DArrival' })
+    await expect(page).toHaveURL(`${appBaseUrl}/?query=Arrival`)
+    await expect(page.getByRole('region', { name: 'Search results' }).getByRole('listitem')).toHaveText(['ArrivalMovie · 2016'])
   })
 
   const unsafeRedirects = [
