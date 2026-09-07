@@ -1,8 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { env } from 'node:process'
+import { argv, env } from 'node:process'
 import { fileURLToPath, URL } from 'node:url'
 import { createDatabase } from '@tv/database'
 import { isLoopbackHostname } from '@tv/shared/network'
@@ -19,6 +20,20 @@ const migrationsFolder = fileURLToPath(
 )
 
 const wranglerLogPath = join(tmpdir(), 'tv-wrangler-logs')
+const filters = argv.slice(2).map(path => path.replace(/^apps\/api\//u, ''))
+
+for (const path of filters) {
+  const isDatabaseTest = path.endsWith('/database.integration.test.ts')
+  const isWorkerTest = path.endsWith('.worker.integration.test.ts')
+  const testPath = join(apiDirectory, path)
+
+  if ((!isDatabaseTest && !isWorkerTest) || !existsSync(testPath)) {
+    throw new Error(`Expected an existing API integration test file: ${path}`)
+  }
+}
+
+const databaseFilters = filters.filter(path => path.endsWith('/database.integration.test.ts'))
+const workerFilters = filters.filter(path => path.endsWith('.worker.integration.test.ts'))
 
 interface ChildResult {
   exitCode: number | null;
@@ -41,11 +56,12 @@ async function waitForChild(child: ChildProcess): Promise<ChildResult> {
 
 async function runVitestConfig(
   configPath: string,
-  testEnvironment: NodeJS.ProcessEnv
+  testEnvironment: NodeJS.ProcessEnv,
+  fileFilters: string[]
 ): Promise<void> {
   const child = spawn(
     'pnpm',
-    ['exec', 'vitest', 'run', '--config', configPath],
+    ['exec', 'vitest', 'run', '--config', configPath, ...fileFilters],
     {
       cwd: apiDirectory,
       env: testEnvironment,
@@ -125,8 +141,13 @@ try {
 
   delete testEnvironment.DATABASE_URL
 
-  await runVitestConfig('vitest.database-integration.config.ts', testEnvironment)
-  await runVitestConfig('vitest.worker-integration.config.ts', testEnvironment)
+  if (filters.length === 0 || databaseFilters.length > 0) {
+    await runVitestConfig('vitest.database-integration.config.ts', testEnvironment, databaseFilters)
+  }
+
+  if (filters.length === 0 || workerFilters.length > 0) {
+    await runVitestConfig('vitest.worker-integration.config.ts', testEnvironment, workerFilters)
+  }
 } finally {
   try {
     if (databaseCreated) {

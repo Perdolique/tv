@@ -14,10 +14,21 @@ interface CatalogSearchResponse {
   items: CatalogSearchItem[];
 }
 
+interface CatalogDetailsItem extends CatalogSearchItem {
+  description: string | null;
+  descriptionLocale: string | null;
+  posterUrl: string | null;
+}
+
+interface CatalogDetailsResponse {
+  item: CatalogDetailsItem;
+}
+
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
   | 'INTERNAL_ERROR'
   | 'INVALID_REQUEST'
+  | 'NOT_FOUND'
   | 'SERVICE_UNAVAILABLE'
 
 interface CatalogErrorBody {
@@ -31,6 +42,8 @@ interface CatalogErrorEnvelope {
 }
 
 export type {
+  CatalogDetailsItem,
+  CatalogDetailsResponse,
   CatalogErrorCode,
   CatalogErrorEnvelope,
   CatalogSearchItem,

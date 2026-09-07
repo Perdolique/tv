@@ -2,7 +2,7 @@ import type { CatalogSearchItem } from '../../../packages/shared/src/catalog.ts'
 
 const catalogItems = [
   {
-    id: 'movie-arrival',
+    id: '01991a00-0000-7000-8000-000000000001',
     originalTitle: 'Arrival',
     originalTitleLocale: 'en',
     releaseYear: 2016,
@@ -11,7 +11,7 @@ const catalogItems = [
     type: 'movie'
   },
   {
-    id: 'series-dark',
+    id: '01991a00-0000-7000-8000-000000000002',
     originalTitle: 'Dark',
     originalTitleLocale: 'de',
     releaseYear: 2017,
@@ -20,7 +20,7 @@ const catalogItems = [
     type: 'series'
   },
   {
-    id: 'movie-dark-city',
+    id: '01991a00-0000-7000-8000-000000000003',
     originalTitle: 'Dark City',
     originalTitleLocale: 'en',
     releaseYear: null,
@@ -29,7 +29,7 @@ const catalogItems = [
     type: 'movie'
   },
   {
-    id: 'movie-long',
+    id: '01991a00-0000-7000-8000-000000000004',
     originalTitle: 'A very long title',
     originalTitleLocale: 'en',
     releaseYear: 2026,

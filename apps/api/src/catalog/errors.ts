@@ -5,7 +5,8 @@ const ERROR_MESSAGES = {
   AUTHENTICATION_REQUIRED: 'Authentication is required.',
   INTERNAL_ERROR: 'An unexpected error occurred.',
   INVALID_REQUEST: 'The request is invalid.',
-  SERVICE_UNAVAILABLE: 'Catalog search is temporarily unavailable.'
+  NOT_FOUND: 'This title could not be found.',
+  SERVICE_UNAVAILABLE: 'The catalog is temporarily unavailable.'
 } satisfies Record<CatalogErrorCode, string>
 
 interface CatalogErrorOptions {

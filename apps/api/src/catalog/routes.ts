@@ -11,7 +11,8 @@ import { isSessionTransportAllowed } from '../auth/session.ts'
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
-import { findTitleRowsForMatchingCatalogItems } from './repository.ts'
+import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
+import { findCatalogDetailsRows, findTitleRowsForMatchingCatalogItems } from './repository.ts'
 import { canonicalizeTitleLocale, createCatalogSearchItems, normalizeCatalogQuery } from './search.ts'
 
 interface CatalogEnvironment {
@@ -31,7 +32,7 @@ function logCatalogServerError(
   const logEntry = JSON.stringify({
     code: error.code,
     error: serializedTechnicalError,
-    message: 'catalog search request failed',
+    message: 'catalog request failed',
     requestId: context.get('requestId')
   })
 
@@ -52,6 +53,37 @@ function createCatalogApp(): Hono<CatalogEnvironment> {
     // oxlint-disable-next-line node/callback-return -- Hono middleware continues after awaiting next().
     await next()
     context.header('Cache-Control', 'no-store')
+  })
+
+  app.get('/api/catalog/items/:id', async (context) => {
+    const id = validateCatalogItemId(context.req.param('id'))
+    const url = new URL(context.req.url)
+    const titleLocale = canonicalizeTitleLocale(url.searchParams.get('titleLocale'))
+
+    // oxlint-disable-next-line eslint/init-declarations -- Catalog connection failures are translated below.
+    let adapter: Awaited<ReturnType<typeof connectDatabaseAdapter>> | undefined
+
+    // oxlint-disable-next-line eslint/init-declarations -- Catalog database failures are translated below.
+    let rows: Awaited<ReturnType<typeof findCatalogDetailsRows>>
+
+    try {
+      adapter = await connectDatabaseAdapter(context.env.DATABASE.connectionString)
+      rows = await findCatalogDetailsRows(adapter.database, id)
+    } catch (error) {
+      throw new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
+    } finally {
+      if (adapter !== undefined) {
+        await adapter.client.end()
+      }
+    }
+
+    const item = createCatalogDetailsItem(rows, titleLocale)
+
+    if (item === null) {
+      throw new CatalogHttpError('NOT_FOUND', 404)
+    }
+
+    return context.json({ item })
   })
 
   app.get('/api/catalog/search', async (context) => {

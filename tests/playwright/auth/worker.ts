@@ -1,5 +1,6 @@
 /* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
 import { catalogItems } from '../catalog/fixtures.ts'
+import { detailsItems, dune, russianDune } from '../catalog/details.fixtures.ts'
 import { longEmail } from './constants.ts'
 
 import {
@@ -420,10 +421,43 @@ async function handleCatalogSearch(request: Request, url: URL): Promise<Response
   return json({ items })
 }
 
+async function handleCatalogDetails(request: Request, url: URL): Promise<Response> {
+  if (hasCookie(request, 'fail_details=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503)
+  }
+
+  if (hasCookie(request, 'slow_details=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- A real delayed service response exercises browser transport cancellation.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
+  }
+
+  const id = url.pathname.split('/').at(-1)
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  const locale = url.searchParams.get('titleLocale') ?? 'en'
+  const localized = id === dune.id && locale.startsWith('ru') ? russianDune : item
+
+  return json({ item: localized })
+}
+
 // oxlint-disable-next-line import/no-default-export -- Cloudflare Workers require a default entrypoint.
 export default {
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
+
+    if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/')) {
+      return handleCatalogDetails(request, url)
+    }
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/search') {
       return handleCatalogSearch(request, url)
