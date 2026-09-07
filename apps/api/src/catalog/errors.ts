@@ -1,5 +1,5 @@
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import type { CatalogErrorCode, CatalogErrorEnvelope } from './types.ts'
+import type { CatalogErrorCode, CatalogErrorEnvelope } from '@tv/shared/catalog'
 
 const ERROR_MESSAGES = {
   AUTHENTICATION_REQUIRED: 'Authentication is required.',

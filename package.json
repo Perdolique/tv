@@ -26,8 +26,8 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.1.4",
-    "@cloudflare/workers-types": "5.20260904.1",
-    "@playwright/test": "1.62.1",
+    "@cloudflare/workers-types": "5.20260905.1",
+    "@playwright/test": "1.63.0",
     "@types/node": "26.4.1",
     "@types/pg": "8.23.1",
     "drizzle-kit": "1.0.0-rc.4",
@@ -42,7 +42,7 @@
     "typescript": "6.0.3",
     "vitest": "4.1.11",
     "vue-tsc": "3.3.11",
-    "worsier": "3.4.0",
+    "worsier": "3.5.0",
     "wrangler": "4.129.0"
   },
   "packageManager": "pnpm@12.3.4"

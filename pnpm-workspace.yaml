@@ -13,4 +13,17 @@ allowBuilds:
 minimumReleaseAgeExcludePrune: true
 
 minimumReleaseAgeExclude:
-  - '@cloudflare/workers-types@5.20260904.1'
+  - '@cloudflare/workers-types@5.20260905.1'
+  - '@playwright/test@1.63.0'
+  - hono@4.13.7
+  - playwright-core@1.63.0
+  - playwright@1.63.0
+  - worsier-darwin-arm64@3.5.0
+  - worsier-darwin-x64@3.5.0
+  - worsier-linux-arm64-gnu@3.5.0
+  - worsier-linux-arm64-musl@3.5.0
+  - worsier-linux-x64-gnu@3.5.0
+  - worsier-linux-x64-musl@3.5.0
+  - worsier-win32-arm64-msvc@3.5.0
+  - worsier-win32-x64-msvc@3.5.0
+  - worsier@3.5.0

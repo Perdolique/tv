@@ -3,7 +3,7 @@ import { Client } from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
-import type { CatalogErrorEnvelope, CatalogSearchResponse } from '../types.ts'
+import type { CatalogErrorEnvelope, CatalogSearchResponse } from '@tv/shared/catalog'
 
 const TEST_SESSION_TOKEN = 'c'.repeat(43)
 const TEST_USER_ID = '40000000-0000-4000-8000-000000000001'

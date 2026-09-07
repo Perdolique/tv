@@ -1,6 +1,6 @@
 <template>
-  <main :class="$style.component">
-    <section v-if="hasSessionError" :class="$style.panel">
+  <div :class="$style.component" :data-authenticated="isAuthenticated">
+    <main v-if="hasSessionError" :class="$style.panel">
       <p :class="$style.wordmark">
         TV
       </p>
@@ -20,39 +20,36 @@
       >
         Try again
       </AppButton>
-    </section>
+    </main>
 
-    <section v-else-if="isAuthenticated" :class="$style.panel">
-      <p :class="$style.wordmark">
-        TV
-      </p>
+    <template v-else-if="isAuthenticated">
+      <header :class="$style.accountBar">
+        <p :class="$style.wordmark">TV</p>
+        <p :class="$style.accountEmail">Signed in as <strong>{{ userEmail }}</strong></p>
+        <AppMessage v-if="hasSignOutError" role="alert" tone="danger">{{ signOutError }}</AppMessage>
+        <AppButton ref="signOutButton" :disabled="isSigningOut" variant="secondary" @click="signOut">Sign out</AppButton>
+      </header>
+      <nav :class="$style.desktopCatalogNavigation" aria-label="Main navigation">
+        <NuxtLink :class="$style.catalogLink" to="/" aria-current="page">
+          <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
+          <span>Catalog</span>
+        </NuxtLink>
+      </nav>
+      <main :class="$style.catalogContent">
+        <h1 ref="authenticatedHeading" :class="$style.catalogHeading" tabindex="-1">Your catalog starts here.</h1>
+        <p :class="$style.supportingText">Find your next movie or series.</p>
+        <CatalogSearchField :model-value="input" @update:model-value="changeInput" @submit="submitSearch" @clear="clear" />
+        <CatalogResults ref="catalogResults" :failure="failure" :is-loading="isLoading" :items="lastResult?.items" :result-query="lastResult?.query" @retry="retrySearch" />
+      </main>
+      <nav :class="$style.mobileCatalogNavigation" aria-label="Main navigation">
+        <NuxtLink :class="$style.catalogLink" to="/" aria-current="page">
+          <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
+          <span>Catalog</span>
+        </NuxtLink>
+      </nav>
+    </template>
 
-      <h1
-        ref="authenticatedHeading"
-        :class="$style.heading"
-        tabindex="-1"
-      >
-        Your catalog starts here.
-      </h1>
-
-      <p :class="$style.supportingText">
-        Signed in as <strong>{{ userEmail }}</strong>
-      </p>
-
-      <AppMessage v-if="hasSignOutError" role="alert" tone="danger">
-        {{ signOutError }}
-      </AppMessage>
-
-      <AppButton
-        ref="signOutButton"
-        :disabled="isSigningOut"
-        @click="signOut"
-      >
-        Sign out
-      </AppButton>
-    </section>
-
-    <section v-else-if="isAnonymous" :class="$style.panel">
+    <main v-else-if="isAnonymous" :class="$style.panel">
       <h1
         ref="anonymousHeading"
         :class="$style.anonymousHeading"
@@ -60,6 +57,8 @@
       >
         TV
       </h1>
+
+      <p :class="$style.supportingText">Sign in or create an account to search movies and series.</p>
 
       <nav :class="$style.navigation" aria-label="Authentication">
         <NuxtLink :class="$style.primaryLink" :to="signInLocation">
@@ -69,15 +68,19 @@
           Create an account
         </NuxtLink>
       </nav>
-    </section>
-  </main>
+    </main>
+  </div>
 </template>
 
 <script lang="ts" setup>
+  import { Icon } from '#components'
   import { definePageMeta } from '#app/composables/pages'
-  import { useHead, useRequestFetch, useResponseHeader, useRoute } from '#app'
+  import { navigateTo, useHead, useRequestFetch, useResponseHeader, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
-  import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
+  import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
+  import CatalogSearchField from '~/components/catalog/CatalogSearchField.vue'
+  import CatalogResults from '~/components/catalog/CatalogResults.vue'
+  import { useCatalogSearch } from '~/composables/use-catalog-search.ts'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
@@ -98,7 +101,9 @@
   const signOutButton = useTemplateRef('signOutButton')
   const authenticatedHeading = useTemplateRef('authenticatedHeading')
   const anonymousHeading = useTemplateRef('anonymousHeading')
+  const catalogResults = useTemplateRef('catalogResults')
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
+  const { changeInput, clear, failure, input, isLoading, lastResult, ready, search, unauthorized } = useCatalogSearch(isAuthenticated)
   const isAnonymous = computed(() => state.value.status === 'anonymous')
   const hasSessionError = computed(() => state.value.status === 'error')
   const hasSignOutError = computed(() => signOutError.value !== '')
@@ -139,6 +144,52 @@
       )
     }
   })
+
+  watch(unauthorized, async (expired) => {
+    if (expired) {
+      const target = sanitizeRedirectTo(route.fullPath)
+
+      setAnonymous()
+
+      await navigateTo({
+        path: '/sign-in',
+        query: { redirectTo: target }
+      }, { replace: true })
+    }
+  }, {
+    immediate: true,
+    flush: 'sync'
+  })
+
+  function submitSearch(): void {
+    void search(failure.value !== '')
+  }
+
+  async function waitForSearchToSettle(): Promise<void> {
+    if (!isLoading.value) {
+      return
+    }
+
+    const settled = Promise.withResolvers<boolean>()
+
+    const stop = watch(isLoading, (loading) => {
+      if (!loading) {
+        stop()
+        settled.resolve(true)
+      }
+    }, { flush: 'sync' })
+
+    await settled.promise
+  }
+
+  async function retrySearch(): Promise<void> {
+    await search(true)
+    await waitForSearchToSettle()
+    await nextTick()
+    catalogResults.value?.focusAfterRetry()
+  }
+
+  await ready
 
   async function retrySession(): Promise<void> {
     isRetrying.value = true
@@ -202,6 +253,155 @@
       background:
         radial-gradient(circle at top, var(--color-surface-muted), transparent 52%),
         var(--color-canvas);
+    }
+
+    .component[data-authenticated='true'] {
+      display: block;
+      padding: 0;
+      padding-block-end: calc(5rem + env(safe-area-inset-bottom));
+      background: var(--color-canvas);
+    }
+
+    .accountBar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      padding-block-start: max(var(--space-4), env(safe-area-inset-top));
+      border-block-end: 1px solid var(--color-border);
+      background: var(--color-surface);
+    }
+
+    .accountEmail {
+
+      flex: 1 1 10rem;
+
+      color: var(--color-text-secondary);
+
+      font-size: 0.875rem;
+
+    }
+
+    .mobileCatalogNavigation {
+      position: fixed;
+      inset-block-end: 0;
+      inset-inline: 0;
+      z-index: 2;
+      padding: var(--space-2) var(--space-4);
+      padding-block-end: max(var(--space-2), env(safe-area-inset-bottom));
+      border-block-start: 1px solid var(--color-border);
+      background: var(--color-surface);
+    }
+
+    .desktopCatalogNavigation {
+      display: none;
+    }
+
+    .catalogLink {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      min-block-size: 2.75rem;
+      padding: var(--space-2);
+      border-radius: var(--radius-sm);
+      background: var(--color-surface-muted);
+      color: var(--color-text-primary);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .catalogHeading {
+
+      font-size: 1.75rem;
+
+      line-height: 1.15;
+
+      font-weight: 600;
+
+    }
+
+    .catalogContent {
+
+      display: grid;
+
+      gap: var(--space-6);
+
+      max-inline-size: 56rem;
+
+      padding: var(--space-8) var(--layout-page-mobile);
+
+    }
+
+    @media (width >= 40rem) {
+      .catalogHeading {
+        font-size: 2.25rem;
+        line-height: 1.17;
+      }
+      .component[data-authenticated='true'] {
+        padding-block-end: 0;
+        padding-inline-start: var(--layout-sidebar-compact);
+      }
+      .mobileCatalogNavigation {
+        display: none;
+      }
+      .desktopCatalogNavigation {
+        position: fixed;
+        inset-inline-start: 0;
+        inset-inline-end: auto;
+        inset-block: 0;
+        z-index: 2;
+        display: block;
+        inline-size: var(--layout-sidebar-compact);
+        padding: var(--space-4) var(--space-1);
+        border: 0;
+        border-inline-end: 1px solid var(--color-border);
+      }
+      .catalogLink {
+        flex-direction: column;
+        font-size: 0.875rem;
+      }
+      .catalogContent {
+        padding-inline: var(--layout-page-compact);
+      }
+    }
+
+    @media (width >= 64rem) {
+      .component[data-authenticated='true'] {
+        padding-inline-start: var(--layout-sidebar-wide);
+      }
+      .desktopCatalogNavigation {
+        inline-size: var(--layout-sidebar-wide);
+        padding: var(--space-8) var(--space-4);
+      }
+      .catalogLink {
+        flex-direction: row;
+        justify-content: flex-start;
+        font-size: 1rem;
+      }
+      .catalogContent {
+        padding: var(--space-10) var(--layout-page-wide);
+      }
+      .accountBar {
+        position: fixed;
+        inset-inline-start: 0;
+        inset-block: 0;
+        flex-direction: column;
+        align-items: stretch;
+        inline-size: var(--layout-sidebar-wide);
+        padding: var(--space-8) var(--space-4);
+        border-block-end: 0;
+        border-inline-end: 1px solid var(--color-border);
+      }
+      .accountEmail {
+        flex: 0 1 auto;
+      }
+      .desktopCatalogNavigation {
+        inset-block: auto 0;
+        border-inline-end: 0;
+      }
+
     }
 
     .panel {
