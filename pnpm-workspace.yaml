@@ -13,7 +13,7 @@ allowBuilds:
 minimumReleaseAgeExcludePrune: true
 
 minimumReleaseAgeExclude:
-  - '@cloudflare/workers-types@5.20260905.1'
+  - '@cloudflare/workers-types@5.20260908.1'
   - '@playwright/test@1.63.0'
   - hono@4.13.7
   - playwright-core@1.63.0
@@ -27,3 +27,13 @@ minimumReleaseAgeExclude:
   - worsier-win32-arm64-msvc@3.5.0
   - worsier-win32-x64-msvc@3.5.0
   - worsier@3.5.0
+  - '@cloudflare/vitest-plugin@1.1.6'
+  - '@cloudflare/workerd-darwin-64@1.20260908.1'
+  - '@cloudflare/workerd-darwin-arm64@1.20260908.1'
+  - '@cloudflare/workerd-linux-64@1.20260908.1'
+  - '@cloudflare/workerd-linux-arm64@1.20260908.1'
+  - '@cloudflare/workerd-windows-64@1.20260908.1'
+  - eslint-config-greenpie@17.10.0
+  - miniflare@5.20260908.0-alpha
+  - workerd@1.20260908.1
+  - wrangler@4.130.0
