@@ -249,6 +249,19 @@ describe('catalog search Worker contract', () => {
   })
 
   it('returns the requested title locale and its fallback', async () => {
+    const client = await connectTestDatabase()
+
+    const seeded = await client.query<{ id: string }>(`
+      SELECT id FROM catalog_items JOIN catalog_item_titles ON catalog_item_id = id
+      WHERE is_original AND title = 'Dead Man'
+    `)
+
+    await client.end()
+
+    const seededId = seeded.rows[0]?.id
+
+    expect(seededId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
+
     const russianResponse = await catalogRequest(
       '/api/catalog/search?query=dead&titleLocale=ru-RU'
     )
@@ -264,7 +277,7 @@ describe('catalog search Worker contract', () => {
 
     expect(russianBody.items).toStrictEqual([
       {
-        id: '10000000-0000-4000-8000-000000000002',
+        id: seededId,
         originalTitle: 'Dead Man',
         originalTitleLocale: 'en',
         releaseYear: 1995,
@@ -304,7 +317,7 @@ describe('catalog search Worker contract', () => {
     expect(body).toStrictEqual({
       error: {
         code: 'SERVICE_UNAVAILABLE',
-        message: 'Catalog search is temporarily unavailable.'
+        message: 'The catalog is temporarily unavailable.'
       }
     })
 

@@ -19,14 +19,15 @@ const catalogItemType = pgEnum('catalog_item_type', ['movie', 'series'])
 const catalogItems = pgTable('catalog_items', {
   id:
     uuid()
-    .defaultRandom()
+    .default(sql`uuidv7()`)
     .primaryKey(),
 
   type:
     catalogItemType()
     .notNull(),
 
-  releaseYear: integer('release_year')
+  releaseYear: integer('release_year'),
+  posterPath: text('poster_path')
 })
 
 const catalogItemTitles = pgTable('catalog_item_titles', {
@@ -43,6 +44,8 @@ const catalogItemTitles = pgTable('catalog_item_titles', {
     text()
     .notNull(),
 
+  description: text(),
+
   isOriginal:
     boolean('is_original')
     .default(false)
@@ -57,7 +60,7 @@ const catalogItemTitles = pgTable('catalog_item_titles', {
 const users = pgTable('users', {
   id:
     uuid()
-    .defaultRandom()
+    .default(sql`uuidv7()`)
     .primaryKey(),
 
   email:
@@ -145,7 +148,7 @@ const emailVerificationTokens = pgTable('email_verification_tokens', {
 const sessions = pgTable('sessions', {
   id:
     uuid()
-    .defaultRandom()
+    .default(sql`uuidv7()`)
     .primaryKey(),
 
   userId:

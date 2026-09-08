@@ -2,7 +2,7 @@ import type { Database } from '@tv/database'
 import { catalogItemTitles, catalogItems } from '@tv/database/schema'
 import { eq, sql } from 'drizzle-orm'
 import { escapeLikePattern } from './search.ts'
-import type { CatalogTitleRow } from './types.ts'
+import type { CatalogDetailsRow, CatalogTitleRow } from './types.ts'
 
 async function findTitleRowsForMatchingCatalogItems(
   database: Database,
@@ -42,4 +42,25 @@ async function findTitleRowsForMatchingCatalogItems(
     .orderBy(catalogItemTitles.catalogItemId, catalogItemTitles.locale)
 }
 
-export { findTitleRowsForMatchingCatalogItems }
+async function findCatalogDetailsRows(
+  database: Database,
+  id: string
+): Promise<CatalogDetailsRow[]> {
+  return database
+    .select({
+      catalogItemId: catalogItems.id,
+      description: catalogItemTitles.description,
+      isOriginal: catalogItemTitles.isOriginal,
+      locale: catalogItemTitles.locale,
+      posterPath: catalogItems.posterPath,
+      releaseYear: catalogItems.releaseYear,
+      title: catalogItemTitles.title,
+      type: catalogItems.type
+    })
+    .from(catalogItems)
+    .innerJoin(catalogItemTitles, eq(catalogItemTitles.catalogItemId, catalogItems.id))
+    .where(eq(catalogItems.id, id))
+    .orderBy(catalogItemTitles.locale)
+}
+
+export { findCatalogDetailsRows, findTitleRowsForMatchingCatalogItems }

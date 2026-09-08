@@ -9,4 +9,9 @@ interface CatalogTitleRow {
   type: CatalogItemType;
 }
 
-export type { CatalogTitleRow }
+interface CatalogDetailsRow extends CatalogTitleRow {
+  description: string | null;
+  posterPath: string | null;
+}
+
+export type { CatalogDetailsRow, CatalogTitleRow }

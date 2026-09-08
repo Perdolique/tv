@@ -25,13 +25,14 @@ function getApiBinding(value: unknown): ApiBinding {
   return value.env.API
 }
 
-function logApiProxyError(error: unknown, logContext: string): void {
+function logApiProxyError(error: unknown, logContext: string, requestId: string): void {
   const technicalError = findRootCause(error)
   const serializedTechnicalError = serializeError(technicalError)
 
   const logEntry = JSON.stringify({
     error: serializedTechnicalError,
-    message: logContext
+    message: logContext,
+    requestId
   })
 
   // oxlint-disable-next-line eslint/no-console -- Worker logs retain the technical binding failure without exposing it to clients.
@@ -57,22 +58,29 @@ async function proxyApiRequest(
 ): Promise<unknown> {
   const requestUrl = getRequestURL(event)
   const targetUrl = createApiTargetUrl(requestUrl, isDevelopment)
+  const requestId = globalThis.crypto.randomUUID()
+  const headers = { 'X-Request-ID': requestId }
 
   try {
     if (isDevelopment) {
-      return await proxyRequest(event, targetUrl.href, { streamRequest: true })
+      return await proxyRequest(event, targetUrl.href, {
+        headers,
+        streamRequest: true
+      })
     }
 
     const api = getApiBinding(event.context.cloudflare)
 
     return await proxyRequest(event, targetUrl.href, {
       fetch: api.fetch.bind(api),
+      headers,
       streamRequest: true
     })
   } catch (error) {
-    logApiProxyError(error, options.logContext)
+    logApiProxyError(error, options.logContext, requestId)
     setResponseStatus(event, 503)
     setResponseHeader(event, 'Cache-Control', 'no-store')
+    setResponseHeader(event, 'X-Request-ID', requestId)
 
     return { error: {
       code: 'SERVICE_UNAVAILABLE',

@@ -8,7 +8,9 @@ import type {
   setResponseStatus as h3SetResponseStatus
 } from 'h3'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const requestId = '01991a00-0000-7000-8000-000000000001'
 
 const {
   getRequestURL,
@@ -38,6 +40,10 @@ const {
 } = await import('../proxy-auth.ts')
 
 describe('api proxy authentication', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(requestId)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
     vi.resetAllMocks()
@@ -111,7 +117,10 @@ describe('api proxy authentication', () => {
       expect(proxyRequest).toHaveBeenCalledWith(
         event,
         'http://127.0.0.1:8788/api/auth/session?fresh=true',
-        { streamRequest: true }
+        {
+          headers: { 'X-Request-ID': requestId },
+          streamRequest: true
+        }
       )
     })
 
@@ -176,6 +185,10 @@ describe('api proxy authentication', () => {
 })
 
 describe('catalog proxy', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(requestId)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
     vi.resetAllMocks()
@@ -227,5 +240,7 @@ describe('catalog proxy', () => {
     expect(setResponseHeader).toHaveBeenCalledWith(event, 'Cache-Control', 'no-store')
     expect(log).toHaveBeenCalledWith(expect.stringContaining('raw connection failure'))
     expect(log).toHaveBeenCalledWith(expect.stringContaining('catalog service binding request failed'))
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(requestId))
+    expect(setResponseHeader).toHaveBeenCalledWith(event, 'X-Request-ID', requestId)
   })
 })

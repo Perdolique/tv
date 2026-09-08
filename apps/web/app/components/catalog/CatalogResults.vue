@@ -14,8 +14,10 @@
       <h2 ref="resultsHeading" :class="$style.heading" tabindex="-1">Results for “{{ resultQuery }}”</h2>
       <ul v-if="hasItems" :class="$style.list" :aria-busy="isLoading">
         <li v-for="item in rows" :key="item.id" :class="$style.row">
-          <h3 :class="$style.title">{{ item.title }}</h3>
-          <p :class="$style.metadata">{{ item.metadata }}</p>
+          <NuxtLink :class="$style.link" :to="item.location">
+            <h3 :class="$style.title">{{ item.title }}</h3>
+            <p :class="$style.metadata">{{ item.metadata }}</p>
+          </NuxtLink>
         </li>
       </ul>
       <div v-else :class="$style.empty">
@@ -56,7 +58,12 @@
     return {
       id: item.id,
       title: item.title,
-      metadata
+      metadata,
+
+      location: {
+        path: `/titles/${item.id}`,
+        query: { query: resultQuery }
+      }
     }
   }))
 
@@ -117,12 +124,17 @@
       list-style: none;
     }
     .row {
+      border-block-end: 1px solid var(--color-border);
+    }
+    .link {
       display: grid;
       gap: var(--space-1);
       padding-block: var(--space-5);
-      border-block-end: 1px solid var(--color-border);
+      color: var(--color-text-primary);
+      text-decoration: none;
     }
     .title {
+      .link:hover & { text-decoration: underline; text-underline-offset: 0.2em; }
       font-size: 1rem;
       font-weight: 600;
     }

@@ -208,9 +208,10 @@ describe('postgreSQL catalog schema and search', () => {
     const items = createCatalogSearchItems(rows, 'ru')
 
     expect(items).toHaveLength(1)
+    expect(rows[0]?.catalogItemId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
 
     expect(items[0]).toMatchObject({
-      id: '10000000-0000-4000-8000-000000000008',
+      id: rows[0]?.catalogItemId,
       title: '1923',
       titleLocale: 'ru'
     })
@@ -229,9 +230,11 @@ describe('postgreSQL catalog schema and search', () => {
 
     const items = createCatalogSearchItems(rows, 'ru-RU')
 
+    expect(rows[0]?.catalogItemId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
+
     expect(items).toStrictEqual([
       {
-        id: '10000000-0000-4000-8000-000000000012',
+        id: rows[0]?.catalogItemId,
         originalTitle: '킹덤',
         originalTitleLocale: 'ko',
         releaseYear: 2019,
