@@ -75,6 +75,71 @@ test('opens search results with the keyboard and returns to the displayed query'
   await expect(result).toBeVisible()
 })
 
+test('loads a public title before delayed account restoration finishes', async ({ context, page }) => {
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  await page.goto('/?query=Arrival')
+  await waitForHydration(page)
+
+  const sessionResponse = Promise.withResolvers<boolean>()
+  const titleResponse = Promise.withResolvers<boolean>()
+
+  await page.route(`${appBaseUrl}/api/auth/session`, async (route) => {
+    await sessionResponse.promise
+
+    await route.fulfill({ json: { user: null } })
+  })
+
+  await page.route(`${appBaseUrl}/api/catalog/items/${catalogItems[0].id}?*`, async (route) => {
+    await titleResponse.promise
+
+    await route.continue()
+  })
+
+  const sessionRequest = page.waitForRequest(`${appBaseUrl}/api/auth/session`)
+
+  try {
+    await page.getByRole('link', {
+      name: 'Arrival Movie · 2016',
+      exact: true
+    }).click()
+
+    await sessionRequest
+
+    await expect(page.getByRole('heading', { name: 'Loading title…' })).toBeVisible()
+    titleResponse.resolve(true)
+
+    const title = page.getByRole('heading', {
+      name: 'Arrival',
+      exact: true
+    })
+
+    await expect(title).toBeVisible()
+
+    await expect(page.getByRole('button', {
+      name: 'Sign out',
+      exact: true
+    })).toBeVisible()
+
+    sessionResponse.resolve(true)
+
+    await expect(page.getByRole('link', {
+      name: 'Sign in',
+      exact: true
+    })).toBeVisible()
+
+    await expect(title).toBeVisible()
+  } finally {
+    sessionResponse.resolve(true)
+    titleResponse.resolve(true)
+    await page.unrouteAll({ behavior: 'wait' })
+  }
+})
+
 test.describe('previous search navigation after an error', () => {
   test.use({ expectedHttpErrors: { values: [{
     pathname: '/api/catalog/search',

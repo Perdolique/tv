@@ -98,7 +98,12 @@
     return { title }
   })
 
-  await Promise.all([ready, sessionReady])
+  await ready
+
+  // Lazy title requests start on mount, so only SSR waits for account restoration.
+  if (import.meta.server) {
+    await sessionReady
+  }
 
   if (event !== undefined) {
     let status = 200
