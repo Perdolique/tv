@@ -237,8 +237,13 @@ describe('persisted UUIDv7 and title metadata migration', () => {
         FROM catalog_item_titles JOIN catalog_items ON catalog_item_id = id ORDER BY title, locale
       `)
 
+      const followsAfter = await fixture.client.query<{ count: string }>(`
+        SELECT count(*) FROM catalog_item_follows
+      `)
+
       expect(after).toStrictEqual(before)
       expect(titlesAfter.rows).toStrictEqual(titlesBefore.rows)
+      expect(followsAfter.rows[0]?.count).toBe('0')
       expect(identifiers).toHaveLength(oldIdentifiers.length)
       expect(identifiers.every(row => row.version === 7)).toBe(true)
       expect(identifiers.every(row => oldIdentifiers.every(old => old.id !== row.id))).toBe(true)
@@ -260,7 +265,7 @@ describe('persisted UUIDv7 and title metadata migration', () => {
         WHERE contype = 'f' AND connamespace = 'public'::regnamespace
       `)
 
-      expect(constraints.rows).toHaveLength(3)
+      expect(constraints.rows).toHaveLength(5)
 
       for (const constraint of constraints.rows) {
         expect(constraint).toStrictEqual({
@@ -269,6 +274,18 @@ describe('persisted UUIDv7 and title metadata migration', () => {
           convalidated: true
         })
       }
+
+      const followIndexes = await fixture.client.query<{ indexname: string }>(`
+        SELECT indexname FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'catalog_item_follows'
+        ORDER BY indexname
+      `)
+
+      expect(followIndexes.rows).toStrictEqual([
+        { indexname: 'catalog_item_follows_catalog_item_id_index' },
+        { indexname: 'catalog_item_follows_pkey' },
+        { indexname: 'catalog_item_follows_user_followed_at_index' }
+      ])
 
       await migrate(fixture.database, { migrationsFolder })
       await expect(readIdentifiers(fixture.client)).resolves.toStrictEqual(identifiers)

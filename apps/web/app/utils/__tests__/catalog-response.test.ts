@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as v from 'valibot'
-import { catalogDetailsResponseSchema } from '../catalog-response.ts'
+import { catalogDetailsResponseSchema, catalogFollowResponseSchema } from '../catalog-response.ts'
 
 const item = {
   id: '01991a00-0000-7000-8000-000000000001',
@@ -56,5 +56,22 @@ describe('catalog details response contract', () => {
       ...item,
       description: 42
     } }).success).toBe(false)
+  })
+})
+
+describe('catalog follow response contract', () => {
+  it.each([true, false])('accepts followed=%s', (followed) => {
+    expect(v.parse(catalogFollowResponseSchema, { followed })).toStrictEqual({ followed })
+  })
+
+  it.each([
+    {},
+    { followed: 'true' },
+    {
+      followed: true,
+      item: {}
+    }
+  ])('rejects malformed state %#', (response) => {
+    expect(v.safeParse(catalogFollowResponseSchema, response).success).toBe(false)
   })
 })

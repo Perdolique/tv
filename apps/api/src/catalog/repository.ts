@@ -1,6 +1,6 @@
 import type { Database } from '@tv/database'
-import { catalogItemTitles, catalogItems } from '@tv/database/schema'
-import { eq, sql } from 'drizzle-orm'
+import { catalogItemFollows, catalogItemTitles, catalogItems } from '@tv/database/schema'
+import { and, eq, sql } from 'drizzle-orm'
 import { escapeLikePattern } from './search.ts'
 import type { CatalogDetailsRow, CatalogTitleRow } from './types.ts'
 
@@ -63,4 +63,96 @@ async function findCatalogDetailsRows(
     .orderBy(catalogItemTitles.locale)
 }
 
-export { findCatalogDetailsRows, findTitleRowsForMatchingCatalogItems }
+async function findCatalogItemFollowed(
+  database: Database,
+  userId: string,
+  catalogItemId: string
+): Promise<boolean | null> {
+  const rows = await database
+    .select({ followedAt: catalogItemFollows.followedAt })
+    .from(catalogItems)
+    .innerJoin(
+      catalogItemTitles,
+      eq(catalogItemTitles.catalogItemId, catalogItems.id)
+    )
+    .leftJoin(
+      catalogItemFollows,
+      and(
+        eq(catalogItemFollows.catalogItemId, catalogItems.id),
+        eq(catalogItemFollows.userId, userId)
+      )
+    )
+    .where(
+      eq(catalogItems.id, catalogItemId)
+    )
+    .limit(1)
+
+  const [row] = rows
+
+  return row === undefined ? null : row.followedAt !== null
+}
+
+async function followCatalogItem(
+  database: Database,
+  userId: string,
+  catalogItemId: string
+): Promise<boolean> {
+  return database.transaction(async (transaction) => {
+    const rows = await transaction
+      .select({ id: catalogItems.id })
+      .from(catalogItems)
+      .innerJoin(
+        catalogItemTitles,
+        eq(catalogItemTitles.catalogItemId, catalogItems.id)
+      )
+      .where(
+        eq(catalogItems.id, catalogItemId)
+      )
+      .limit(1)
+      .for('key share', {
+        of: [catalogItems, catalogItemTitles]
+      })
+
+    if (rows[0] === undefined) {
+      return false
+    }
+
+    await transaction
+      .insert(catalogItemFollows)
+      .values({
+        catalogItemId,
+        userId
+      })
+      .onConflictDoNothing({
+        target: [
+          catalogItemFollows.userId,
+          catalogItemFollows.catalogItemId
+        ]
+      })
+
+    return true
+  })
+}
+
+async function unfollowCatalogItem(
+  database: Database,
+  userId: string,
+  catalogItemId: string
+): Promise<void> {
+  await database
+    .delete(catalogItemFollows)
+    .where(
+      and(
+        eq(catalogItemFollows.userId, userId),
+        eq(catalogItemFollows.catalogItemId, catalogItemId)
+      )
+    )
+}
+
+export {
+  findCatalogDetailsRows,
+  findCatalogItemFollowed,
+  findTitleRowsForMatchingCatalogItems,
+  followCatalogItem,
+  unfollowCatalogItem
+}

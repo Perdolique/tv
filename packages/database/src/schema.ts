@@ -86,6 +86,32 @@ const users = pgTable('users', {
   uniqueIndex('users_email_unique').on(table.email)
 ])
 
+const catalogItemFollows = pgTable('catalog_item_follows', {
+  userId:
+    uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+
+  catalogItemId:
+    uuid('catalog_item_id')
+    .notNull()
+    .references(() => catalogItems.id, { onDelete: 'cascade' }),
+
+  followedAt:
+    timestamp('followed_at', {
+      mode: 'date',
+      withTimezone: true
+    })
+    .defaultNow()
+    .notNull()
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.catalogItemId] }),
+  index('catalog_item_follows_catalog_item_id_index')
+    .on(table.catalogItemId),
+  index('catalog_item_follows_user_followed_at_index')
+    .on(table.userId, table.followedAt.desc())
+])
+
 const passwordCredentials = pgTable('password_credentials', {
   userId:
     uuid('user_id')
@@ -181,6 +207,7 @@ const sessions = pgTable('sessions', {
 ])
 
 export {
+  catalogItemFollows,
   catalogItemTitles,
   catalogItems,
   catalogItemType,

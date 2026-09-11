@@ -12,7 +12,15 @@ import { isSessionTransportAllowed } from '../auth/session.ts'
 import { connectDatabaseAdapter } from '../database.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
 import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
-import { findCatalogDetailsRows, findTitleRowsForMatchingCatalogItems } from './repository.ts'
+
+import {
+  findCatalogDetailsRows,
+  findCatalogItemFollowed,
+  findTitleRowsForMatchingCatalogItems,
+  followCatalogItem,
+  unfollowCatalogItem
+} from './repository.ts'
+
 import { canonicalizeTitleLocale, createCatalogSearchItems, normalizeCatalogQuery } from './search.ts'
 
 interface CatalogEnvironment {
@@ -21,6 +29,65 @@ interface CatalogEnvironment {
 }
 
 type CatalogContext = Context<CatalogEnvironment>
+type CatalogSession = NonNullable<Awaited<ReturnType<typeof resolveCurrentSession>>>
+type ConnectCatalogDatabase = typeof connectDatabaseAdapter
+
+interface CatalogDependencies {
+  connectDatabase: ConnectCatalogDatabase;
+}
+
+const defaultCatalogDependencies: CatalogDependencies = {
+  connectDatabase: connectDatabaseAdapter
+}
+
+function toCatalogHttpError(error: unknown): CatalogHttpError {
+  return error instanceof CatalogHttpError
+    ? error
+    : new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
+}
+
+async function closeCatalogAdapter(
+  adapter: Awaited<ReturnType<ConnectCatalogDatabase>> | undefined
+): Promise<void> {
+  if (adapter === undefined) {
+    return
+  }
+
+  try {
+    await adapter.client.end()
+  } catch (error) {
+    throw new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
+  }
+}
+
+async function withCatalogSession<Result>(
+  context: CatalogContext,
+  connectDatabase: ConnectCatalogDatabase,
+  operation: (session: CatalogSession) => Promise<Result>
+): Promise<Result> {
+  // oxlint-disable-next-line eslint/init-declarations -- The adapter is created lazily only for a valid session cookie.
+  let adapter: Awaited<ReturnType<typeof connectDatabaseAdapter>> | undefined
+
+  try {
+    const session = await resolveCurrentSession(context, async () => {
+      adapter = await connectDatabase(
+        context.env.DATABASE.connectionString
+      )
+
+      return adapter.database
+    })
+
+    if (session === null) {
+      throw new CatalogHttpError('AUTHENTICATION_REQUIRED', 401)
+    }
+
+    return await operation(session)
+  } catch (error) {
+    throw toCatalogHttpError(error)
+  } finally {
+    await closeCatalogAdapter(adapter)
+  }
+}
 
 function logCatalogServerError(
   context: CatalogContext,
@@ -40,7 +107,9 @@ function logCatalogServerError(
   console.error(logEntry)
 }
 
-function createCatalogApp(): Hono<CatalogEnvironment> {
+function createCatalogApp(
+  dependencies: CatalogDependencies = defaultCatalogDependencies
+): Hono<CatalogEnvironment> {
   const app = new Hono<CatalogEnvironment>()
 
   app.use('/api/catalog/*', requestId())
@@ -67,7 +136,7 @@ function createCatalogApp(): Hono<CatalogEnvironment> {
     let rows: Awaited<ReturnType<typeof findCatalogDetailsRows>>
 
     try {
-      adapter = await connectDatabaseAdapter(context.env.DATABASE.connectionString)
+      adapter = await dependencies.connectDatabase(context.env.DATABASE.connectionString)
       rows = await findCatalogDetailsRows(adapter.database, id)
     } catch (error) {
       throw new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
@@ -86,13 +155,67 @@ function createCatalogApp(): Hono<CatalogEnvironment> {
     return context.json({ item })
   })
 
+  app.get('/api/catalog/items/:id/follow', async (context) => {
+    const id = validateCatalogItemId(context.req.param('id'))
+
+    const followed = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+      const result = await findCatalogItemFollowed(
+        session.database,
+        session.user.id,
+        id
+      )
+
+      if (result === null) {
+        throw new CatalogHttpError('NOT_FOUND', 404)
+      }
+
+      return result
+    })
+
+    return context.json({ followed })
+  })
+
+  app.put('/api/catalog/items/:id/follow', async (context) => {
+    const id = validateCatalogItemId(context.req.param('id'))
+
+    await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+      const exists = await followCatalogItem(session.database, session.user.id, id)
+
+      if (!exists) {
+        throw new CatalogHttpError('NOT_FOUND', 404)
+      }
+    })
+
+    return context.json({ followed: true })
+  })
+
+  app.delete('/api/catalog/items/:id/follow', async (context) => {
+    const id = validateCatalogItemId(context.req.param('id'))
+
+    await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+      const followed = await findCatalogItemFollowed(
+        session.database,
+        session.user.id,
+        id
+      )
+
+      if (followed === null) {
+        throw new CatalogHttpError('NOT_FOUND', 404)
+      }
+
+      await unfollowCatalogItem(session.database, session.user.id, id)
+    })
+
+    return context.json({ followed: false })
+  })
+
   app.get('/api/catalog/search', async (context) => {
     // oxlint-disable-next-line eslint/init-declarations -- Session database failures are translated below.
     let session: Awaited<ReturnType<typeof resolveCurrentSession>>
 
     try {
       session = await resolveCurrentSession(context, async () => {
-        const { database } = await connectDatabaseAdapter(
+        const { database } = await dependencies.connectDatabase(
           context.env.DATABASE.connectionString
         )
 

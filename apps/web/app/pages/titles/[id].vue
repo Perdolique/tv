@@ -21,6 +21,27 @@
           <p :class="$style.metadata">{{ metadata }}</p>
           <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
           <p v-if="showOriginalTitle" :class="$style.originalTitle" :lang="item.originalTitleLocale">{{ item.originalTitle }}</p>
+          <div :class="$style.followAction">
+            <NuxtLink v-if="isAnonymous" :class="$style.followLink" :to="signInLocation">Follow</NuxtLink>
+            <AppButton v-else-if="hasSessionError" :class="$style.followButton" disabled variant="secondary">Follow unavailable</AppButton>
+            <template v-else-if="isAuthenticated && followStatus === 'error'">
+              <AppMessage role="alert" tone="danger">We couldn’t check your follow status. Try again.</AppMessage>
+              <AppButton ref="followRetryButton" :class="$style.followButton" variant="secondary" @click="retryFollow">Retry</AppButton>
+            </template>
+            <template v-else-if="isAuthenticated && followStatus === 'loaded'">
+              <AppButton
+                ref="followButton"
+                :aria-busy="isSaving || undefined"
+                :aria-pressed="followed"
+                :class="$style.followButton"
+                :disabled="isSaving"
+                :variant="followed ? 'secondary' : 'primary'"
+                @click="toggleFollow"
+              >{{ followed ? 'Following' : 'Follow' }}</AppButton>
+              <AppMessage v-if="saveError !== ''" role="alert" tone="danger">{{ saveError }}</AppMessage>
+            </template>
+            <AppButton v-else :class="$style.followButton" aria-busy="true" disabled variant="secondary">Checking follow status…</AppButton>
+          </div>
           <section :class="$style.overview" :aria-labelledby="overviewId">
             <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
             <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
@@ -34,15 +55,17 @@
 
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
-  import { useHead, useNuxtApp, useRequestEvent, useResponseHeader, useRoute } from '#app'
+  import { navigateTo, useHead, useNuxtApp, useRequestEvent, useResponseHeader, useRoute } from '#app'
+  import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { setResponseStatus } from 'h3'
-  import { computed, nextTick, useId, useTemplateRef } from 'vue'
+  import { computed, nextTick, useId, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import CatalogShell from '~/components/catalog/CatalogShell.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCatalogDetails } from '~/composables/use-catalog-details.ts'
+  import { useCatalogFollow } from '~/composables/use-catalog-follow.ts'
   import { normalizeSearchQuery } from '~/utils/catalog-response.ts'
 
   definePageMeta({
@@ -58,16 +81,43 @@
 
   const id = typeof route.params.id === 'string' ? route.params.id : ''
   const titleLocale = typeof route.query.titleLocale === 'string' ? route.query.titleLocale : 'en'
-  const { restoreSession } = useAuthSession()
+  const { restoreSession, setAnonymous, state: sessionState } = useAuthSession()
   const shouldRevalidateSession = import.meta.client && !nuxtApp.isHydrating
   const sessionReady = restoreSession({ force: shouldRevalidateSession })
   const { hasError, isLoading, isNotFound, item, ready } = useCatalogDetails(id, titleLocale)
+  const accountId = computed(() => sessionState.value.status === 'authenticated' ? sessionState.value.user.id : null)
+  const followCatalogItemId = computed(() => item.value?.id ?? null)
+
+  const {
+    clearUnauthorized,
+    followed,
+    isSaving,
+    load: loadFollow,
+    saveError,
+    status: followStatus,
+    toggle: saveFollow,
+    unauthorized: followUnauthorized
+  } = useCatalogFollow(followCatalogItemId, accountId)
+
   const heading = useTemplateRef('heading')
   const retryButton = useTemplateRef('retryButton')
+  const followButton = useTemplateRef('followButton')
+  const followRetryButton = useTemplateRef('followRetryButton')
   const overviewId = useId()
   const posterKey = computed(() => item.value?.posterUrl ?? 'missing-poster')
   const searchQuery = computed(() => normalizeSearchQuery(route.query.query))
   const backLabel = computed(() => searchQuery.value === '' ? 'Back to catalog' : 'Back to results')
+  const isAnonymous = computed(() => sessionState.value.status === 'anonymous')
+  const isAuthenticated = computed(() => sessionState.value.status === 'authenticated')
+  const hasSessionError = computed(() => sessionState.value.status === 'error')
+  const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
+
+  const signInLocation = computed(() => redirectTo.value === '/'
+    ? '/sign-in'
+    : {
+        path: '/sign-in',
+        query: { redirectTo: redirectTo.value }
+      })
 
   const backLocation = computed(() => {
     const query = searchQuery.value === '' ? {} : { query: searchQuery.value }
@@ -98,6 +148,21 @@
     return { title }
   })
 
+  watch(followUnauthorized, async (reason) => {
+    if (reason === null) {
+      return
+    }
+
+    clearUnauthorized()
+    setAnonymous()
+
+    if (reason === 'mutation') {
+      await navigateTo(signInLocation.value, { replace: true })
+    }
+  }, {
+    flush: 'sync'
+  })
+
   await ready
 
   // Lazy title requests start on mount, so only SSR waits for account restoration.
@@ -125,6 +190,28 @@
       retryButton.value?.focus()
     } else {
       heading.value?.focus()
+    }
+  }
+
+  async function retryFollow(): Promise<void> {
+    await loadFollow()
+    await nextTick()
+
+    if (followStatus.value === 'error') {
+      followRetryButton.value?.focus()
+    } else if (followStatus.value === 'loaded') {
+      followButton.value?.focus()
+    } else {
+      heading.value?.focus()
+    }
+  }
+
+  async function toggleFollow(): Promise<void> {
+    await saveFollow()
+    await nextTick()
+
+    if (isAuthenticated.value && followStatus.value === 'loaded') {
+      followButton.value?.focus()
     }
   }
 </script>
@@ -161,6 +248,30 @@
     }
     .metadata, .originalTitle, .supportingText { color: var(--color-text-secondary); }
     .metadata { font-size: 0.875rem; }
+    .followAction {
+      display: grid;
+      justify-items: start;
+      gap: var(--space-3);
+      margin-block-start: var(--space-6);
+    }
+    .followButton, .followLink { min-inline-size: 13rem; }
+    .followLink {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-block-size: 3.5rem;
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-md);
+      background: var(--color-accent-fill);
+      color: var(--color-on-accent);
+      font-weight: 700;
+      text-decoration: none;
+      transition:
+        filter var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-standard);
+    }
+    .followLink:hover { filter: brightness(0.96); }
+    .followLink:active { transform: translateY(0.0625rem); }
     .overview {
       margin-block-start: var(--space-8);
       padding-block-start: var(--space-6);
@@ -175,6 +286,9 @@
     .message { display: grid; justify-items: start; gap: var(--space-4); }
     .posterSkeleton { inline-size: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--color-surface-muted); }
     .loadingCopy { color: var(--color-text-secondary); }
+    @media (prefers-reduced-motion: reduce) {
+      .followLink { transition: none; }
+    }
     @media (width >= 40rem) {
       .component { padding-inline: var(--layout-page-compact); }
       .details, .loading { grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr); }

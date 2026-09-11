@@ -1,3 +1,5 @@
+/* oxlint-disable eslint/max-lines -- Public title, follow, recovery and navigation flows share one browser contract. */
+import type { Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { catalogItems } from './fixtures.ts'
@@ -7,6 +9,34 @@ import { waitForHydration } from './helpers.ts'
 const dunePath = `/titles/${dune.id}`
 const arrivalPath = `/titles/${catalogItems[0].id}`
 const missingPath = '/titles/01991a00-0000-7000-8000-999999999999'
+
+async function signIn(page: Page): Promise<void> {
+  await page.getByRole('textbox', {
+    name: 'Email',
+    exact: true
+  }).fill('viewer@example.com')
+
+  await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
+
+  await page.getByRole('button', {
+    name: 'Sign in',
+    exact: true
+  }).click()
+}
+
+function observeFollowMutationCount(page: Page): () => number {
+  let count = 0
+
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url())
+
+    if (pathname.endsWith('/follow') && request.method() !== 'GET') {
+      count += 1
+    }
+  })
+
+  return () => count
+}
 
 test('serves a public title in SSR and after reload without requiring an account', async ({ page }) => {
   const response = await page.goto(dunePath)
@@ -27,6 +57,11 @@ test('serves a public title in SSR and after reload without requiring an account
     name: 'Sign in',
     exact: true
   })).toBeVisible()
+
+  await expect(page.getByRole('link', {
+    name: 'Follow',
+    exact: true
+  })).toHaveAttribute('href', `/sign-in?redirectTo=${dunePath}`)
 
   await expect(page.getByRole('img', { name: 'Dune poster' })).toHaveAttribute('data-loaded', 'true')
   await page.reload()
@@ -178,50 +213,336 @@ test('uses the previous successful query when the next search fails', async ({ c
 
 })
 
-test('returns to the public title after sign-in and keeps it open after sign-out', async ({ page }) => {
-  await page.goto(dunePath)
-  await waitForHydration(page)
+test('follows from the public title, persists across reload and sign-in, then unfollows', async ({ page }) => {
+  await test.step('return from guest Follow without subscribing automatically', async () => {
+    await page.goto(dunePath)
+    await waitForHydration(page)
 
-  await page.getByRole('link', {
-    name: 'Sign in',
-    exact: true
-  }).click()
+    await page.getByRole('link', {
+      name: 'Follow',
+      exact: true
+    }).click()
 
-  await page.getByRole('textbox', {
-    name: 'Email',
-    exact: true
-  }).fill('viewer@example.com')
+    await signIn(page)
+    await expect(page).toHaveURL(`${appBaseUrl}${dunePath}`)
 
-  await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeVisible()
 
-  await page.getByRole('button', {
-    name: 'Sign in',
-    exact: true
-  }).click()
+    await expect(page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })).toHaveAttribute('aria-pressed', 'false')
+  })
 
-  await expect(page).toHaveURL(`${appBaseUrl}${dunePath}`)
+  await test.step('follow and keep the saved state after reload', async () => {
+    await page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    }).click()
 
-  await expect(page.getByRole('heading', {
-    name: 'Dune',
-    exact: true
-  })).toBeVisible()
+    await expect(page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    })).toHaveAttribute('aria-pressed', 'true')
 
-  await page.getByRole('button', {
-    name: 'Sign out',
-    exact: true
-  }).click()
+    await page.reload()
 
-  await expect(page).toHaveURL(`${appBaseUrl}${dunePath}`)
+    await expect(page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    })).toBeVisible()
+  })
 
-  await expect(page.getByRole('link', {
-    name: 'Sign in',
-    exact: true
-  })).toBeVisible()
+  await test.step('sign out and restore the same account state', async () => {
+    await page.getByRole('button', {
+      name: 'Sign out',
+      exact: true
+    }).click()
 
-  await expect(page.getByRole('heading', {
-    name: 'Dune',
-    exact: true
-  })).toBeVisible()
+    await expect(page).toHaveURL(`${appBaseUrl}${dunePath}`)
+
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeVisible()
+
+    await page.getByRole('link', {
+      name: 'Follow',
+      exact: true
+    }).click()
+
+    await signIn(page)
+    await expect(page).toHaveURL(`${appBaseUrl}${dunePath}`)
+
+    await expect(page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    })).toBeVisible()
+  })
+
+  await test.step('unfollow and keep the saved state after reload', async () => {
+    await page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    }).click()
+
+    await expect(page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })).toHaveAttribute('aria-pressed', 'false')
+
+    await page.reload()
+
+    await expect(page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })).toBeVisible()
+  })
+})
+
+test.describe('follow service recovery', () => {
+  test.use({ expectedHttpErrors: { values: [
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 503
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 503
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 503
+    }
+  ] } })
+
+  test('keeps public metadata and visibly recovers failed follow changes', async ({ context, page }) => {
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'fail_follow_load',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.goto(dunePath)
+    await waitForHydration(page)
+
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeVisible()
+
+    await expect(page.getByText(dune.description, { exact: true })).toBeVisible()
+    await expect(page.getByRole('alert')).toContainText('check your follow status')
+    await expect(page.getByText('private database connection details')).toHaveCount(0)
+
+    await page.getByRole('button', {
+      name: 'Retry',
+      exact: true
+    }).click()
+
+    const follow = page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })
+
+    await expect(follow).toBeFocused()
+
+    await context.addCookies([{
+      name: 'fail_follow',
+      value: '1',
+      url: appBaseUrl
+    }])
+
+    const mutationRequestCount = observeFollowMutationCount(page)
+
+    await follow.click()
+
+    const optimistic = page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    })
+
+    await expect(optimistic).toBeVisible()
+    await expect(optimistic).toHaveAttribute('aria-busy', 'true')
+    await expect(optimistic).toBeDisabled()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('alert')).toContainText('couldn’t save this change')
+
+    const rolledBackFollow = page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })
+
+    await expect(rolledBackFollow).toBeEnabled()
+    await expect(rolledBackFollow).toBeFocused()
+    expect(mutationRequestCount()).toBe(1)
+    await rolledBackFollow.click()
+
+    const following = page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    })
+
+    await expect(following).toBeEnabled()
+    await expect(following).toBeFocused()
+    expect(mutationRequestCount()).toBe(2)
+
+    await context.addCookies([{
+      name: 'fail_follow',
+      value: '1',
+      url: appBaseUrl
+    }])
+
+    await following.click()
+
+    const optimisticUnfollow = page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })
+
+    await expect(optimisticUnfollow).toHaveAttribute('aria-busy', 'true')
+    await expect(optimisticUnfollow).toBeDisabled()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('alert')).toContainText('couldn’t save this change')
+    await expect(following).toBeEnabled()
+    await expect(following).toBeFocused()
+    expect(mutationRequestCount()).toBe(3)
+    await following.click()
+    await expect(follow).toBeEnabled()
+    await expect(follow).toBeFocused()
+    expect(mutationRequestCount()).toBe(4)
+  })
+})
+
+test.describe('follow session expiry', () => {
+  test.use({ expectedHttpErrors: { values: [
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 401
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 401
+    }
+  ] } })
+
+  test('becomes a guest after a background 401 and sends a clicked mutation to sign-in', async ({ context, page }) => {
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'expire_follow',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.goto(dunePath)
+    await waitForHydration(page)
+
+    await expect(page.getByRole('link', {
+      name: 'Follow',
+      exact: true
+    })).toBeVisible()
+
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeVisible()
+
+    await context.clearCookies()
+
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'expire_follow_mutation',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.reload()
+
+    await page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    }).click()
+
+    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=${dunePath}`)
+  })
+})
+
+test.describe('follow retry session expiry', () => {
+  test.use({ expectedHttpErrors: { values: [
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 503
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 401
+    }
+  ] } })
+
+  test('moves focus to the title when Retry becomes a guest Follow link', async ({ context, page }) => {
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'fail_follow_load',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.goto(dunePath)
+    await waitForHydration(page)
+
+    const retry = page.getByRole('button', {
+      name: 'Retry',
+      exact: true
+    })
+
+    await expect(retry).toBeVisible()
+
+    await context.addCookies([{
+      name: 'expire_follow',
+      value: '1',
+      url: appBaseUrl
+    }])
+
+    await retry.click()
+
+    await expect(page.getByRole('link', {
+      name: 'Follow',
+      exact: true
+    })).toBeVisible()
+
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeFocused()
+  })
 })
 
 test('keeps public metadata available when session restoration fails', async ({ context, page }) => {
@@ -242,6 +563,14 @@ test('keeps public metadata available when session restoration fails', async ({ 
 
   await expect(page.getByRole('button', { name: 'Retry account' })).toBeVisible()
   await expect(page.getByText('You can still read this title.', { exact: false })).toBeVisible()
+
+  const unavailableFollow = page.getByRole('button', {
+    name: 'Follow unavailable',
+    exact: true
+  })
+
+  await expect(unavailableFollow).toBeDisabled()
+  await expect(unavailableFollow).not.toHaveAttribute('aria-busy')
 })
 
 test('renders Russian metadata with its language and original title', async ({ page }) => {

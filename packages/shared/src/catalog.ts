@@ -24,6 +24,10 @@ interface CatalogDetailsResponse {
   item: CatalogDetailsItem;
 }
 
+interface CatalogFollowResponse {
+  followed: boolean;
+}
+
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
   | 'INTERNAL_ERROR'
@@ -46,6 +50,7 @@ export type {
   CatalogDetailsResponse,
   CatalogErrorCode,
   CatalogErrorEnvelope,
+  CatalogFollowResponse,
   CatalogSearchItem,
   CatalogSearchResponse,
   CatalogItemType

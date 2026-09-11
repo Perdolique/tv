@@ -1,4 +1,4 @@
-import type { CatalogDetailsResponse, CatalogSearchResponse } from '@tv/shared/catalog'
+import type { CatalogDetailsResponse, CatalogFollowResponse, CatalogSearchResponse } from '@tv/shared/catalog'
 import * as v from 'valibot'
 
 const catalogSearchItemSchema = v.object({
@@ -24,8 +24,17 @@ const catalogDetailsResponseSchema = v.object({
   })
 }) satisfies v.GenericSchema<CatalogDetailsResponse>
 
+const catalogFollowResponseSchema = v.strictObject({
+  followed: v.boolean()
+}) satisfies v.GenericSchema<CatalogFollowResponse>
+
 function normalizeSearchQuery(value: unknown): string {
   return typeof value === 'string' ? value.trim().normalize('NFC') : ''
 }
 
-export { catalogDetailsResponseSchema, catalogSearchResponseSchema, normalizeSearchQuery }
+export {
+  catalogDetailsResponseSchema,
+  catalogFollowResponseSchema,
+  catalogSearchResponseSchema,
+  normalizeSearchQuery
+}
