@@ -35,14 +35,53 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
 
 for (const colorScheme of ['light', 'dark'] as const) {
   for (const viewport of viewports) {
-    test(`public title at ${viewport.name} in ${colorScheme}`, async ({ page }) => {
+    test(`follow actions at ${viewport.name} in ${colorScheme}`, async ({ page }) => {
       await page.setViewportSize(viewport)
       await page.emulateMedia({ colorScheme })
       await page.goto(dunePath)
+
+      await expect(page.getByRole('link', {
+        name: 'Follow',
+        exact: true
+      })).toBeVisible()
+
+      await expect(page.getByRole('img', { name: 'Dune poster' })).toHaveAttribute('data-loaded', 'true')
+      await page.evaluate(async () => { await globalThis.document.fonts.ready })
+      await expectNoHorizontalOverflow(page)
+      await expect(page).toHaveScreenshot(`details-${viewport.name}-${colorScheme}-guest.png`, { fullPage: true })
+
+      await page.context().addCookies([{
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      }])
+
+      await page.reload()
+
+      await expect(page.getByRole('button', {
+        name: 'Follow',
+        exact: true
+      })).toBeVisible()
+
       await expect(page.getByRole('img', { name: 'Dune poster' })).toHaveAttribute('data-loaded', 'true')
       await page.evaluate(async () => { await globalThis.document.fonts.ready })
       await expectNoHorizontalOverflow(page)
       await expect(page).toHaveScreenshot(`details-${viewport.name}-${colorScheme}.png`, { fullPage: true })
+
+      await page.context().addCookies([{
+        name: 'tv_followed_item',
+        value: dune.id,
+        url: appBaseUrl
+      }])
+
+      await page.reload()
+
+      await expect(page.getByRole('button', {
+        name: 'Following',
+        exact: true
+      })).toBeVisible()
+
+      await expect(page).toHaveScreenshot(`details-${viewport.name}-${colorScheme}-following.png`, { fullPage: true })
     })
   }
 }
@@ -69,10 +108,21 @@ for (const width of [320, 639, 640, 1023, 1024]) {
 
     await expectNoHorizontalOverflow(page)
     await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+
+    await expect(page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })).toBeVisible()
   })
 }
 
-test('keeps Russian copy readable at a 200% zoom-equivalent viewport', async ({ page }) => {
+test('keeps Russian copy readable at a 200% zoom-equivalent viewport', async ({ context, page }) => {
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
   await page.setViewportSize({
     width: 720,
     height: 512
@@ -86,6 +136,11 @@ test('keeps Russian copy readable at a 200% zoom-equivalent viewport', async ({ 
   })).toBeVisible()
 
   await expectNoHorizontalOverflow(page)
+
+  await expect(page.getByRole('button', {
+    name: 'Follow',
+    exact: true
+  })).toBeVisible()
 })
 
 test('reserves poster geometry during a slow image load', async ({ page }) => {
@@ -150,7 +205,13 @@ test.describe('unavailable artwork', () => {
 })
 
 for (const colorScheme of ['light', 'dark'] as const) {
-  test(`keeps visible keyboard focus with reduced motion in ${colorScheme}`, async ({ page }) => {
+  test(`keeps visible keyboard focus with reduced motion in ${colorScheme}`, async ({ context, page }) => {
+    await context.addCookies([{
+      name: 'tv_session',
+      value: 'e2e-session',
+      url: appBaseUrl
+    }])
+
     await page.emulateMedia({
       colorScheme,
       reducedMotion: 'reduce'
@@ -158,6 +219,25 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     await page.goto(dunePath)
     await waitForHydration(page)
+
+    const follow = page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })
+
+    await follow.focus()
+    await expect(follow).toBeFocused()
+    expect(await follow.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)).not.toBe('none')
+    await page.keyboard.press('Enter')
+
+    const following = page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    })
+
+    await expect(following).toBeVisible()
+    await expect(following).toBeFocused()
+    await expect(following).not.toHaveAttribute('aria-busy')
 
     const back = page.getByRole('link', {
       name: 'Back to catalog',

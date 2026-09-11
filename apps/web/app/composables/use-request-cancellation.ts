@@ -1,12 +1,18 @@
-import { onBeforeUnmount, shallowRef } from 'vue'
+import { onScopeDispose, shallowRef } from 'vue'
 
 type RequestController = InstanceType<typeof globalThis.AbortController>
 
 function useRequestCancellation() {
   const activeController = shallowRef<RequestController>()
 
-  function start(): RequestController {
+  function cancel(): void {
     activeController.value?.abort()
+
+    activeController.value = undefined
+  }
+
+  function start(): RequestController {
+    cancel()
 
     const controller = new globalThis.AbortController()
 
@@ -29,13 +35,10 @@ function useRequestCancellation() {
     return true
   }
 
-  onBeforeUnmount(() => {
-    activeController.value?.abort()
-
-    activeController.value = undefined
-  })
+  onScopeDispose(cancel)
 
   return {
+    cancel,
     finish,
     isCurrent,
     start

@@ -53,6 +53,7 @@ const COMPROMISED_VERIFICATION_TOKEN = 'c'.repeat(43)
 const UNAVAILABLE_VERIFICATION_TOKEN = 'u'.repeat(43)
 const SESSION_COOKIE = 'tv_session=e2e-session'
 const LONG_EMAIL_SESSION_COOKIE = 'tv_session=e2e-long-email-session'
+const FOLLOW_COOKIE_NAME = 'tv_followed_item'
 
 const LONG_EMAIL_USER = {
   email: longEmail,
@@ -383,10 +384,17 @@ function handleSignOut(request: Request): Response {
   })
 }
 
+function hasAuthenticatedCatalogSession(request: Request): boolean {
+  const expiringSession = getExpiringSession(request)
+
+  return hasCookie(request, SESSION_COOKIE)
+    || hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
+    || (expiringSession !== undefined && !expiredCatalogSessions.has(expiringSession))
+}
+
 async function handleCatalogSearch(request: Request, url: URL): Promise<Response> {
   const expiringSession = getExpiringSession(request)
-  const hasExpiringSession = expiringSession !== undefined && !expiredCatalogSessions.has(expiringSession)
-  const authenticated = hasCookie(request, SESSION_COOKIE) || hasCookie(request, LONG_EMAIL_SESSION_COOKIE) || hasExpiringSession
+  const authenticated = hasAuthenticatedCatalogSession(request)
 
   if (!authenticated || hasCookie(request, 'expire_catalog=1')) {
     if (expiringSession !== undefined) {
@@ -419,6 +427,72 @@ async function handleCatalogSearch(request: Request, url: URL): Promise<Response
   const items = catalogItems.filter(item => item.title.toLowerCase().includes(query))
 
   return json({ items })
+}
+
+function getFollowedCatalogItemId(request: Request): string | undefined {
+  const cookies = request.headers.get('Cookie') ?? ''
+  const prefix = `${FOLLOW_COOKIE_NAME}=`
+  const cookie = cookies.split(';').map(value => value.trim()).find(value => value.startsWith(prefix))
+
+  return cookie?.slice(prefix.length)
+}
+
+async function handleCatalogFollow(request: Request, url: URL): Promise<Response> {
+  const expiresDuringMutation = request.method !== 'GET' && hasCookie(request, 'expire_follow_mutation=1')
+
+  if (!hasAuthenticatedCatalogSession(request) || hasCookie(request, 'expire_follow=1') || expiresDuringMutation) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_follow_load=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_follow_load=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_follow=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- The visible optimistic rollback requires a real pending request.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 500) })
+
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_follow=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  const id = url.pathname.split('/').at(-2)
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined || id === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  if (request.method === 'PUT') {
+    return json({ followed: true }, 200, {
+      'Set-Cookie': `${FOLLOW_COOKIE_NAME}=${id}; Path=/; SameSite=Lax`
+    })
+  }
+
+  if (request.method === 'DELETE') {
+    return json({ followed: false }, 200, {
+      'Set-Cookie': `${FOLLOW_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Lax`
+    })
+  }
+
+  return json({ followed: getFollowedCatalogItemId(request) === id })
 }
 
 async function handleCatalogDetails(request: Request, url: URL): Promise<Response> {
@@ -454,6 +528,14 @@ async function handleCatalogDetails(request: Request, url: URL): Promise<Respons
 export default {
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
+
+    if (
+      ['GET', 'PUT', 'DELETE'].includes(request.method)
+      && url.pathname.startsWith('/api/catalog/items/')
+      && url.pathname.endsWith('/follow')
+    ) {
+      return handleCatalogFollow(request, url)
+    }
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/')) {
       return handleCatalogDetails(request, url)
