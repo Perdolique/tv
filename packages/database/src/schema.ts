@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 
 import {
   boolean,
+  date,
   index,
   integer,
   pgEnum,
@@ -55,6 +56,28 @@ const catalogItemTitles = pgTable('catalog_item_titles', {
   uniqueIndex('catalog_item_titles_original_unique')
     .on(table.catalogItemId)
     .where(sql`${table.isOriginal}`)
+])
+
+const catalogReleases = pgTable('catalog_releases', {
+  id:
+    uuid()
+    .default(sql`uuidv7()`)
+    .primaryKey(),
+
+  catalogItemId:
+    uuid('catalog_item_id')
+    .notNull()
+    .references(() => catalogItems.id, { onDelete: 'cascade' }),
+
+  releaseDate:
+    date('release_date', { mode: 'string' })
+    .notNull(),
+
+  seasonNumber: integer('season_number'),
+  episodeNumber: integer('episode_number')
+}, (table) => [
+  index('catalog_releases_catalog_item_id_release_date_index')
+    .on(table.catalogItemId, table.releaseDate)
 ])
 
 const users = pgTable('users', {
@@ -211,6 +234,7 @@ export {
   catalogItemTitles,
   catalogItems,
   catalogItemType,
+  catalogReleases,
   emailVerificationTokens,
   passwordCredentials,
   sessions,
