@@ -111,6 +111,11 @@ test('opens search results with the keyboard and returns to the displayed query'
     exact: true
   })).toBeVisible()
 
+  await expect(page.getByRole('link', {
+    name: 'Calendar',
+    exact: true
+  })).not.toHaveAttribute('aria-current')
+
   await expect(page.getByText('No poster available', { exact: true })).toBeVisible()
   await expect(page.getByText('No description available yet.', { exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Back to results' }).click()

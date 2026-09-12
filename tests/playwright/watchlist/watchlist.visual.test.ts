@@ -1,7 +1,8 @@
 /* oxlint-disable vitest/prefer-each -- Playwright uses loops for viewport and color-scheme snapshots. */
-import type { Locator, Page } from '@playwright/test'
+import type { Locator } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { expectNoHorizontalOverflow, getVisibleLineCount } from '../helpers.ts'
 import { watchlistItems } from './fixtures.ts'
 
 const viewports = [
@@ -22,12 +23,6 @@ const viewports = [
   }
 ] as const
 
-async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const overflow = await page.evaluate(() => globalThis.document.documentElement.scrollWidth - globalThis.innerWidth)
-
-  expect(overflow).toBeLessThanOrEqual(0)
-}
-
 async function getWidth(locator: Locator): Promise<number | undefined> {
   const bounds = await locator.boundingBox()
 
@@ -41,16 +36,6 @@ async function getTextLineCount(locator: Locator): Promise<number> {
     range.selectNodeContents(element)
 
     return range.getClientRects().length
-  })
-}
-
-async function getVisibleLineCount(locator: Locator): Promise<number> {
-  return locator.evaluate((element) => {
-    const styles = globalThis.getComputedStyle(element)
-    const lineHeight = Number(styles.lineHeight.replace('px', ''))
-    const visibleHeight = element.getBoundingClientRect().height
-
-    return Math.round(visibleHeight / lineHeight)
   })
 }
 

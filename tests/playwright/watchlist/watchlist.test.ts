@@ -1,16 +1,9 @@
-import type { APIResponse, BrowserContext, Page, Response } from '@playwright/test'
+import type { BrowserContext, Page, Response } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { addCookie, getRedirectLocation } from '../helpers.ts'
 import { waitForHydration } from '../catalog/helpers.ts'
 import { watchlistItems } from './fixtures.ts'
-
-async function addCookie(context: BrowserContext, name: string, value: string): Promise<void> {
-  await context.addCookies([{
-    name,
-    value,
-    url: appBaseUrl
-  }])
-}
 
 async function openAuthenticatedPage(page: Page, context: BrowserContext, target = '/watchlist'): Promise<Response | null> {
   await addCookie(context, 'tv_session', 'e2e-session')
@@ -20,16 +13,6 @@ async function openAuthenticatedPage(page: Page, context: BrowserContext, target
   await waitForHydration(page)
 
   return response
-}
-
-function getRedirectLocation(response: APIResponse): URL {
-  const { location } = response.headers()
-
-  if (location === undefined) {
-    throw new Error('Expected a redirect location')
-  }
-
-  return new URL(location, appBaseUrl)
 }
 
 const failedWatchlistTest = test.extend({ expectedHttpErrors: { values: [
@@ -225,11 +208,19 @@ test('marks one current destination and keeps keyboard navigation usable', async
     exact: true
   })
 
+  const calendarLink = page.getByRole('link', {
+    name: 'Calendar',
+    exact: true
+  })
+
   await expect(watchlistLink).toHaveAttribute('aria-current', 'page')
   await expect(catalogLink).not.toHaveAttribute('aria-current')
+  await expect(calendarLink).not.toHaveAttribute('aria-current')
   await page.getByRole('button', { name: 'Sign out' }).focus()
   await page.keyboard.press('Tab')
   await expect(catalogLink).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(calendarLink).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(watchlistLink).toBeFocused()
 
@@ -267,10 +258,16 @@ test('keeps the current destination visible in forced colors', async ({ page, co
     exact: true
   })
 
+  const calendarLink = page.getByRole('link', {
+    name: 'Calendar',
+    exact: true
+  })
+
   const catalogWeight = Number(await catalogLink.evaluate(element => globalThis.getComputedStyle(element).fontWeight))
   const watchlistWeight = Number(await watchlistLink.evaluate(element => globalThis.getComputedStyle(element).fontWeight))
 
   expect(watchlistWeight).toBeGreaterThan(catalogWeight)
+  await expect(calendarLink).not.toHaveAttribute('aria-current')
   await expect(watchlistLink).toHaveCSS('text-decoration-line', 'underline')
 })
 

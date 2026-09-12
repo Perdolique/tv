@@ -1,7 +1,7 @@
 /* oxlint-disable vitest/prefer-each -- Playwright uses loops for parameterized browser scenarios. */
-import type { Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { expectNoHorizontalOverflow } from '../helpers.ts'
 import { catalogItems } from './fixtures.ts'
 import { dune } from './details.fixtures.ts'
 import { waitForHydration } from './helpers.ts'
@@ -26,12 +26,6 @@ const viewports = [
     height: 1024
   }
 ] as const
-
-async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const overflow = await page.evaluate(() => globalThis.document.documentElement.scrollWidth - globalThis.innerWidth)
-
-  expect(overflow).toBeLessThanOrEqual(0)
-}
 
 for (const colorScheme of ['light', 'dark'] as const) {
   for (const viewport of viewports) {

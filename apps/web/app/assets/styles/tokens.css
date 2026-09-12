@@ -11,6 +11,7 @@
     --color-surface-muted: light-dark(#eff1ec, #222833);
     --color-text-primary: light-dark(#15171a, #f7f8f4);
     --color-text-secondary: light-dark(#62676e, #a8adb6);
+    --color-text-tertiary: light-dark(#858b92, #747b86);
     --color-border: light-dark(#d8dcd3, #303744);
     --color-border-strong: light-dark(#888f85, #606a7a);
     --color-accent: light-dark(var(--brand-lime-700), var(--brand-lime-300));
@@ -50,6 +51,7 @@
     --layout-page-wide: 2rem;
     --layout-sidebar-compact: 5rem;
     --layout-sidebar-wide: 14rem;
+    --layout-rail: 20rem;
     --layout-content-max: 90rem;
   }
 }
