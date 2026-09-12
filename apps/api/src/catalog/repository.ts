@@ -1,8 +1,15 @@
 import type { Database } from '@tv/database'
-import { catalogItemFollows, catalogItemTitles, catalogItems } from '@tv/database/schema'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { catalogItemFollows, catalogItemTitles, catalogItems, catalogReleases } from '@tv/database/schema'
+import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { escapeLikePattern } from './search.ts'
-import type { CatalogDetailsRow, CatalogTitleRow, CatalogWatchlistRow } from './types.ts'
+
+import type {
+  CatalogDetailsRow,
+  CatalogReleaseRange,
+  CatalogReleaseRow,
+  CatalogTitleRow,
+  CatalogWatchlistRow
+} from './types.ts'
 
 async function findTitleRowsForMatchingCatalogItems(
   database: Database,
@@ -96,6 +103,55 @@ async function findCatalogWatchlistRows(
     )
 }
 
+async function findCatalogReleaseRows(
+  database: Database,
+  userId: string,
+  range: CatalogReleaseRange
+): Promise<CatalogReleaseRow[]> {
+  return database
+    .select({
+      catalogItemId: catalogItems.id,
+      episodeNumber: catalogReleases.episodeNumber,
+      isOriginal: catalogItemTitles.isOriginal,
+      locale: catalogItemTitles.locale,
+      posterPath: catalogItems.posterPath,
+      releaseDate: catalogReleases.releaseDate,
+      releaseId: catalogReleases.id,
+      releaseYear: catalogItems.releaseYear,
+      seasonNumber: catalogReleases.seasonNumber,
+      title: catalogItemTitles.title,
+      type: catalogItems.type
+    })
+    .from(catalogItemFollows)
+    .innerJoin(
+      catalogReleases,
+      eq(catalogReleases.catalogItemId, catalogItemFollows.catalogItemId)
+    )
+    .innerJoin(
+      catalogItems,
+      eq(catalogItems.id, catalogReleases.catalogItemId)
+    )
+    .innerJoin(
+      catalogItemTitles,
+      eq(catalogItemTitles.catalogItemId, catalogItems.id)
+    )
+    .where(
+      and(
+        eq(catalogItemFollows.userId, userId),
+        gte(catalogReleases.releaseDate, range.from),
+        lte(catalogReleases.releaseDate, range.to)
+      )
+    )
+    .orderBy(
+      catalogReleases.releaseDate,
+      catalogItems.id,
+      sql`${catalogReleases.seasonNumber} ASC NULLS LAST`,
+      sql`${catalogReleases.episodeNumber} ASC NULLS LAST`,
+      catalogReleases.id,
+      catalogItemTitles.locale
+    )
+}
+
 async function findCatalogItemFollowed(
   database: Database,
   userId: string,
@@ -185,6 +241,7 @@ async function unfollowCatalogItem(
 export {
   findCatalogDetailsRows,
   findCatalogItemFollowed,
+  findCatalogReleaseRows,
   findCatalogWatchlistRows,
   findTitleRowsForMatchingCatalogItems,
   followCatalogItem,

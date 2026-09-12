@@ -36,6 +36,17 @@ interface CatalogWatchlistResponse {
   items: CatalogWatchlistItem[];
 }
 
+interface CatalogReleaseItem extends CatalogWatchlistItem {
+  episodeNumber: number | null;
+  releaseDate: string;
+  releaseId: string;
+  seasonNumber: number | null;
+}
+
+interface CatalogReleasesResponse {
+  items: CatalogReleaseItem[];
+}
+
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
   | 'INTERNAL_ERROR'
@@ -59,6 +70,8 @@ export type {
   CatalogErrorCode,
   CatalogErrorEnvelope,
   CatalogFollowResponse,
+  CatalogReleaseItem,
+  CatalogReleasesResponse,
   CatalogSearchItem,
   CatalogSearchResponse,
   CatalogItemType,

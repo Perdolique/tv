@@ -18,4 +18,22 @@ interface CatalogWatchlistRow extends CatalogTitleRow {
   posterPath: string | null;
 }
 
-export type { CatalogDetailsRow, CatalogTitleRow, CatalogWatchlistRow }
+interface CatalogReleaseRow extends CatalogWatchlistRow {
+  episodeNumber: number | null;
+  releaseDate: string;
+  releaseId: string;
+  seasonNumber: number | null;
+}
+
+interface CatalogReleaseRange {
+  from: string;
+  to: string;
+}
+
+export type {
+  CatalogDetailsRow,
+  CatalogReleaseRange,
+  CatalogReleaseRow,
+  CatalogTitleRow,
+  CatalogWatchlistRow
+}

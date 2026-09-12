@@ -16,6 +16,7 @@ import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
 import {
   findCatalogDetailsRows,
   findCatalogItemFollowed,
+  findCatalogReleaseRows,
   findCatalogWatchlistRows,
   findTitleRowsForMatchingCatalogItems,
   followCatalogItem,
@@ -23,6 +24,7 @@ import {
 } from './repository.ts'
 
 import { canonicalizeTitleLocale, createCatalogSearchItems, normalizeCatalogQuery } from './search.ts'
+import { createCatalogReleaseItems, validateCatalogReleaseRange } from './releases.ts'
 import { createCatalogWatchlistItems } from './watchlist.ts'
 
 interface CatalogEnvironment {
@@ -272,6 +274,36 @@ function createCatalogApp(
     })
 
     const items = createCatalogWatchlistItems(result.rows, result.titleLocale)
+
+    return context.json({ items })
+  })
+
+  app.get('/api/catalog/releases', async (context) => {
+    const url = new URL(context.req.url)
+
+    const result = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+      const range = validateCatalogReleaseRange(
+        url.searchParams.get('from'),
+        url.searchParams.get('to')
+      )
+
+      const titleLocale = canonicalizeTitleLocale(
+        url.searchParams.get('titleLocale')
+      )
+
+      const rows = await findCatalogReleaseRows(
+        session.database,
+        session.user.id,
+        range
+      )
+
+      return {
+        rows,
+        titleLocale
+      }
+    })
+
+    const items = createCatalogReleaseItems(result.rows, result.titleLocale)
 
     return context.json({ items })
   })

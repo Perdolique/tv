@@ -202,7 +202,7 @@ describe('catalog proxy', () => {
 
     const response = { items: [] }
 
-    getRequestURL.mockReturnValue(new URL('https://tv.example.com/api/catalog/search?query=Dark&titleLocale=en'))
+    getRequestURL.mockReturnValue(new URL('https://tv.example.com/api/catalog/releases?from=2026-10-01&to=2026-10-31&titleLocale=en'))
     proxyRequest.mockResolvedValue(response)
 
     const result = await proxyApiRequest(event, {
@@ -212,7 +212,7 @@ describe('catalog proxy', () => {
 
     expect(result).toBe(response)
     expect(proxyRequest.mock.calls[0]?.[0]).toBe(event)
-    expect(proxyRequest.mock.calls[0]?.[1]).toBe(`${origin}/api/catalog/search?query=Dark&titleLocale=en`)
+    expect(proxyRequest.mock.calls[0]?.[1]).toBe(`${origin}/api/catalog/releases?from=2026-10-01&to=2026-10-31&titleLocale=en`)
   })
 
   it.each([true, false])('returns a safe catalog message and logs the raw cause in development=%s', async (development) => {
