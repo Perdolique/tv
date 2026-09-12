@@ -28,6 +28,14 @@ interface CatalogFollowResponse {
   followed: boolean;
 }
 
+interface CatalogWatchlistItem extends CatalogSearchItem {
+  posterUrl: string | null;
+}
+
+interface CatalogWatchlistResponse {
+  items: CatalogWatchlistItem[];
+}
+
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
   | 'INTERNAL_ERROR'
@@ -53,5 +61,7 @@ export type {
   CatalogFollowResponse,
   CatalogSearchItem,
   CatalogSearchResponse,
-  CatalogItemType
+  CatalogItemType,
+  CatalogWatchlistItem,
+  CatalogWatchlistResponse
 }

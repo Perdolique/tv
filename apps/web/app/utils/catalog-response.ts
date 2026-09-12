@@ -1,5 +1,17 @@
-import type { CatalogDetailsResponse, CatalogFollowResponse, CatalogSearchResponse } from '@tv/shared/catalog'
+import type {
+  CatalogDetailsResponse,
+  CatalogFollowResponse,
+  CatalogSearchResponse,
+  CatalogWatchlistResponse
+} from '@tv/shared/catalog'
+
 import * as v from 'valibot'
+
+const catalogPosterUrlSchema = v.nullable(
+  v.pipe(v.string(), v.regex(/^\/posters\/[a-z0-9-]+\.webp$/u))
+)
+
+const catalogItemIdSchema = v.pipe(v.string(), v.uuid())
 
 const catalogSearchItemSchema = v.object({
   id: v.string(),
@@ -20,13 +32,21 @@ const catalogDetailsResponseSchema = v.object({
     ...catalogSearchItemSchema.entries,
     description: v.nullable(v.string()),
     descriptionLocale: v.nullable(v.string()),
-    posterUrl: v.nullable(v.pipe(v.string(), v.regex(/^\/posters\/[a-z0-9-]+\.webp$/u)))
+    posterUrl: catalogPosterUrlSchema
   })
 }) satisfies v.GenericSchema<CatalogDetailsResponse>
 
 const catalogFollowResponseSchema = v.strictObject({
   followed: v.boolean()
 }) satisfies v.GenericSchema<CatalogFollowResponse>
+
+const catalogWatchlistResponseSchema = v.object({
+  items: v.array(v.object({
+    ...catalogSearchItemSchema.entries,
+    id: catalogItemIdSchema,
+    posterUrl: catalogPosterUrlSchema
+  }))
+}) satisfies v.GenericSchema<CatalogWatchlistResponse>
 
 function normalizeSearchQuery(value: unknown): string {
   return typeof value === 'string' ? value.trim().normalize('NFC') : ''
@@ -36,5 +56,6 @@ export {
   catalogDetailsResponseSchema,
   catalogFollowResponseSchema,
   catalogSearchResponseSchema,
+  catalogWatchlistResponseSchema,
   normalizeSearchQuery
 }

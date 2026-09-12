@@ -16,12 +16,14 @@ import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
 import {
   findCatalogDetailsRows,
   findCatalogItemFollowed,
+  findCatalogWatchlistRows,
   findTitleRowsForMatchingCatalogItems,
   followCatalogItem,
   unfollowCatalogItem
 } from './repository.ts'
 
 import { canonicalizeTitleLocale, createCatalogSearchItems, normalizeCatalogQuery } from './search.ts'
+import { createCatalogWatchlistItems } from './watchlist.ts'
 
 interface CatalogEnvironment {
   Bindings: CloudflareBindings;
@@ -36,6 +38,18 @@ interface CatalogDependencies {
   connectDatabase: ConnectCatalogDatabase;
 }
 
+interface CatalogOperationFailure {
+  error: CatalogHttpError;
+  status: 'failure';
+}
+
+interface CatalogOperationSuccess<Result> {
+  result: Result;
+  status: 'success';
+}
+
+type CatalogOperationOutcome<Result> = CatalogOperationFailure | CatalogOperationSuccess<Result>
+
 const defaultCatalogDependencies: CatalogDependencies = {
   connectDatabase: connectDatabaseAdapter
 }
@@ -48,44 +62,33 @@ function toCatalogHttpError(error: unknown): CatalogHttpError {
 
 async function closeCatalogAdapter(
   adapter: Awaited<ReturnType<ConnectCatalogDatabase>> | undefined
-): Promise<void> {
+): Promise<CatalogHttpError | null> {
   if (adapter === undefined) {
-    return
+    return null
   }
 
   try {
     await adapter.client.end()
+
+    return null
   } catch (error) {
-    throw new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
+    return new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
   }
 }
 
-async function withCatalogSession<Result>(
-  context: CatalogContext,
-  connectDatabase: ConnectCatalogDatabase,
-  operation: (session: CatalogSession) => Promise<Result>
-): Promise<Result> {
-  // oxlint-disable-next-line eslint/init-declarations -- The adapter is created lazily only for a valid session cookie.
-  let adapter: Awaited<ReturnType<typeof connectDatabaseAdapter>> | undefined
-
+async function captureCatalogOperation<Result>(operation: () => Promise<Result>): Promise<CatalogOperationOutcome<Result>> {
   try {
-    const session = await resolveCurrentSession(context, async () => {
-      adapter = await connectDatabase(
-        context.env.DATABASE.connectionString
-      )
+    const result = await operation()
 
-      return adapter.database
-    })
-
-    if (session === null) {
-      throw new CatalogHttpError('AUTHENTICATION_REQUIRED', 401)
+    return {
+      result,
+      status: 'success'
     }
-
-    return await operation(session)
   } catch (error) {
-    throw toCatalogHttpError(error)
-  } finally {
-    await closeCatalogAdapter(adapter)
+    return {
+      error: toCatalogHttpError(error),
+      status: 'failure'
+    }
   }
 }
 
@@ -105,6 +108,46 @@ function logCatalogServerError(
 
   // oxlint-disable-next-line eslint/no-console -- Worker logs retain safe technical failures and request IDs.
   console.error(logEntry)
+}
+
+async function withCatalogSession<Result>(
+  context: CatalogContext,
+  connectDatabase: ConnectCatalogDatabase,
+  operation: (session: CatalogSession) => Promise<Result>
+): Promise<Result> {
+  let adapter: Awaited<ReturnType<typeof connectDatabaseAdapter>> | undefined = undefined
+
+  const operationOutcome = await captureCatalogOperation(async () => {
+    const session = await resolveCurrentSession(context, async () => {
+      adapter = await connectDatabase(
+        context.env.DATABASE.connectionString
+      )
+
+      return adapter.database
+    })
+
+    if (session === null) {
+      throw new CatalogHttpError('AUTHENTICATION_REQUIRED', 401)
+    }
+
+    return operation(session)
+  })
+
+  const closeError = await closeCatalogAdapter(adapter)
+
+  if (operationOutcome.status === 'failure') {
+    if (closeError !== null) {
+      logCatalogServerError(context, closeError)
+    }
+
+    throw operationOutcome.error
+  }
+
+  if (closeError !== null) {
+    throw closeError
+  }
+
+  return operationOutcome.result
 }
 
 function createCatalogApp(
@@ -207,6 +250,30 @@ function createCatalogApp(
     })
 
     return context.json({ followed: false })
+  })
+
+  app.get('/api/catalog/watchlist', async (context) => {
+    const url = new URL(context.req.url)
+
+    const result = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+      const titleLocale = canonicalizeTitleLocale(
+        url.searchParams.get('titleLocale')
+      )
+
+      const rows = await findCatalogWatchlistRows(
+        session.database,
+        session.user.id
+      )
+
+      return {
+        rows,
+        titleLocale
+      }
+    })
+
+    const items = createCatalogWatchlistItems(result.rows, result.titleLocale)
+
+    return context.json({ items })
   })
 
   app.get('/api/catalog/search', async (context) => {

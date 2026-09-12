@@ -80,7 +80,7 @@ function compareItemIds(left: CatalogSearchItem, right: CatalogSearchItem): numb
   return left.id < right.id ? -1 : 1
 }
 
-function createCatalogSearchItems(
+function createLocalizedCatalogItems(
   rows: CatalogTitleRow[],
   requestedLocale: string
 ): CatalogSearchItem[] {
@@ -129,6 +129,14 @@ function createCatalogSearchItems(
     })
   }
 
+  return items
+}
+
+function createCatalogSearchItems(
+  rows: CatalogTitleRow[],
+  requestedLocale: string
+): CatalogSearchItem[] {
+  const items = createLocalizedCatalogItems(rows, requestedLocale)
   const collator = new Intl.Collator(requestedLocale)
 
   items.sort((left, right) => {
@@ -145,6 +153,7 @@ function createCatalogSearchItems(
 export {
   canonicalizeTitleLocale,
   createCatalogSearchItems,
+  createLocalizedCatalogItems,
   escapeLikePattern,
   getLocaleFallbacks,
   normalizeCatalogQuery

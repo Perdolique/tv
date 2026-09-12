@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import * as v from 'valibot'
-import { catalogDetailsResponseSchema, catalogFollowResponseSchema } from '../catalog-response.ts'
+
+import {
+  catalogDetailsResponseSchema,
+  catalogFollowResponseSchema,
+  catalogWatchlistResponseSchema
+} from '../catalog-response.ts'
 
 const item = {
   id: '01991a00-0000-7000-8000-000000000001',
@@ -74,4 +79,59 @@ describe('catalog follow response contract', () => {
   ])('rejects malformed state %#', (response) => {
     expect(v.safeParse(catalogFollowResponseSchema, response).success).toBe(false)
   })
+})
+
+describe('catalog watchlist response contract', () => {
+  const watchlistItem = {
+    id: item.id,
+    originalTitle: item.originalTitle,
+    originalTitleLocale: item.originalTitleLocale,
+    posterUrl: '/posters/dune-2021.webp',
+    releaseYear: item.releaseYear,
+    title: item.title,
+    titleLocale: item.titleLocale,
+    type: item.type
+  }
+
+  it('accepts ordered items with nullable posters', () => {
+    const response = {
+      items: [
+        watchlistItem,
+        {
+          ...watchlistItem,
+          id: '01991a00-0000-7000-8000-000000000002',
+          posterUrl: null
+        }
+      ]
+    }
+
+    expect(v.parse(catalogWatchlistResponseSchema, response)).toStrictEqual(response)
+  })
+
+  it('rejects malformed items and unsafe poster locations', () => {
+    expect(v.safeParse(catalogWatchlistResponseSchema, {
+      items: [{
+        ...watchlistItem,
+        posterUrl: 'https://unrelated.example/poster.webp'
+      }]
+    }).success).toBe(false)
+
+    expect(v.safeParse(catalogWatchlistResponseSchema, {
+      items: [{ id: watchlistItem.id }]
+    }).success).toBe(false)
+  })
+
+  it.each(['', '../../sign-in', 'not-a-uuid'])(
+    'rejects an invalid catalog item ID: %s',
+    (id) => {
+      const response = {
+        items: [{
+          ...watchlistItem,
+          id
+        }]
+      }
+
+      expect(v.safeParse(catalogWatchlistResponseSchema, response).success).toBe(false)
+    }
+  )
 })

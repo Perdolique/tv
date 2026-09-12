@@ -1,5 +1,5 @@
 <template>
-  <CatalogShell>
+  <AppShell active-destination="catalog">
     <main :class="$style.component">
       <NuxtLink :class="$style.backLink" :to="backLocation">{{ backLabel }}</NuxtLink>
       <section v-if="isLoading" :class="$style.loading" aria-label="Loading title" aria-busy="true">
@@ -50,7 +50,7 @@
         </div>
       </article>
     </main>
-  </CatalogShell>
+  </AppShell>
 </template>
 
 <script lang="ts" setup>
@@ -61,7 +61,7 @@
   import { computed, nextTick, useId, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
-  import CatalogShell from '~/components/catalog/CatalogShell.vue'
+  import AppShell from '~/components/app/AppShell.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCatalogDetails } from '~/composables/use-catalog-details.ts'
