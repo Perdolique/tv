@@ -4,6 +4,7 @@ import * as v from 'valibot'
 import {
   catalogDetailsResponseSchema,
   catalogFollowResponseSchema,
+  catalogReleasesResponseSchema,
   catalogWatchlistResponseSchema
 } from '../catalog-response.ts'
 
@@ -134,4 +135,61 @@ describe('catalog watchlist response contract', () => {
       expect(v.safeParse(catalogWatchlistResponseSchema, response).success).toBe(false)
     }
   )
+})
+
+describe('catalog releases response contract', () => {
+  const release = {
+    episodeNumber: 7,
+    id: item.id,
+    originalTitle: item.originalTitle,
+    originalTitleLocale: item.originalTitleLocale,
+    posterUrl: null,
+    releaseDate: '2028-02-29',
+    releaseId: '01991a00-0000-7000-8000-000000000002',
+    releaseYear: item.releaseYear,
+    seasonNumber: 2,
+    title: item.title,
+    titleLocale: item.titleLocale,
+    type: 'series'
+  }
+
+  it('accepts release dates and nullable episode metadata', () => {
+    const response = {
+      items: [release, {
+        ...release,
+        episodeNumber: null,
+        releaseId: '01991a00-0000-7000-8000-000000000003',
+        seasonNumber: null
+      }]
+    }
+
+    expect(v.parse(catalogReleasesResponseSchema, response)).toStrictEqual(response)
+  })
+
+  it.each([
+    {
+      ...release,
+      releaseDate: '2028-2-29'
+    },
+    {
+      ...release,
+      releaseDate: '2028-02-30'
+    },
+    {
+      ...release,
+      releaseId: 'not-a-uuid'
+    },
+    {
+      ...release,
+      episodeNumber: 1.5
+    },
+    {
+      ...release,
+      seasonNumber: -1
+    }
+  ])('rejects malformed release data %#', (invalidRelease) => {
+    const response = { items: [invalidRelease] }
+
+    expect(v.safeParse(catalogReleasesResponseSchema, response).success).toBe(false)
+  })
 })

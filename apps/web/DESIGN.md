@@ -662,8 +662,7 @@ Desktop uses a sidebar, wide main column, and `320px` secondary rail.
 - The selected day uses lime fill or border and remains distinguishable without
   color.
 - Event cells contain a thumbnail or short title when space permits.
-- Episode, movie, and premiere types use icon or shape differences in addition
-  to color.
+- Movie, episode, and generic series-release types use icon or shape differences in addition to color. Show Premiere only when the API provides an explicit event type; nullable season or episode metadata does not prove a premiere.
 - Reminder actions expose scheduled, unscheduled, loading, and error states.
 - Use the viewer's timezone for release times and state it when the source time
   is ambiguous.

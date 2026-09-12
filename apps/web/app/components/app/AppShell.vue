@@ -23,6 +23,10 @@
         <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
         <span>Catalog</span>
       </NuxtLink>
+      <NuxtLink :class="$style.navigationLink" to="/calendar" :aria-current="calendarCurrent">
+        <Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" />
+        <span>Calendar</span>
+      </NuxtLink>
       <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
         <Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" />
         <span>Watchlist</span>
@@ -33,6 +37,10 @@
       <NuxtLink :class="$style.navigationLink" to="/" :aria-current="catalogCurrent">
         <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
         <span>Catalog</span>
+      </NuxtLink>
+      <NuxtLink :class="$style.navigationLink" to="/calendar" :aria-current="calendarCurrent">
+        <Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" />
+        <span>Calendar</span>
       </NuxtLink>
       <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
         <Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" />
@@ -51,7 +59,7 @@
   import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
 
-  type NavigationDestination = 'catalog' | 'watchlist'
+  type NavigationDestination = 'calendar' | 'catalog' | 'watchlist'
 
   interface Props {
     activeDestination?: NavigationDestination;
@@ -70,6 +78,7 @@
   const hasSessionError = computed(() => state.value.status === 'error')
   const hasSignOutError = computed(() => signOutError.value !== '')
   const catalogCurrent = computed(() => activeDestination === 'catalog' ? 'page' : undefined)
+  const calendarCurrent = computed(() => activeDestination === 'calendar' ? 'page' : undefined)
   const watchlistCurrent = computed(() => activeDestination === 'watchlist' ? 'page' : undefined)
   const userEmail = computed(() => state.value.status === 'authenticated' ? state.value.user.email : '')
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
@@ -184,7 +193,7 @@
       inset-inline: 0;
       z-index: 2;
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: var(--space-2);
       padding: var(--space-2) var(--space-4);
       padding-block-end: max(var(--space-2), env(safe-area-inset-bottom));

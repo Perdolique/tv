@@ -2,6 +2,7 @@
 import type { Locator, Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { expectNoHorizontalOverflow } from '../helpers.ts'
 import { waitForHydration } from './helpers.ts'
 
 type ElementBounds = NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>
@@ -24,10 +25,8 @@ const viewports = [
   }
 ] as const
 
-async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const overflow = await page.evaluate(() => globalThis.document.documentElement.scrollWidth - globalThis.innerWidth)
-
-  expect(overflow).toBeLessThanOrEqual(0)
+async function expectCatalogFits(page: Page): Promise<void> {
+  await expectNoHorizontalOverflow(page)
 
   const inputBounds = await page.getByRole('textbox').boundingBox()
 
@@ -60,7 +59,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.goto('/?query=a')
       await expect(page.getByRole('listitem')).toHaveCount(4)
       await page.evaluate(async () => { await globalThis.document.fonts.ready })
-      await expectNoHorizontalOverflow(page)
+      await expectCatalogFits(page)
       await expect(page).toHaveScreenshot(`catalog-${viewport.name}-${colorScheme}.png`, { fullPage: true })
     })
   }
@@ -75,7 +74,7 @@ for (const [width, expectedWidth] of [[320, 320], [639, 639], [640, 80], [1023, 
 
     await page.goto('/?query=a')
     await expect(page.getByRole('listitem')).toHaveCount(4)
-    await expectNoHorizontalOverflow(page)
+    await expectCatalogFits(page)
 
     const navigation = page.getByRole('navigation', { name: 'Main navigation' })
     const bounds = await navigation.boundingBox()
@@ -94,6 +93,11 @@ for (const [width, expectedWidth] of [[320, 320], [639, 639], [640, 80], [1023, 
 
     await expect(page.getByRole('link', {
       name: 'Watchlist',
+      exact: true
+    })).not.toHaveAttribute('aria-current')
+
+    await expect(page.getByRole('link', {
+      name: 'Calendar',
       exact: true
     })).not.toHaveAttribute('aria-current')
   })
@@ -116,6 +120,11 @@ test('supports keyboard search and clear with visible focus and reduced motion',
     exact: true
   })
 
+  const calendarLink = page.getByRole('link', {
+    name: 'Calendar',
+    exact: true
+  })
+
   await expect(page.getByRole('banner')).toBeVisible()
   await expect(page.getByRole('main').getByRole('navigation')).toHaveCount(0)
 
@@ -127,6 +136,8 @@ test('supports keyboard search and clear with visible focus and reduced motion',
   await signOutButton.focus()
   await page.keyboard.press('Tab')
   await expect(catalogLink).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(calendarLink).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(watchlistLink).toBeFocused()
   await page.keyboard.press('Tab')
@@ -167,6 +178,13 @@ test('keeps mobile keyboard order aligned with the bottom navigation', async ({ 
 
   await expect(page.getByRole('link', {
     name: 'Catalog',
+    exact: true
+  })).toBeFocused()
+
+  await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('link', {
+    name: 'Calendar',
     exact: true
   })).toBeFocused()
 
