@@ -9,7 +9,7 @@
     <header v-else :class="$style.guestBar">
       <NuxtLink :class="$style.wordmark" to="/" aria-label="TV home">TV</NuxtLink>
       <nav :class="$style.guestNavigation" aria-label="Main navigation">
-        <NuxtLink :class="$style.guestLink" to="/">Catalog</NuxtLink>
+        <NuxtLink :class="$style.guestLink" to="/" :aria-current="catalogCurrent">Catalog</NuxtLink>
         <NuxtLink :class="$style.guestLink" :to="signInLocation">Sign in</NuxtLink>
         <NuxtLink :class="$style.guestLink" :to="registerLocation">Create an account</NuxtLink>
       </nav>
@@ -18,17 +18,25 @@
         <AppButton :disabled="isRetryingSession" variant="secondary" @click="retrySession">Retry account</AppButton>
       </div>
     </header>
-    <nav v-if="isAuthenticated" :class="$style.desktopCatalogNavigation" aria-label="Main navigation">
-      <NuxtLink :class="$style.catalogLink" to="/" :aria-current="catalogCurrent">
+    <nav v-if="isAuthenticated" :class="$style.desktopNavigation" aria-label="Main navigation">
+      <NuxtLink :class="$style.navigationLink" to="/" :aria-current="catalogCurrent">
         <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
         <span>Catalog</span>
       </NuxtLink>
+      <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
+        <Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" />
+        <span>Watchlist</span>
+      </NuxtLink>
     </nav>
     <slot />
-    <nav v-if="isAuthenticated" :class="$style.mobileCatalogNavigation" aria-label="Main navigation">
-      <NuxtLink :class="$style.catalogLink" to="/" :aria-current="catalogCurrent">
+    <nav v-if="isAuthenticated" :class="$style.mobileNavigation" aria-label="Main navigation">
+      <NuxtLink :class="$style.navigationLink" to="/" :aria-current="catalogCurrent">
         <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
         <span>Catalog</span>
+      </NuxtLink>
+      <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
+        <Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" />
+        <span>Watchlist</span>
       </NuxtLink>
     </nav>
   </div>
@@ -43,11 +51,13 @@
   import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
 
+  type NavigationDestination = 'catalog' | 'watchlist'
+
   interface Props {
-    activeCatalog?: boolean;
+    activeDestination?: NavigationDestination;
   }
 
-  const { activeCatalog } = defineProps<Props>()
+  const { activeDestination } = defineProps<Props>()
   const emit = defineEmits<{ signedOut: [] }>()
   const route = useRoute()
   const requestFetch = useRequestFetch()
@@ -59,7 +69,8 @@
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
   const hasSessionError = computed(() => state.value.status === 'error')
   const hasSignOutError = computed(() => signOutError.value !== '')
-  const catalogCurrent = computed(() => activeCatalog ? 'page' : undefined)
+  const catalogCurrent = computed(() => activeDestination === 'catalog' ? 'page' : undefined)
+  const watchlistCurrent = computed(() => activeDestination === 'watchlist' ? 'page' : undefined)
   const userEmail = computed(() => state.value.status === 'authenticated' ? state.value.user.email : '')
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
 
@@ -153,7 +164,13 @@
       min-block-size: 2.75rem;
       color: var(--color-text-primary);
       font-size: 0.875rem;
+      text-decoration: none;
       text-underline-offset: 0.25em;
+    }
+    .guestLink[aria-current='page'] {
+      font-weight: 700;
+      text-decoration: underline;
+      text-decoration-thickness: 0.125em;
     }
     .sessionError {
       display: flex;
@@ -161,18 +178,21 @@
       flex-wrap: wrap;
       gap: var(--space-3);
     }
-    .mobileCatalogNavigation {
+    .mobileNavigation {
       position: fixed;
       inset-block-end: 0;
       inset-inline: 0;
       z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-2);
       padding: var(--space-2) var(--space-4);
       padding-block-end: max(var(--space-2), env(safe-area-inset-bottom));
       border-block-start: 1px solid var(--color-border);
       background: var(--color-surface);
     }
-    .desktopCatalogNavigation { display: none; }
-    .catalogLink {
+    .desktopNavigation { display: none; }
+    .navigationLink {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -180,44 +200,56 @@
       min-block-size: 2.75rem;
       padding: var(--space-2);
       border-radius: var(--radius-sm);
-      background: var(--color-surface-muted);
       color: var(--color-text-primary);
       font-weight: 600;
       text-decoration: none;
+      white-space: nowrap;
+    }
+    .navigationLink[aria-current='page'] {
+      background: var(--color-surface-muted);
+      color: var(--color-accent);
+      font-weight: 700;
+      text-decoration: underline;
+      text-decoration-thickness: 0.125em;
+      text-underline-offset: 0.25em;
     }
     @media (width >= 40rem) {
       .component[data-authenticated='true'] {
         padding-block-end: 0;
         padding-inline-start: var(--layout-sidebar-compact);
       }
-      .mobileCatalogNavigation { display: none; }
-      .desktopCatalogNavigation {
+      .mobileNavigation { display: none; }
+      .desktopNavigation {
         position: fixed;
         inset-inline-start: 0;
         inset-block: 0;
         z-index: 2;
-        display: block;
+        display: grid;
+        align-content: start;
+        gap: var(--space-2);
         inline-size: var(--layout-sidebar-compact);
         padding: var(--space-4) var(--space-1);
         border-inline-end: 1px solid var(--color-border);
       }
-      .catalogLink {
+      .navigationLink {
         flex-direction: column;
+        padding-inline: var(--space-1);
         font-size: 0.875rem;
       }
       .guestBar { padding-inline: var(--layout-page-compact); }
     }
     @media (width >= 64rem) {
       .component[data-authenticated='true'] { padding-inline-start: var(--layout-sidebar-wide); }
-      .desktopCatalogNavigation {
+      .desktopNavigation {
         inset-block: auto 0;
         inline-size: var(--layout-sidebar-wide);
         padding: var(--space-8) var(--space-4);
         border-inline-end: 0;
       }
-      .catalogLink {
+      .navigationLink {
         flex-direction: row;
         justify-content: flex-start;
+        padding-inline: var(--space-2);
         font-size: 1rem;
       }
       .accountBar {

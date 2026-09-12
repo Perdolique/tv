@@ -1,5 +1,5 @@
 <template>
-  <div :class="$style.component" :aria-busy="isLoading">
+  <div :class="$style.component" :aria-busy="isLoading" :data-compact="compact">
     <img v-if="hasImage" ref="image" :class="$style.image" :data-loaded="hasLoaded" :src="imageSource" :alt="alternative" width="480" height="720" decoding="async" @load="imageLoaded" @error="imageFailed" />
     <p v-if="showPlaceholder" :class="$style.placeholder" role="status">{{ placeholder }}</p>
   </div>
@@ -9,11 +9,12 @@
   import { computed, onMounted, ref, useTemplateRef } from 'vue'
 
   interface Props {
+    compact?: boolean;
     posterUrl: string | null;
     title: string;
   }
 
-  const { posterUrl, title } = defineProps<Props>()
+  const { compact = false, posterUrl, title } = defineProps<Props>()
   const hasLoaded = ref(false)
   const hasFailed = ref(false)
   const image = useTemplateRef('image')
@@ -73,6 +74,17 @@
       color: var(--color-text-secondary);
       font-size: 0.875rem;
       text-align: center;
+    }
+    .component[data-compact='true'] .placeholder {
+      padding: var(--space-2);
+      font-size: 0.75rem;
+      line-height: 1.25;
+    }
+    @media (width >= 40rem) {
+      .component[data-compact='true'] .placeholder {
+        padding: var(--space-3);
+        font-size: 0.875rem;
+      }
     }
   }
 </style>

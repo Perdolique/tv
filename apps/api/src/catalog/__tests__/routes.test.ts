@@ -190,4 +190,31 @@ describe('catalog session database lifecycle', () => {
     expect(fixture.close).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(logs.mock.calls)).toContain('controlled close failure')
   })
+
+  it('keeps the repository failure when closing the connection also fails', async () => {
+    const fixture = setupCatalogApp()
+    const closeFailure = new Error('controlled close failure')
+    const repositoryFailure = new Error('controlled repository failure')
+
+    const logs = vi.spyOn(console, 'error').mockImplementation(() => {
+      // Both raw failures are asserted below.
+    })
+
+    mocks.findCatalogItemFollowed.mockRejectedValue(repositoryFailure)
+    fixture.close.mockRejectedValue(closeFailure)
+
+    const response = await fixture.request('session=valid')
+    const serializedLogs = JSON.stringify(logs.mock.calls)
+
+    expect(response.status).toBe(503)
+
+    await expect(response.json()).resolves.toStrictEqual({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'The catalog is temporarily unavailable.'
+    } })
+
+    expect(serializedLogs).toContain('controlled repository failure')
+    expect(serializedLogs).toContain('controlled close failure')
+    expect(logs).toHaveBeenCalledTimes(2)
+  })
 })

@@ -1,8 +1,8 @@
 import type { Database } from '@tv/database'
 import { catalogItemFollows, catalogItemTitles, catalogItems } from '@tv/database/schema'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { escapeLikePattern } from './search.ts'
-import type { CatalogDetailsRow, CatalogTitleRow } from './types.ts'
+import type { CatalogDetailsRow, CatalogTitleRow, CatalogWatchlistRow } from './types.ts'
 
 async function findTitleRowsForMatchingCatalogItems(
   database: Database,
@@ -61,6 +61,39 @@ async function findCatalogDetailsRows(
     .innerJoin(catalogItemTitles, eq(catalogItemTitles.catalogItemId, catalogItems.id))
     .where(eq(catalogItems.id, id))
     .orderBy(catalogItemTitles.locale)
+}
+
+async function findCatalogWatchlistRows(
+  database: Database,
+  userId: string
+): Promise<CatalogWatchlistRow[]> {
+  return database
+    .select({
+      catalogItemId: catalogItems.id,
+      isOriginal: catalogItemTitles.isOriginal,
+      locale: catalogItemTitles.locale,
+      posterPath: catalogItems.posterPath,
+      releaseYear: catalogItems.releaseYear,
+      title: catalogItemTitles.title,
+      type: catalogItems.type
+    })
+    .from(catalogItemFollows)
+    .innerJoin(
+      catalogItems,
+      eq(catalogItems.id, catalogItemFollows.catalogItemId)
+    )
+    .innerJoin(
+      catalogItemTitles,
+      eq(catalogItemTitles.catalogItemId, catalogItems.id)
+    )
+    .where(
+      eq(catalogItemFollows.userId, userId)
+    )
+    .orderBy(
+      desc(catalogItemFollows.followedAt),
+      catalogItems.id,
+      catalogItemTitles.locale
+    )
 }
 
 async function findCatalogItemFollowed(
@@ -152,6 +185,7 @@ async function unfollowCatalogItem(
 export {
   findCatalogDetailsRows,
   findCatalogItemFollowed,
+  findCatalogWatchlistRows,
   findTitleRowsForMatchingCatalogItems,
   followCatalogItem,
   unfollowCatalogItem

@@ -22,14 +22,14 @@
       </AppButton>
     </main>
 
-    <CatalogShell v-else-if="isAuthenticated" active-catalog @signed-out="focusAnonymousHeading">
+    <AppShell v-else-if="isAuthenticated" active-destination="catalog" @signed-out="focusAnonymousHeading">
       <main :class="$style.catalogContent">
         <h1 ref="authenticatedHeading" :class="$style.catalogHeading" tabindex="-1">Your catalog starts here.</h1>
         <p :class="$style.supportingText">Find your next movie or series.</p>
         <CatalogSearchField :model-value="input" @update:model-value="changeInput" @submit="submitSearch" @clear="clear" />
         <CatalogResults ref="catalogResults" :failure="failure" :is-loading="isLoading" :items="lastResult?.items" :result-query="lastResult?.query" @retry="retrySearch" />
       </main>
-    </CatalogShell>
+    </AppShell>
 
     <main v-else-if="isAnonymous" :class="$style.panel">
       <h1
@@ -59,7 +59,7 @@
   import { navigateTo, useHead, useResponseHeader, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
-  import CatalogShell from '~/components/catalog/CatalogShell.vue'
+  import AppShell from '~/components/app/AppShell.vue'
   import CatalogSearchField from '~/components/catalog/CatalogSearchField.vue'
   import CatalogResults from '~/components/catalog/CatalogResults.vue'
   import { useCatalogSearch } from '~/composables/use-catalog-search.ts'

@@ -1,6 +1,7 @@
 /* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
 import { catalogItems } from '../catalog/fixtures.ts'
 import { detailsItems, dune, russianDune } from '../catalog/details.fixtures.ts'
+import { watchlistItems } from '../watchlist/fixtures.ts'
 import { longEmail } from './constants.ts'
 
 import {
@@ -429,6 +430,51 @@ async function handleCatalogSearch(request: Request, url: URL): Promise<Response
   return json({ items })
 }
 
+async function handleCatalogWatchlist(request: Request): Promise<Response> {
+  const expiringSession = getExpiringSession(request)
+  const authenticated = hasAuthenticatedCatalogSession(request)
+
+  if (!authenticated || hasCookie(request, 'expire_watchlist=1')) {
+    if (expiringSession !== undefined) {
+      expiredCatalogSessions.add(expiringSession)
+    }
+
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_watchlist=2')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_watchlist=1; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_watchlist=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_watchlist=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'slow_watchlist=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- Browser tests need a real pending private request.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
+  }
+
+  return json({
+    items: hasCookie(request, 'empty_watchlist=1') ? [] : watchlistItems
+  })
+}
+
 function getFollowedCatalogItemId(request: Request): string | undefined {
   const cookies = request.headers.get('Cookie') ?? ''
   const prefix = `${FOLLOW_COOKIE_NAME}=`
@@ -543,6 +589,10 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/search') {
       return handleCatalogSearch(request, url)
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/catalog/watchlist') {
+      return handleCatalogWatchlist(request)
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/register') {

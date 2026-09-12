@@ -91,6 +91,11 @@ for (const [width, expectedWidth] of [[320, 320], [639, 639], [640, 80], [1023, 
       name: 'Catalog',
       exact: true
     })).toHaveAttribute('href', '/')
+
+    await expect(page.getByRole('link', {
+      name: 'Watchlist',
+      exact: true
+    })).not.toHaveAttribute('aria-current')
   })
 }
 
@@ -106,6 +111,11 @@ test('supports keyboard search and clear with visible focus and reduced motion',
     exact: true
   })
 
+  const watchlistLink = page.getByRole('link', {
+    name: 'Watchlist',
+    exact: true
+  })
+
   await expect(page.getByRole('banner')).toBeVisible()
   await expect(page.getByRole('main').getByRole('navigation')).toHaveCount(0)
 
@@ -117,6 +127,8 @@ test('supports keyboard search and clear with visible focus and reduced motion',
   await signOutButton.focus()
   await page.keyboard.press('Tab')
   await expect(catalogLink).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(watchlistLink).toBeFocused()
   await page.keyboard.press('Tab')
 
   const input = page.getByRole('textbox')
@@ -155,6 +167,13 @@ test('keeps mobile keyboard order aligned with the bottom navigation', async ({ 
 
   await expect(page.getByRole('link', {
     name: 'Catalog',
+    exact: true
+  })).toBeFocused()
+
+  await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('link', {
+    name: 'Watchlist',
     exact: true
   })).toBeFocused()
 })

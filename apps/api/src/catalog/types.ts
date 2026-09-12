@@ -14,4 +14,8 @@ interface CatalogDetailsRow extends CatalogTitleRow {
   posterPath: string | null;
 }
 
-export type { CatalogDetailsRow, CatalogTitleRow }
+interface CatalogWatchlistRow extends CatalogTitleRow {
+  posterPath: string | null;
+}
+
+export type { CatalogDetailsRow, CatalogTitleRow, CatalogWatchlistRow }

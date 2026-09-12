@@ -58,6 +58,15 @@ test('serves a public title in SSR and after reload without requiring an account
     exact: true
   })).toBeVisible()
 
+  const catalogLink = page.getByRole('link', {
+    name: 'Catalog',
+    exact: true
+  })
+
+  await expect(catalogLink).toHaveAttribute('aria-current', 'page')
+  await expect(catalogLink).toHaveCSS('font-weight', '700')
+  await expect(catalogLink).toHaveCSS('text-decoration-line', 'underline')
+
   await expect(page.getByRole('link', {
     name: 'Follow',
     exact: true
