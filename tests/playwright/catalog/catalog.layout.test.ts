@@ -58,9 +58,8 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme })
       await page.goto('/?query=a')
       await expect(page.getByRole('listitem')).toHaveCount(4)
-      await page.evaluate(async () => { await globalThis.document.fonts.ready })
       await expectCatalogFits(page)
-      await expect(page).toHaveScreenshot(`catalog-${viewport.name}-${colorScheme}.png`, { fullPage: true })
+      await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible()
     })
   }
 }

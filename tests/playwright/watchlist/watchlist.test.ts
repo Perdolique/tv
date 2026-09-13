@@ -263,11 +263,11 @@ test('keeps the current destination visible in forced colors', async ({ page, co
     exact: true
   })
 
-  const catalogWeight = Number(await catalogLink.evaluate(element => globalThis.getComputedStyle(element).fontWeight))
-  const watchlistWeight = Number(await watchlistLink.evaluate(element => globalThis.getComputedStyle(element).fontWeight))
-
-  expect(watchlistWeight).toBeGreaterThan(catalogWeight)
+  await expect(catalogLink).not.toHaveAttribute('aria-current')
   await expect(calendarLink).not.toHaveAttribute('aria-current')
+  await expect(watchlistLink).toHaveAttribute('aria-current', 'page')
+  await expect(catalogLink).toHaveCSS('text-decoration-line', 'none')
+  await expect(calendarLink).toHaveCSS('text-decoration-line', 'none')
   await expect(watchlistLink).toHaveCSS('text-decoration-line', 'underline')
 })
 

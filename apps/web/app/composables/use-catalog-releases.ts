@@ -109,10 +109,14 @@ function useCatalogReleases(
   const hasError = computed(() => currentOutcome.value?.status === 'error')
   const unauthorized = computed(() => currentOutcome.value?.status === 'unauthorized')
 
-  async function reload(): Promise<void> {
+  function clear(): void {
     generation += 1
 
     ready.clear()
+  }
+
+  async function reload(): Promise<void> {
+    clear()
 
     if (accountId.value !== null && range.value !== null) {
       await ready.execute({ dedupe: 'cancel' })
@@ -131,9 +135,7 @@ function useCatalogReleases(
       return
     }
 
-    generation += 1
-
-    ready.clear()
+    clear()
 
     if (currentAccountId !== null && currentFrom !== null && currentTo !== null) {
       void ready.execute({ dedupe: 'cancel' })
@@ -141,12 +143,11 @@ function useCatalogReleases(
   }, { flush: 'sync' })
 
   onScopeDispose(() => {
-    generation += 1
-
-    ready.clear()
+    clear()
   })
 
   return {
+    clear,
     hasError,
     isLoading,
     items,

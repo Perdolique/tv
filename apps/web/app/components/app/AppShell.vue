@@ -153,13 +153,13 @@
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: var(--space-4);
       padding: var(--space-4);
       padding-block-start: max(var(--space-4), env(safe-area-inset-top));
       border-block-end: 1px solid var(--color-border);
       background: var(--color-surface);
     }
-    .accountBar { justify-content: space-between; gap: var(--space-3); }
+    .accountBar { gap: var(--space-3); }
+    .guestBar { gap: var(--space-4); }
     .wordmark {
       color: var(--color-accent);
       font-size: 1.5rem;
@@ -263,7 +263,6 @@
     .navigationLabel { font-size: 0.75rem; font-weight: 600; line-height: 1; }
     .navigationLink[aria-current='page'] {
       color: var(--color-accent);
-      font-weight: 700;
     }
     .navigationLink[aria-current='page'] .navigationIcon {
       background: var(--color-accent-fill);

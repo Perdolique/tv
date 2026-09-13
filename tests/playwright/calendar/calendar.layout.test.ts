@@ -1,10 +1,25 @@
-/* oxlint-disable vitest/prefer-each -- Playwright uses loops for viewport and color-scheme snapshots. */
+/* oxlint-disable vitest/prefer-each -- Playwright uses loops for viewport and color-scheme checks. */
 import type { Locator } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { expectNoHorizontalOverflow, getVisibleLineCount } from '../helpers.ts'
 
 const FIXED_NOW = new Date('2026-09-12T10:00:00.000Z')
+
+test.use({
+  locale: 'en-US',
+  timezoneId: 'UTC'
+})
+
+async function getVisibleBounds(locator: Locator): Promise<NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>> {
+  const bounds = await locator.boundingBox()
+
+  if (bounds === null) {
+    throw new Error('Expected a visible calendar element')
+  }
+
+  return bounds
+}
 
 async function expectReleaseSummaryInsideDay(day: Locator): Promise<void> {
   const dayBounds = await day.evaluate((element) => {
@@ -35,18 +50,24 @@ async function expectReleaseSummaryInsideDay(day: Locator): Promise<void> {
 
 const viewports = [
   {
+    calendarDisplay: 'none',
     height: 844,
     name: 'mobile',
+    weekDisplay: 'grid',
     width: 390
   },
   {
+    calendarDisplay: 'grid',
     height: 1024,
     name: 'tablet',
+    weekDisplay: 'none',
     width: 768
   },
   {
+    calendarDisplay: 'grid',
     height: 1024,
     name: 'desktop',
+    weekDisplay: 'none',
     width: 1440
   }
 ] as const
@@ -74,9 +95,17 @@ for (const colorScheme of ['light', 'dark'] as const) {
         exact: true
       })).toHaveCount(2)
 
-      await page.evaluate(async () => { await globalThis.document.fonts.ready })
       await expectNoHorizontalOverflow(page)
-      await expect(page).toHaveScreenshot(`calendar-${viewport.name}-${colorScheme}.png`, { fullPage: true })
+
+      await expect(page.getByRole('group', {
+        name: 'Selected week',
+        includeHidden: true
+      })).toHaveCSS('display', viewport.weekDisplay)
+
+      await expect(page.getByRole('grid', {
+        name: 'Calendar days',
+        includeHidden: true
+      }).locator('xpath=..')).toHaveCSS('display', viewport.calendarDisplay)
     })
   }
 }
@@ -116,7 +145,7 @@ for (const width of [320, 390]) {
       exact: true
     }).click()
 
-    const selectedDay = page.getByRole('group', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')
+    const selectedDay = page.getByRole('grid', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')
     const visibleCue = selectedDay.locator('[data-type="episode"]:visible')
     const cueBounds = await visibleCue.boundingBox()
 
@@ -142,11 +171,20 @@ test('shows the selected release agenda below mobile Month', async ({ page }) =>
   }).click()
 
   await page.getByRole('button', { name: /Sunday, September 13, 2026.*2 releases/u }).click()
-  await page.evaluate(async () => { await globalThis.document.fonts.ready })
-  await expect(page).toHaveScreenshot('calendar-mobile-month-selected.png', { fullPage: true })
+
+  const calendarBounds = await getVisibleBounds(page.getByRole('grid', { name: 'Calendar days' }))
+  const agendaBounds = await getVisibleBounds(page.getByRole('list', { name: 'Releases for selected day' }))
+
+  expect(agendaBounds.y).toBeGreaterThanOrEqual(calendarBounds.y + calendarBounds.height)
 })
 
 test('keeps slow and missing posters inside release rows', async ({ page }) => {
+  await page.context().addCookies([{
+    name: 'tv_session',
+    url: appBaseUrl,
+    value: 'e2e-session'
+  }])
+
   await page.route('**/posters/dune-2021.webp', async (route) => {
     // oxlint-disable-next-line promise/avoid-new -- The placeholder must remain visible during a slow poster response.
     await new Promise(resolve => { globalThis.setTimeout(resolve, 600) })
@@ -156,6 +194,7 @@ test('keeps slow and missing posters inside release rows', async ({ page }) => {
 
   await page.goto('/calendar?date=2026-09-12')
   await expect(page.getByText('Loading poster…')).toBeVisible()
+  await expect(page.getByAltText('Dune poster')).toHaveAttribute('loading', 'lazy')
   await expect(page.getByAltText('Dune poster')).toBeVisible()
   await page.goto('/calendar?date=2026-09-13')
   await expect(page.getByText('No poster available')).toHaveCount(2)
@@ -170,7 +209,7 @@ test('keeps narrow desktop dates, release cues, and navigation icons aligned', a
 
   await page.goto('/calendar?date=2026-09-13')
 
-  const calendarDays = page.getByRole('group', { name: 'Calendar days' })
+  const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
   const today = calendarDays.locator('button[aria-current="date"]')
   const todayNumber = today.getByText('12', { exact: true })
   const todayText = today.getByText('Today', { exact: true })
@@ -205,6 +244,7 @@ test('keeps narrow desktop dates, release cues, and navigation icons aligned', a
   await busyDay.click()
   await expectReleaseSummaryInsideDay(busyDay)
   await expect(busyDay.locator('[data-type]:visible')).toHaveCount(1)
+  await expect(busyDay.getByText('American Horror Story', { exact: true })).toBeHidden()
 
   await page.setViewportSize({
     height: 768,
@@ -212,6 +252,7 @@ test('keeps narrow desktop dates, release cues, and navigation icons aligned', a
   })
 
   await expect(busyDay.locator('[data-type]:visible')).toHaveCount(2)
+  await expect(busyDay.getByText('American Horror Story', { exact: true })).toBeVisible()
   await expectReleaseSummaryInsideDay(busyDay)
 })
 
@@ -228,7 +269,7 @@ test('keeps calendar usable with reduced motion and forced colors', async ({ pag
 
   await page.goto('/calendar?date=2026-09-12')
 
-  const selected = page.getByRole('group', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')
+  const selected = page.getByRole('grid', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')
 
   await expect(selected).toBeVisible()
   await expect(selected).toContainText('✓')

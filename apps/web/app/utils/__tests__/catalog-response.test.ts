@@ -181,15 +181,41 @@ describe('catalog releases response contract', () => {
     },
     {
       ...release,
+      id: 'not-a-uuid'
+    },
+    {
+      ...release,
+      posterUrl: 'https://unrelated.example/poster.webp'
+    },
+    {
+      ...release,
+      episodeNumber: -1
+    },
+    {
+      ...release,
       episodeNumber: 1.5
     },
     {
       ...release,
       seasonNumber: -1
+    },
+    {
+      ...release,
+      seasonNumber: 1.5
     }
   ])('rejects malformed release data %#', (invalidRelease) => {
     const response = { items: [invalidRelease] }
 
     expect(v.safeParse(catalogReleasesResponseSchema, response).success).toBe(false)
+  })
+
+  it('rejects a release without a base catalog field', () => {
+    const releaseWithoutTitle: Record<string, unknown> = { ...release }
+
+    delete releaseWithoutTitle.title
+
+    expect(v.safeParse(catalogReleasesResponseSchema, {
+      items: [releaseWithoutTitle]
+    }).success).toBe(false)
   })
 })

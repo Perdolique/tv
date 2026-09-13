@@ -1,12 +1,18 @@
 /* oxlint-disable eslint/max-lines -- Calendar browser contracts share one end-to-end service harness. */
-import type { BrowserContext, Page, Response } from '@playwright/test'
+import type { BrowserContext, Locator, Page, Request, Response } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie, getRedirectLocation } from '../helpers.ts'
 import { waitForHydration } from '../catalog/helpers.ts'
+import { dune } from '../catalog/details.fixtures.ts'
 
 const FIXED_NOW = new Date('2026-09-12T10:00:00.000Z')
 const TODAY = '2026-09-12'
+
+test.use({
+  locale: 'en-US',
+  timezoneId: 'UTC'
+})
 
 async function openCalendar(
   page: Page,
@@ -36,6 +42,26 @@ function observeReleaseRequests(page: Page): URL[] {
   })
 
   return requests
+}
+
+async function getVisibleBounds(locator: Locator): Promise<NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>> {
+  const bounds = await locator.boundingBox()
+
+  if (bounds === null) {
+    throw new Error('Expected a visible calendar element')
+  }
+
+  return bounds
+}
+
+function isStaleSeptemberReleaseRequest(request: Request): boolean {
+  return request.url().includes('/api/catalog/releases')
+    && new URL(request.url()).searchParams.get('to') === '2026-09-30'
+}
+
+function isOctoberReleaseRequest(request: Request): boolean {
+  return request.url().includes('/api/catalog/releases')
+    && new URL(request.url()).searchParams.get('to') === '2026-10-31'
 }
 
 const failedCalendarTest = test.extend({ expectedHttpErrors: { values: [
@@ -93,7 +119,9 @@ test('redirects a guest through sign in and returns to the full calendar URL', a
 for (const [target, expectedDate] of [
   ['/calendar', TODAY],
   ['/calendar?date=broken', TODAY],
-  ['/calendar?date=2026-09-11', TODAY]
+  ['/calendar?date=2026-09-11', TODAY],
+  ['/calendar?month=broken', TODAY],
+  ['/calendar?month=2026-08', TODAY]
 ] as const) {
   test(`canonicalizes ${target} to the local current date`, async ({ page, context }) => {
     const historyLength = await page.evaluate(() => globalThis.history.length)
@@ -123,15 +151,17 @@ test('refreshes browser-local today after midnight without remounting', async ({
 test('renders the maximum supported calendar year without overflowing the URL contract', async ({ page, context }) => {
   await openCalendar(page, context, '/calendar?date=9999-12-31')
 
-  const calendarDays = page.getByRole('group', { name: 'Calendar days' })
+  const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
 
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=9999-12-31`)
   await expect(calendarDays.getByRole('button')).toHaveCount(42)
+  await expect(calendarDays.getByRole('row')).toHaveCount(7)
+  await expect(calendarDays.getByRole('columnheader')).toHaveCount(7)
   await expect(calendarDays.locator('button[aria-pressed="true"]')).toHaveAccessibleName(/December 31, 9999/u)
   await expect(page.getByRole('button', { name: 'Next month' })).toBeDisabled()
 })
 
-test('opens a month without selecting a day and keeps push navigation in browser history', async ({ page, context }) => {
+test('reuses current-month releases while selecting another day and Today', async ({ page, context }) => {
   const releaseRequests = observeReleaseRequests(page)
   const currentRequestPromise = page.waitForRequest('**/api/catalog/releases?**')
 
@@ -155,8 +185,12 @@ test('opens a month without selecting a day and keeps push navigation in browser
 
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=${TODAY}`)
   expect(releaseRequests).toHaveLength(1)
+})
 
-  const futureRequestPromise = page.waitForRequest('**/api/catalog/releases?**')
+test('loads a future month and keeps push navigation in browser history', async ({ page, context }) => {
+  await openCalendar(page, context)
+
+  const futureRequestPromise = page.waitForRequest(isOctoberReleaseRequest)
 
   await page.getByRole('button', { name: 'Next month' }).click()
 
@@ -167,7 +201,7 @@ test('opens a month without selecting a day and keeps push navigation in browser
   await expect(page.getByLabel('Month navigation').getByText('October 2026', { exact: true })).toBeVisible()
 
   const futureItems = page.getByRole('list', { name: 'Releases in October 2026' }).getByRole('listitem')
-  const calendarDays = page.getByRole('group', { name: 'Calendar days' })
+  const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
 
   await expect(calendarDays.locator('button[aria-pressed="true"]')).toHaveCount(0)
   await expect(calendarDays.locator('button[tabindex="0"]')).toHaveCount(1)
@@ -201,7 +235,7 @@ test('shows movie, series, nullable metadata, and separate episodes', async ({ p
   await openCalendar(page, context)
 
   const todayList = page.getByRole('list', { name: 'Releases for selected day' })
-  const calendarDays = page.getByRole('group', { name: 'Calendar days' })
+  const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
   const todayButton = calendarDays.locator('button[aria-current="date"]')
 
   await expect(todayList.getByRole('listitem')).toHaveCount(1)
@@ -241,6 +275,23 @@ test('shows movie, series, nullable metadata, and separate episodes', async ({ p
   await expect(genericSeriesDay.locator('[data-type="movie"]')).toHaveText('M')
 })
 
+test('opens the exact catalog title from a calendar release', async ({ page, context }) => {
+  await openCalendar(page, context)
+
+  const duneLink = page.getByRole('list', { name: 'Releases for selected day' }).getByRole('link', {
+    name: /Dune/u
+  })
+
+  await expect(duneLink).toHaveAttribute('href', `/titles/${dune.id}`)
+  await duneLink.click()
+  await expect(page).toHaveURL(`${appBaseUrl}/titles/${dune.id}`)
+
+  await expect(page.getByRole('heading', {
+    name: 'Dune',
+    exact: true
+  })).toBeVisible()
+})
+
 test('defaults mobile to Agenda and keeps Month open after selecting a day', async ({ page, context }) => {
   await page.setViewportSize({
     height: 844,
@@ -249,7 +300,7 @@ test('defaults mobile to Agenda and keeps Month open after selecting a day', asy
 
   await openCalendar(page, context)
 
-  const calendarDays = page.getByRole('group', { name: 'Calendar days' })
+  const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
   const selectedWeek = page.getByRole('group', { name: 'Selected week' })
 
   await expect(page.getByRole('button', {
@@ -299,6 +350,15 @@ test('navigates mobile Agenda by week and selects its first release', async ({ p
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-09-18`)
   await expect(page.getByText('Sep 14 – Sep 20, 2026', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'A very long title' })).toBeVisible()
+})
+
+test('keeps a month URL in mobile Month across reload and opens Agenda at its first day', async ({ page, context }) => {
+  await page.setViewportSize({
+    height: 844,
+    width: 390
+  })
+
+  await openCalendar(page, context)
 
   await page.getByRole('button', {
     name: 'Month',
@@ -308,7 +368,7 @@ test('navigates mobile Agenda by week and selects its first release', async ({ p
   await expect(page.getByRole('group', { name: 'Selected week' })).toBeHidden()
   await page.getByRole('button', { name: 'Next month' }).click()
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?month=2026-10`)
-  await expect(page.getByRole('group', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')).toHaveCount(0)
+  await expect(page.getByRole('grid', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')).toHaveCount(0)
   await expect(page.getByRole('list', { name: 'Releases in October 2026' }).getByRole('listitem')).toHaveCount(10)
   await expect(page.getByLabel('Calendar period navigation').getByText('October 2026', { exact: true })).toBeVisible()
   await page.reload()
@@ -319,9 +379,9 @@ test('navigates mobile Agenda by week and selects its first release', async ({ p
     exact: true
   })).toHaveAttribute('aria-pressed', 'true')
 
-  await expect(page.getByRole('group', { name: 'Calendar days' })).toBeVisible()
+  await expect(page.getByRole('grid', { name: 'Calendar days' })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Selected week' })).toBeHidden()
-  await expect(page.getByRole('group', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')).toHaveCount(0)
+  await expect(page.getByRole('grid', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')).toHaveCount(0)
 
   await page.getByRole('button', {
     name: 'Agenda',
@@ -330,6 +390,78 @@ test('navigates mobile Agenda by week and selects its first release', async ({ p
 
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-10-01`)
   await expect(page.getByRole('group', { name: 'Selected week' })).toBeVisible()
+})
+
+test('loads a cross-month week before selecting its first release', async ({ page, context }) => {
+  await page.setViewportSize({
+    height: 844,
+    width: 390
+  })
+
+  await openCalendar(page, context, '/calendar?date=2026-09-25')
+
+  const nextWeekRequest = page.waitForRequest('**/api/catalog/releases?**')
+
+  await page.getByRole('button', { name: 'Next week' }).click()
+
+  const request = await nextWeekRequest
+  const requestUrl = new URL(request.url())
+
+  expect(requestUrl.searchParams.get('from')).toBe(TODAY)
+  expect(requestUrl.searchParams.get('to')).toBe('2026-10-04')
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-10-01`)
+  await expect(page.getByRole('heading', { name: 'American Horror Story' }).first()).toBeVisible()
+})
+
+test('restores mobile Month mode when browser history returns to a month URL', async ({ page, context }) => {
+  await page.setViewportSize({
+    height: 844,
+    width: 390
+  })
+
+  await openCalendar(page, context)
+
+  await page.getByRole('button', {
+    name: 'Month',
+    exact: true
+  }).click()
+
+  await page.getByRole('button', { name: 'Next month' }).click()
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?month=2026-10`)
+
+  await page.getByRole('button', {
+    name: 'Agenda',
+    exact: true
+  }).click()
+
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-10-01`)
+  await page.goBack()
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?month=2026-10`)
+
+  await expect(page.getByRole('button', {
+    name: 'Month',
+    exact: true
+  })).toHaveAttribute('aria-pressed', 'true')
+
+  await expect(page.getByRole('grid', { name: 'Calendar days' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Selected week' })).toBeHidden()
+})
+
+test('opens the last partial supported week and disables navigation at its end', async ({ page, context }) => {
+  await page.setViewportSize({
+    height: 844,
+    width: 390
+  })
+
+  await openCalendar(page, context, '/calendar?date=9999-12-25')
+
+  const nextWeek = page.getByRole('button', { name: 'Next week' })
+
+  await expect(nextWeek).toBeEnabled()
+  await nextWeek.click()
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=9999-12-27`)
+  await expect(page.getByText('Dec 27 – Dec 31, 9999', { exact: true })).toBeVisible()
+  await expect(nextWeek).toBeDisabled()
 })
 
 test('keeps empty outcomes visible in mobile Month', async ({ page, context }) => {
@@ -347,7 +479,7 @@ test('keeps empty outcomes visible in mobile Month', async ({ page, context }) =
 
   await page.getByRole('button', { name: /Monday, September 14, 2026.*0 releases/u }).click()
   await expect(page.getByRole('heading', { name: 'Nothing releases on this day' })).toBeVisible()
-  await expect(page.getByRole('group', { name: 'Calendar days' })).toBeVisible()
+  await expect(page.getByRole('grid', { name: 'Calendar days' })).toBeVisible()
   await addCookie(context, 'empty_calendar', '1')
   await page.getByRole('button', { name: 'Next month' }).click()
   await expect(page.getByRole('heading', { name: 'No upcoming releases this month' })).toBeVisible()
@@ -384,7 +516,7 @@ test('shows month and agenda together from tablet and uses one month-grid tab st
 
   await openCalendar(page, context)
 
-  const calendarDays = page.getByRole('group', { name: 'Calendar days' })
+  const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
   const agenda = page.getByRole('list', { name: 'Releases for selected day' })
   const todayButton = calendarDays.locator('button[aria-current="date"]')
 
@@ -392,14 +524,30 @@ test('shows month and agenda together from tablet and uses one month-grid tab st
   await expect(agenda).toBeVisible()
   await expect(calendarDays.locator('button[tabindex="0"]')).toHaveCount(1)
   await todayButton.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(todayButton).toBeFocused()
+  await page.keyboard.press('ArrowUp')
+  await expect(todayButton).toBeFocused()
   await page.keyboard.press('ArrowRight')
 
   const nextDay = calendarDays.getByRole('button', { name: /Sunday, September 13, 2026/u })
 
   await expect(nextDay).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(todayButton).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+
+  const nextWeekDay = calendarDays.getByRole('button', { name: /Saturday, September 19, 2026/u })
+
+  await expect(nextWeekDay).toBeFocused()
+  await page.keyboard.press('ArrowUp')
+  await expect(todayButton).toBeFocused()
+  await page.keyboard.press('ArrowRight')
+  await expect(nextDay).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-09-13`)
   await expect(nextDay).toHaveAttribute('aria-pressed', 'true')
+  await expect(calendarDays.locator('button[tabindex="0"]')).toHaveCount(1)
 })
 
 test('distinguishes empty days and empty months', async ({ page, context }) => {
@@ -434,10 +582,59 @@ test('keeps grid and agenda geometry while a client month request loads', async 
     exact: true
   }).click()
 
-  await expect(page.getByRole('status', { name: 'Loading month' }).locator(':scope > div')).toHaveCount(42)
-  await expect(page.getByRole('status', { name: 'Loading agenda' }).locator(':scope > div')).toHaveCount(3)
-  await expect(page.getByRole('group', { name: 'Calendar days' })).toBeVisible()
+  const loadingMonth = page.getByRole('status', { name: 'Loading month' })
+  const loadingAgenda = page.getByRole('status', { name: 'Loading agenda' })
+
+  await expect(loadingMonth.locator(':scope > div')).toHaveCount(42)
+  await expect(loadingAgenda.locator(':scope > div')).toHaveCount(3)
+
+  const loadingMonthBounds = await getVisibleBounds(loadingMonth.locator('xpath=../..'))
+  const loadingAgendaBounds = await getVisibleBounds(loadingAgenda.locator('xpath=..'))
+  const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
+
+  await expect(calendarDays).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dune' })).toBeVisible()
+
+  const loadedMonthBounds = await getVisibleBounds(calendarDays.locator('xpath=..'))
+
+  const loadedAgendaBounds = await getVisibleBounds(
+    page.getByRole('list', { name: 'Releases for selected day' }).locator('xpath=..')
+  )
+
+  expect(loadedMonthBounds.width).toBe(loadingMonthBounds.width)
+  expect(loadedMonthBounds.height).toBe(loadingMonthBounds.height)
+  expect(loadedAgendaBounds.width).toBe(loadingAgendaBounds.width)
+  expect(loadedAgendaBounds.y).toBe(loadingAgendaBounds.y)
+  expect(loadingAgendaBounds.height).toBeGreaterThanOrEqual(loadedAgendaBounds.height)
+})
+
+test('cancels a stale month request and renders only the current month', async ({ page, context }) => {
+  await page.clock.setFixedTime(FIXED_NOW)
+  await addCookie(context, 'tv_session', 'e2e-session')
+  await addCookie(context, 'slow_calendar', '1')
+
+  const staleRequestFailure = page.waitForEvent('requestfailed', isStaleSeptemberReleaseRequest)
+
+  await page.goto(`/calendar?date=${TODAY}`)
+  await expect(page.getByRole('heading', { name: 'Release calendar' })).toBeVisible()
+  await page.getByRole('button', { name: 'Next month' }).click()
+
+  const failedRequest = await staleRequestFailure
+
+  expect(failedRequest.failure()?.errorText).toMatch(/abort|cancel/iu)
+  await expect(page.getByRole('heading', { name: 'Dune' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'American Horror Story' })).toHaveCount(10)
+})
+
+test('clears one account private releases before loading another account', async ({ page, context }) => {
+  await openCalendar(page, context)
+  await expect(page.getByRole('heading', { name: 'Dune' })).toBeVisible()
+  await addCookie(context, 'tv_session', 'e2e-long-email-session')
+  await addCookie(context, 'slow_calendar', '1')
+  await page.evaluate(() => { globalThis.dispatchEvent(new Event('focus')) })
+  await expect(page.getByRole('status', { name: 'Loading agenda' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Dune' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Nothing releases on this day' })).toBeVisible()
 })
 
 // oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with expected HTTP errors.
@@ -467,7 +664,7 @@ failedCalendarTest('shows a safe error and restores focus across retry outcomes'
   await expect(retryButton).toBeFocused()
   await retryButton.click()
   await expect(page.getByRole('heading', { name: 'Release calendar' })).toBeFocused()
-  await expect(page.getByRole('group', { name: 'Calendar days' })).toBeVisible()
+  await expect(page.getByRole('grid', { name: 'Calendar days' })).toBeVisible()
 })
 
 // oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with expected session errors.

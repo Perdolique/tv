@@ -189,6 +189,56 @@ describe('catalog releases request lifecycle', () => {
     expect(releases.items.value).toStrictEqual([])
   })
 
+  it('clears loaded private items when the account becomes unavailable', async () => {
+    harness.fetch.mockResolvedValue(response)
+
+    const { accountId, releases } = setup()
+
+    await releases.ready
+
+    const requestSignal = harness.fetch.mock.calls[0]?.[1].signal
+
+    accountId.value = null
+
+    expect(releases.items.value).toStrictEqual([])
+    expect(releases.isLoading.value).toBe(false)
+    expect(requestSignal?.aborted).toBe(true)
+    expect(harness.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears loaded private items when the range becomes unavailable', async () => {
+    harness.fetch.mockResolvedValue(response)
+
+    const { range, releases } = setup()
+
+    await releases.ready
+
+    const requestSignal = harness.fetch.mock.calls[0]?.[1].signal
+
+    range.value = null
+
+    expect(releases.items.value).toStrictEqual([])
+    expect(releases.isLoading.value).toBe(false)
+    expect(requestSignal?.aborted).toBe(true)
+    expect(harness.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('aborts a pending private request when its range becomes unavailable', () => {
+    const pending = Promise.withResolvers<unknown>()
+
+    harness.fetch.mockReturnValue(pending.promise)
+
+    const { range, releases } = setup()
+    const requestSignal = harness.fetch.mock.calls[0]?.[1].signal
+
+    range.value = null
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(releases.items.value).toStrictEqual([])
+    expect(releases.isLoading.value).toBe(false)
+    expect(harness.fetch).toHaveBeenCalledTimes(1)
+  })
+
   it('distinguishes transport, malformed, and unauthorized failures before retrying', async () => {
     const contractLog = vi.spyOn(globalThis.console, 'error').mockImplementation(() => {
       // The validation failure is asserted below.

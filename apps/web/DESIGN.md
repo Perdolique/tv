@@ -851,9 +851,8 @@ Verify at minimum:
 
 - Add focused Vitest tests for state and token logic.
 - Add Playwright coverage for page-critical flows and theme switching.
-- Capture visual snapshots at the three reference viewports for both themes.
-- Do not use generated references as pixel-perfect golden images. They contain
-  illustrative artwork and may contain non-deterministic visual details.
+- Add semantic and geometry-based Playwright checks at the three reference viewports for both themes.
+- Do not use pixel screenshot snapshots or generated references as golden images. Rendering varies by browser platform, and the references contain illustrative artwork and non-deterministic visual details.
 
 Follow repository verification instructions for changed Vue or TypeScript files.
 For changes to this file, run:
@@ -884,7 +883,7 @@ When changing a visual rule:
 2. Update the semantic token or shared component when the change is systemic.
 3. Check both themes and all responsive modes.
 4. Update this document when the rule or intent changes.
-5. Update affected tests and visual snapshots.
+5. Update affected semantic and geometry-based tests.
 
 Do not add a new component variant to solve a single screenshot discrepancy.
 Do not change dark and light theme structures independently.

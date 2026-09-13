@@ -169,7 +169,7 @@ async function signIn(page: Page, options: SignInOptions = {}): Promise<void> {
 
   expect(signInResponse.status()).toBe(200)
   expect(signInResponse.headers()['cache-control']).toBe('no-store')
-  await expect(page.getByText('Signed in as')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
   await expect(page).toHaveTitle('Your catalog · TV')
 }
 
@@ -747,19 +747,37 @@ test.describe('Authenticated session lifecycle', () => {
     await secondPage.close()
   })
 
-  test('keeps a valid long email inside the mobile viewport', async ({ page }) => {
+  test('keeps a valid long email inside the desktop sidebar', async ({ page }) => {
     await page.setViewportSize({
       height: 720,
-      width: 320
+      width: 1024
     })
 
     await signIn(page, { email: longEmail })
-    await expect(page.getByText(longEmail)).toBeVisible()
+
+    const accountEmail = page.getByText('Signed in as')
+
+    await expect(accountEmail).toBeVisible()
+    await expect(accountEmail).toContainText(longEmail)
+    await expect(accountEmail).toHaveCSS('overflow', 'hidden')
+    await expect(accountEmail).toHaveCSS('text-overflow', 'ellipsis')
+
+    const emailBounds = await accountEmail.evaluate((element) => {
+      const rectangle = element.getBoundingClientRect()
+
+      return {
+        left: rectangle.left,
+        right: rectangle.right,
+        viewportWidth: globalThis.innerWidth
+      }
+    })
 
     const viewportOverflow = await page.evaluate(() => (
       globalThis.document.documentElement.scrollWidth - globalThis.innerWidth
     ))
 
+    expect(emailBounds.left).toBeGreaterThanOrEqual(0)
+    expect(emailBounds.right).toBeLessThanOrEqual(emailBounds.viewportWidth)
     expect(viewportOverflow).toBeLessThanOrEqual(0)
   })
 

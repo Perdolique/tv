@@ -56,6 +56,7 @@ const UNAVAILABLE_VERIFICATION_TOKEN = 'u'.repeat(43)
 const SESSION_COOKIE = 'tv_session=e2e-session'
 const LONG_EMAIL_SESSION_COOKIE = 'tv_session=e2e-long-email-session'
 const FOLLOW_COOKIE_NAME = 'tv_followed_item'
+const LONG_EMAIL_EMPTY_RELEASE_DATE = '2026-09-12'
 
 const LONG_EMAIL_USER = {
   email: longEmail,
@@ -519,9 +520,13 @@ async function handleCatalogReleases(request: Request, url: URL): Promise<Respon
   const from = url.searchParams.get('from') ?? ''
   const to = url.searchParams.get('to') ?? ''
 
+  const accountReleases = hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
+    ? calendarReleases.filter(item => item.releaseDate !== LONG_EMAIL_EMPTY_RELEASE_DATE)
+    : calendarReleases
+
   const items = hasCookie(request, 'empty_calendar=1')
     ? []
-    : calendarReleases.filter(item => item.releaseDate >= from && item.releaseDate <= to)
+    : accountReleases.filter(item => item.releaseDate >= from && item.releaseDate <= to)
 
   return json({ items })
 }

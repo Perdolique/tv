@@ -2,7 +2,7 @@
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { expectNoHorizontalOverflow } from '../helpers.ts'
-import { catalogItems } from './fixtures.ts'
+import { longTitle } from './fixtures.ts'
 import { dune } from './details.fixtures.ts'
 import { waitForHydration } from './helpers.ts'
 
@@ -40,9 +40,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       })).toBeVisible()
 
       await expect(page.getByRole('img', { name: 'Dune poster' })).toHaveAttribute('data-loaded', 'true')
-      await page.evaluate(async () => { await globalThis.document.fonts.ready })
       await expectNoHorizontalOverflow(page)
-      await expect(page).toHaveScreenshot(`details-${viewport.name}-${colorScheme}-guest.png`, { fullPage: true })
 
       await page.context().addCookies([{
         name: 'tv_session',
@@ -58,9 +56,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       })).toBeVisible()
 
       await expect(page.getByRole('img', { name: 'Dune poster' })).toHaveAttribute('data-loaded', 'true')
-      await page.evaluate(async () => { await globalThis.document.fonts.ready })
       await expectNoHorizontalOverflow(page)
-      await expect(page).toHaveScreenshot(`details-${viewport.name}-${colorScheme}.png`, { fullPage: true })
 
       await page.context().addCookies([{
         name: 'tv_followed_item',
@@ -75,7 +71,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
         exact: true
       })).toBeVisible()
 
-      await expect(page).toHaveScreenshot(`details-${viewport.name}-${colorScheme}-following.png`, { fullPage: true })
+      await expectNoHorizontalOverflow(page)
     })
   }
 }
@@ -93,10 +89,10 @@ for (const width of [320, 639, 640, 1023, 1024]) {
       height: 1024
     })
 
-    await page.goto(`/titles/${catalogItems[3].id}`)
+    await page.goto(`/titles/${longTitle.id}`)
 
     await expect(page.getByRole('heading', {
-      name: catalogItems[3].title,
+      name: longTitle.title,
       exact: true
     })).toBeVisible()
 

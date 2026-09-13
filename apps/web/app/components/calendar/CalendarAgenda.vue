@@ -31,7 +31,7 @@
     <ul v-else :class="$style.list" :aria-label="listLabel">
       <li v-for="row in rows" :key="row.releaseId" :class="$style.item">
         <NuxtLink :class="$style.itemLink" :to="row.location">
-          <CatalogPoster compact :poster-url="row.posterUrl" :title="row.title" />
+          <CatalogPoster compact loading="lazy" :poster-url="row.posterUrl" :title="row.title" />
           <div :class="$style.copy">
             <time :class="$style.date" :datetime="row.releaseDate">{{ row.formattedDate }}</time>
             <h3 :class="$style.title" :lang="row.titleLocale">{{ row.title }}</h3>

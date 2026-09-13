@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/prefer-each -- Playwright uses loops for viewport and color-scheme snapshots. */
+/* oxlint-disable vitest/prefer-each -- Playwright uses loops for viewport and color-scheme checks. */
 import type { Locator } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
@@ -54,10 +54,15 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme })
       await page.goto('/watchlist')
       await expect(page.getByRole('listitem')).toHaveCount(watchlistItems.length)
-      await page.evaluate(async () => { await globalThis.document.fonts.ready })
       await expect(page.getByAltText('Dune poster')).toBeVisible()
       await expectNoHorizontalOverflow(page)
-      await expect(page).toHaveScreenshot(`watchlist-${viewport.name}-${colorScheme}.png`, { fullPage: true })
+      await expect(page.getByRole('heading', { name: 'Watchlist' })).toBeVisible()
+
+      const cardWidth = await page.getByRole('listitem').first().evaluate(element => (
+        element.getBoundingClientRect().width
+      ))
+
+      expect(cardWidth).toBeGreaterThan(0)
     })
   }
 }

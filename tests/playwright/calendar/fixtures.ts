@@ -1,8 +1,6 @@
 import type { CatalogReleaseItem } from '../../../packages/shared/src/catalog.ts'
-import { catalogItems } from '../catalog/fixtures.ts'
+import { dark, longTitle } from '../catalog/fixtures.ts'
 import { dune } from '../catalog/details.fixtures.ts'
-
-const [, dark, , longTitle] = catalogItems
 
 type CalendarFixtureItem = Pick<
   CatalogReleaseItem,

@@ -29,6 +29,7 @@ const MONTH_PATTERN = /^(?<year>\d{4})-(?<month>\d{2})$/u
 const DAYS_PER_WEEK = 7
 const GRID_DAY_COUNT = 42
 const MAX_CALENDAR_YEAR = 9999
+const MAX_CALENDAR_DATE = '9999-12-31'
 
 function isLeapYear(year: number): boolean {
   return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
@@ -149,34 +150,6 @@ function normalizeCalendarMonthQuery(value: unknown, today: string): string | nu
   return value
 }
 
-function getCalendarReleaseRange(selectedDate: string, today: string): CalendarReleaseRange {
-  const selected = parseCalendarDate(selectedDate)
-  const current = parseCalendarDate(today)
-
-  if (selected === null || current === null) {
-    throw new Error('Calendar range requires valid dates')
-  }
-
-  const monthStart = serializeCalendarDate({
-    day: 1,
-    month: selected.month,
-    year: selected.year
-  })
-
-  const monthEnd = serializeCalendarDate({
-    day: getDaysInMonth(selected.year, selected.month),
-    month: selected.month,
-    year: selected.year
-  })
-
-  const isCurrentMonth = selected.year === current.year && selected.month === current.month
-
-  return {
-    from: isCurrentMonth ? today : monthStart,
-    to: monthEnd
-  }
-}
-
 function compareCalendarDates(left: CalendarDateParts, right: CalendarDateParts): number {
   if (left.year !== right.year) {
     return left.year - right.year
@@ -264,6 +237,55 @@ function getCalendarWeekDays(selectedDate: string, today: string): CalendarDay[]
   })
 }
 
+function getCalendarReleaseRange(
+  visibleDate: string,
+  today: string,
+  selectedDate: string | null = null
+): CalendarReleaseRange {
+  const selected = parseCalendarDate(visibleDate)
+  const current = parseCalendarDate(today)
+
+  if (selected === null || current === null) {
+    throw new Error('Calendar range requires valid dates')
+  }
+
+  const monthStart = serializeCalendarDate({
+    day: 1,
+    month: selected.month,
+    year: selected.year
+  })
+
+  const monthEnd = serializeCalendarDate({
+    day: getDaysInMonth(selected.year, selected.month),
+    month: selected.month,
+    year: selected.year
+  })
+
+  const isCurrentMonth = selected.year === current.year && selected.month === current.month
+
+  const monthRange = {
+    from: isCurrentMonth ? today : monthStart,
+    to: monthEnd
+  }
+
+  if (selectedDate === null) {
+    return monthRange
+  }
+
+  const selectableWeekDays = getCalendarWeekDays(selectedDate, today).filter(day => day.selectable)
+  const firstWeekDay = selectableWeekDays.at(0)
+  const lastWeekDay = selectableWeekDays.at(-1)
+
+  if (firstWeekDay === undefined || lastWeekDay === undefined) {
+    return monthRange
+  }
+
+  return {
+    from: firstWeekDay.date < monthRange.from ? firstWeekDay.date : monthRange.from,
+    to: lastWeekDay.date > monthRange.to ? lastWeekDay.date : monthRange.to
+  }
+}
+
 function shiftCalendarMonth(selectedDate: string, amount: number, today: string): string {
   const selected = parseCalendarDate(selectedDate)
   const current = parseCalendarDate(today)
@@ -304,7 +326,21 @@ function shiftCalendarWeek(selectedDate: string, amount: number, today: string):
   const target = addCalendarDays(selected, amount * DAYS_PER_WEEK)
 
   if (target.year > MAX_CALENDAR_YEAR) {
-    return selectedDate
+    const selectedWeekday = toUtcDate(selected).getUTCDay()
+    const leadingDayCount = (selectedWeekday + 6) % DAYS_PER_WEEK
+    const currentWeekStart = addCalendarDays(selected, -leadingDayCount)
+    const maximumDate = parseCalendarDate(MAX_CALENDAR_DATE)
+
+    if (maximumDate === null) {
+      throw new Error('Maximum calendar date is invalid')
+    }
+
+    const maximumWeekday = toUtcDate(maximumDate).getUTCDay()
+    const maximumWeekStart = addCalendarDays(maximumDate, -((maximumWeekday + 6) % DAYS_PER_WEEK))
+
+    return compareCalendarDates(currentWeekStart, maximumWeekStart) >= 0
+      ? selectedDate
+      : MAX_CALENDAR_DATE
   }
 
   if (target.year < 1) {
@@ -346,7 +382,4 @@ export {
   shiftCalendarWeek
 }
 
-export type {
-  CalendarDay,
-  CalendarReleaseRange
-}
+export type { CalendarDay, CalendarReleaseRange }

@@ -67,7 +67,7 @@
             :is-loading="showLoading"
             :releases-by-date="releasesByDate"
             :selected-date="selectedDate"
-            @select="selectDateFromMonth"
+            @select="pushDate"
           />
           <CalendarAgenda
             ref="agenda"
@@ -135,10 +135,14 @@
       return null
     }
 
-    return getCalendarReleaseRange(visibleDate.value, today.value)
+    const selectedDateInVisibleMonth = selectedDate.value?.startsWith(visibleDate.value.slice(0, 7))
+      ? selectedDate.value
+      : null
+
+    return getCalendarReleaseRange(visibleDate.value, today.value, selectedDateInVisibleMonth)
   })
 
-  const { hasError, isLoading, items, reload, unauthorized } = useCatalogReleases(accountId, range)
+  const { clear, hasError, isLoading, items, reload, unauthorized } = useCatalogReleases(accountId, range)
 
   const {
     isMobileNextDisabled,
@@ -187,8 +191,8 @@
     }
   })
 
-  watch(shouldSignIn, async (redirect) => {
-    if (!redirect) {
+  watch(shouldSignIn, async (mustSignIn) => {
+    if (!mustSignIn) {
       return
     }
 
@@ -202,6 +206,9 @@
     immediate: true
   })
 
+  const MINIMUM_TODAY_REFRESH_DELAY_MS = 1000
+  const MIDNIGHT_REFRESH_BUFFER_MS = 100
+  let privateSessionRefresh: Promise<void> | null = null
   let todayRefreshTimer: ReturnType<typeof globalThis.setTimeout> | null = null
 
   function refreshLocalToday(): void {
@@ -211,22 +218,62 @@
 
     const now = new Date()
     const nextLocalDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-    const delay = Math.max(1000, nextLocalDay.getTime() - now.getTime() + 100)
+    const millisecondsUntilNextDay = nextLocalDay.getTime() - now.getTime()
+
+    const delay = Math.max(
+      MINIMUM_TODAY_REFRESH_DELAY_MS,
+      millisecondsUntilNextDay + MIDNIGHT_REFRESH_BUFFER_MS
+    )
 
     today.value = getLocalCalendarDate(now)
     todayRefreshTimer = globalThis.setTimeout(refreshLocalToday, delay)
   }
 
-  function refreshVisibleCalendar(): void {
-    if (globalThis.document.visibilityState === 'visible') {
-      refreshLocalToday()
+  async function runPrivateSessionRefresh(): Promise<void> {
+    const previousAccountId = accountId.value
+
+    clear()
+    await restoreSession({ force: true })
+
+    if (accountId.value !== null && accountId.value === previousAccountId) {
+      await reload()
     }
+  }
+
+  async function refreshPrivateSession(): Promise<void> {
+    if (privateSessionRefresh !== null) {
+      await privateSessionRefresh
+
+      return
+    }
+
+    const refresh = runPrivateSessionRefresh()
+
+    privateSessionRefresh = refresh
+
+    try {
+      await refresh
+    } finally {
+      if (privateSessionRefresh === refresh) {
+        privateSessionRefresh = null
+      }
+    }
+  }
+
+  function refreshLocalTodayIfVisible(): void {
+    if (globalThis.document.visibilityState !== 'visible') {
+      return
+    }
+
+    refreshLocalToday()
+
+    void refreshPrivateSession()
   }
 
   onMounted(() => {
     refreshLocalToday()
-    globalThis.addEventListener('focus', refreshLocalToday)
-    globalThis.document.addEventListener('visibilitychange', refreshVisibleCalendar)
+    globalThis.addEventListener('focus', refreshLocalTodayIfVisible)
+    globalThis.document.addEventListener('visibilitychange', refreshLocalTodayIfVisible)
   })
 
   onBeforeUnmount(() => {
@@ -234,13 +281,9 @@
       globalThis.clearTimeout(todayRefreshTimer)
     }
 
-    globalThis.removeEventListener('focus', refreshLocalToday)
-    globalThis.document.removeEventListener('visibilitychange', refreshVisibleCalendar)
+    globalThis.removeEventListener('focus', refreshLocalTodayIfVisible)
+    globalThis.document.removeEventListener('visibilitychange', refreshLocalTodayIfVisible)
   })
-
-  async function selectDateFromMonth(date: string): Promise<void> {
-    await pushDate(date)
-  }
 
   async function retrySession(): Promise<void> {
     isRetryingSession.value = true
@@ -341,7 +384,7 @@
       .wideMonthNavigation { display: grid; }
       .mobileModes, .mobilePeriodNavigation, .mobileWeek, .weekSkeleton { display: none; }
       .layout { gap: var(--space-6); }
-      .layout[data-mobile-mode] .month, .layout[data-mobile-mode] .agenda { display: grid; }
+      .layout[data-mobile-mode] .month { display: grid; }
     }
     @media (width >= 64rem) {
       .content { padding: var(--space-10) var(--layout-page-wide) var(--space-16); }

@@ -24,11 +24,16 @@ const testReleaseIds = [
   '60000000-0000-4000-8000-000000000017'
 ] as const
 
+const americanHorrorStoryId = '10000000-0000-7000-8000-000000000013'
+const percyJacksonId = '10000000-0000-7000-8000-000000000014'
+const sunriseOnTheReapingId = '10000000-0000-7000-8000-000000000015'
+const avengersDoomsdayId = '10000000-0000-7000-8000-000000000016'
+
 const upcomingCatalogItemIds = [
-  '10000000-0000-4000-8000-000000000013',
-  '10000000-0000-4000-8000-000000000014',
-  '10000000-0000-4000-8000-000000000015',
-  '10000000-0000-4000-8000-000000000016'
+  americanHorrorStoryId,
+  percyJacksonId,
+  sunriseOnTheReapingId,
+  avengersDoomsdayId
 ] as const
 
 interface SeededCatalogItem {
@@ -85,9 +90,19 @@ describe('postgreSQL catalog releases', () => {
       ORDER BY item.id
     `, [upcomingCatalogItemIds])
 
+    const releaseIdentifiers = await client.query<{ id: string; version: number }>(`
+      SELECT release.id, uuid_extract_version(release.id) AS version
+      FROM catalog_releases AS release
+      WHERE release.catalog_item_id = ANY($1::uuid[])
+      ORDER BY release.id
+    `, [upcomingCatalogItemIds])
+
+    expect(releaseIdentifiers.rows).toHaveLength(16)
+    expect(releaseIdentifiers.rows.every(release => release.version === 7)).toBe(true)
+
     expect(result.rows).toStrictEqual([
       {
-        id: upcomingCatalogItemIds[0],
+        id: americanHorrorStoryId,
 
         releases: [
           '2026-09-24:S13:E1',
@@ -110,21 +125,21 @@ describe('postgreSQL catalog releases', () => {
         type: 'series'
       },
       {
-        id: upcomingCatalogItemIds[1],
+        id: percyJacksonId,
         releases: ['2026-11-20:S3'],
         releaseYear: 2023,
         title: 'Percy Jackson and the Olympians',
         type: 'series'
       },
       {
-        id: upcomingCatalogItemIds[2],
+        id: sunriseOnTheReapingId,
         releases: ['2026-11-20'],
         releaseYear: 2026,
         title: 'The Hunger Games: Sunrise on the Reaping',
         type: 'movie'
       },
       {
-        id: upcomingCatalogItemIds[3],
+        id: avengersDoomsdayId,
         releases: ['2026-12-18'],
         releaseYear: 2026,
         title: 'Avengers: Doomsday',
@@ -162,6 +177,11 @@ describe('postgreSQL catalog releases', () => {
         RETURNING id, uuid_extract_version(id) AS version
       `, [duneId])
 
+      const [generatedRelease] = generated.rows
+
+      assert(generatedRelease !== undefined, 'Expected one generated release')
+      generatedReleaseIds.push(generatedRelease.id)
+
       await client.query(`
         INSERT INTO catalog_releases (id, catalog_item_id, release_date, season_number, episode_number)
         VALUES
@@ -174,11 +194,7 @@ describe('postgreSQL catalog releases', () => {
           ('60000000-0000-4000-8000-000000000017', $1, '2026-10-02', 2, 10)
       `, [wireId, deadManId])
 
-      const [generatedRelease] = generated.rows
-
-      assert(generatedRelease !== undefined, 'Expected one generated release')
       expect(generatedRelease.version).toBe(7)
-      generatedReleaseIds.push(generatedRelease.id)
 
       const constraints = await client.query<{ definition: string }>(`
         SELECT pg_get_constraintdef(oid) AS definition

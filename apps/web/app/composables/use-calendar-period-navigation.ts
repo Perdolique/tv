@@ -33,7 +33,6 @@ function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
   const router = useRouter()
   const pendingWeekSelection = ref<CalendarReleaseRange | null>(null)
   const mobileMode = ref<MobileMode>('agenda')
-  let isInitialRoute = true
 
   const weekDays = computed(() => selectedDate.value === null || today.value === null
     ? []
@@ -51,8 +50,9 @@ function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
   })
 
   const weekLabel = computed(() => {
-    const firstDay = weekDays.value.at(0)
-    const lastDay = weekDays.value.at(-1)
+    const supportedDays = weekDays.value.filter(day => parseCalendarDate(day.date) !== null)
+    const firstDay = supportedDays.at(0)
+    const lastDay = supportedDays.at(-1)
 
     if (firstDay === undefined || lastDay === undefined) {
       return 'Loading week…'
@@ -156,11 +156,6 @@ function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
       ? null
       : normalizeCalendarMonthQuery(monthValue, currentToday)
 
-    if (isInitialRoute) {
-      mobileMode.value = normalizedMonth === null ? 'agenda' : 'month'
-      isInitialRoute = false
-    }
-
     if (hasSelectedDate) {
       visibleDate.value = normalizedDate
       selectedDate.value = normalizedDate
@@ -178,6 +173,7 @@ function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
     if (normalizedMonth !== null) {
       const currentMonth = currentToday.slice(0, 7)
 
+      mobileMode.value = 'month'
       visibleDate.value = normalizedMonth === currentMonth
         ? currentToday
         : `${normalizedMonth}-01`

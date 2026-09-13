@@ -1,54 +1,62 @@
 <template>
   <section :class="$style.component" :aria-labelledby="headingId">
     <h2 :id="headingId" :class="$style.visuallyHidden">Month</h2>
-    <div :class="$style.weekdays" aria-hidden="true">
-      <span>Mon</span>
-      <span>Tue</span>
-      <span>Wed</span>
-      <span>Thu</span>
-      <span>Fri</span>
-      <span>Sat</span>
-      <span>Sun</span>
+    <div v-if="isLoading">
+      <div :class="$style.weekdays" aria-hidden="true">
+        <span v-for="weekday in weekdays" :key="weekday">{{ weekday }}</span>
+      </div>
+      <div :class="$style.skeletonGrid" role="status" aria-label="Loading month" aria-busy="true">
+        <div v-for="cell in 42" :key="cell" :class="$style.skeletonCell" aria-hidden="true" />
+      </div>
     </div>
-    <div v-if="isLoading" :class="$style.grid" role="status" aria-label="Loading month" aria-busy="true">
-      <div v-for="cell in 42" :key="cell" :class="$style.skeletonCell" aria-hidden="true" />
-    </div>
-    <div v-else :class="$style.grid" role="group" aria-label="Calendar days">
-      <button
-        v-for="day in days"
-        :key="day.date"
-        ref="dayButtons"
-        :class="$style.day"
-        :data-in-month="day.inMonth"
-        :data-selected="day.date === selectedDate"
-        :disabled="!day.selectable"
-        :tabindex="getTabIndex(day)"
-        :aria-current="day.isToday ? 'date' : undefined"
-        :aria-label="getDayLabel(day)"
-        :aria-pressed="day.selectable ? day.date === selectedDate : undefined"
-        @click="selectDay(day)"
-        @focus="focusDay(day)"
-        @keydown="moveFocus($event, day)"
-      >
-        <span :class="$style.dayHeader">
-          <span :class="$style.dayNumber">{{ day.day }}</span>
-          <span v-if="day.isToday" :class="$style.today">Today</span>
-          <span v-if="day.date === selectedDate" :class="$style.selectedMark" aria-hidden="true">✓</span>
-        </span>
-        <span v-if="getReleaseCount(day) > 0" :class="$style.releaseSummary" data-release-summary aria-hidden="true">
-          <span v-for="cue in getReleaseCues(day)" :key="cue.releaseId" :class="$style.cue" :data-type="cue.type">
-            <span :class="$style.cueLabel">{{ cue.label }}</span>
-          </span>
-          <span :class="$style.releaseCount">{{ getReleaseCount(day) }}</span>
-        </span>
-      </button>
+    <div v-else :class="$style.calendar" role="grid" aria-label="Calendar days">
+      <div :class="$style.weekdays" role="row">
+        <span v-for="weekday in weekdays" :key="weekday" role="columnheader">{{ weekday }}</span>
+      </div>
+      <div v-for="(week, weekIndex) in calendarWeeks" :key="weekIndex" :class="$style.week" role="row">
+        <div
+          v-for="day in week"
+          :key="day.date"
+          :class="$style.cell"
+          role="gridcell"
+          :aria-selected="day.selectable ? day.date === selectedDate : undefined"
+        >
+          <button
+            ref="dayButtons"
+            :class="$style.day"
+            :data-in-month="day.inMonth"
+            :data-selected="day.date === selectedDate"
+            :disabled="!day.selectable"
+            :tabindex="getTabIndex(day)"
+            :aria-current="day.isToday ? 'date' : undefined"
+            :aria-label="getDayLabel(day)"
+            :aria-pressed="day.selectable ? day.date === selectedDate : undefined"
+            @click="selectDay(day)"
+            @focus="focusDay(day)"
+            @keydown="moveFocus($event, day)"
+          >
+            <span :class="$style.dayHeader">
+              <span :class="$style.dayNumber">{{ day.day }}</span>
+              <span v-if="day.isToday" :class="$style.today">Today</span>
+              <span v-if="day.date === selectedDate" :class="$style.selectedMark" aria-hidden="true">✓</span>
+            </span>
+            <span v-if="getReleaseCount(day) > 0" :class="$style.releaseSummary" data-release-summary aria-hidden="true">
+              <span v-for="cue in getReleaseCues(day)" :key="cue.releaseId" :class="$style.cue" :data-type="cue.type">
+                <span :class="$style.cueLabel">{{ cue.label }}</span>
+              </span>
+              <span :class="$style.releaseTitle">{{ getFirstReleaseTitle(day) }}</span>
+              <span :class="$style.releaseCount">{{ getReleaseCount(day) }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 </template>
 
 <script lang="ts" setup>
   import type { CatalogReleaseItem } from '@tv/shared/catalog'
-  import { nextTick, ref, useId, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
   import { formatCalendarDateForDisplay, type CalendarDay } from '~/utils/calendar-date.ts'
 
   interface Props {
@@ -73,6 +81,12 @@
   const headingId = useId()
   const dayButtons = useTemplateRef('dayButtons')
   const focusedDate = ref<string | null>(null)
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+
+  const calendarWeeks = computed(() => Array.from(
+    { length: 6 },
+    (_value, weekIndex) => days.slice(weekIndex * 7, weekIndex * 7 + 7)
+  ))
 
   watch(
     [() => selectedDate, () => days],
@@ -96,6 +110,10 @@
 
   function getReleaseCount(day: CalendarDay): number {
     return releasesByDate.get(day.date)?.length ?? 0
+  }
+
+  function getFirstReleaseTitle(day: CalendarDay): string {
+    return releasesByDate.get(day.date)?.at(0)?.title ?? ''
   }
 
   function getDayLabel(day: CalendarDay): string {
@@ -224,7 +242,7 @@
       clip-path: inset(50%);
       white-space: nowrap;
     }
-    .weekdays, .grid {
+    .weekdays, .skeletonGrid, .week {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
     }
@@ -236,9 +254,11 @@
       text-align: center;
     }
     .weekdays span { padding: var(--space-2) var(--space-1); }
-    .day, .skeletonCell {
+    .cell, .day, .skeletonCell {
       min-inline-size: 0;
       min-block-size: 4.75rem;
+    }
+    .day, .skeletonCell {
       border: 0;
       border-inline-end: 1px solid var(--color-border);
       border-block-end: 1px solid var(--color-border);
@@ -247,16 +267,18 @@
       display: grid;
       align-content: space-between;
       gap: var(--space-2);
+      inline-size: 100%;
+      block-size: 100%;
       padding: var(--space-1);
       background: var(--color-surface);
       cursor: pointer;
       font-variant-numeric: tabular-nums;
       text-align: start;
     }
-    .day:nth-child(7n), .skeletonCell:nth-child(7n) { border-inline-end: 0; }
-    .day:nth-last-child(-n + 7), .skeletonCell:nth-last-child(-n + 7) { border-block-end: 0; }
-    .day:nth-last-child(7), .skeletonCell:nth-last-child(7) { border-end-start-radius: var(--radius-lg); }
-    .day:last-child, .skeletonCell:last-child { border-end-end-radius: var(--radius-lg); }
+    .cell:nth-child(7n) .day, .skeletonCell:nth-child(7n) { border-inline-end: 0; }
+    .week:last-child .day, .skeletonCell:nth-last-child(-n + 7) { border-block-end: 0; }
+    .week:last-child .cell:first-child .day, .skeletonCell:nth-last-child(7) { border-end-start-radius: var(--radius-lg); }
+    .week:last-child .cell:last-child .day, .skeletonCell:last-child { border-end-end-radius: var(--radius-lg); }
     .day:disabled {
       color: var(--color-text-tertiary);
       cursor: default;
@@ -324,6 +346,7 @@
       font-size: 0.625rem;
       font-weight: 700;
     }
+    .releaseTitle { display: none; }
     .skeletonCell {
       background: linear-gradient(135deg, var(--color-surface-muted), var(--color-surface));
     }
@@ -340,6 +363,15 @@
         font-size: 0.625rem;
       }
       .cue[data-type='series'] { block-size: 0.75rem; }
+      .releaseTitle {
+        display: block;
+        min-inline-size: 0;
+        overflow: hidden;
+        color: var(--color-text-secondary);
+        font-size: 0.625rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       .releaseCount { font-size: 0.75rem; }
     }
     @media (width >= 64rem) {

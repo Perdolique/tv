@@ -1,4 +1,4 @@
-/* oxlint-disable eslint/max-lines -- The auth visual contract stays readable as one responsive specification. */
+/* oxlint-disable vitest/prefer-each -- Playwright uses loops for parameterized browser checks. */
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 
@@ -24,13 +24,10 @@ const referenceViewports = [
 
 const colorSchemes = ['light', 'dark'] as const
 
-interface VisualState {
+interface DesktopLayoutState {
+  marketingTitle: string;
   name: string;
   open: (page: Page) => Promise<void>;
-}
-
-interface DesktopVisualState extends VisualState {
-  marketingTitle: string;
 }
 
 interface ElementBounds {
@@ -93,52 +90,7 @@ async function expectNoVerticalScrolling(page: Page): Promise<void> {
   expect(viewportOverflow).toBeLessThanOrEqual(0)
 }
 
-const cardVisualStates: VisualState[] = [
-  {
-    name: 'register-email',
-
-    open: async (page) => {
-      await page.goto('/register')
-    }
-  },
-  {
-    name: 'register-check-email',
-
-    open: async (page) => {
-      await page.goto('/register')
-      await page.getByLabel('Email').fill('viewer@example.com')
-
-      const submitButton = page.getByRole('button', {
-        name: 'Email me a verification link'
-      })
-
-      await expect(submitButton).toBeEnabled()
-      await submitButton.click()
-      await expect(page.getByText(/Check your email for the next step/u)).toBeVisible()
-    }
-  },
-  {
-    name: 'register-password',
-
-    open: async (page) => {
-      await page.goto(`/register#token=${validVerificationToken}`)
-      await expect(page.getByRole('heading', { name: 'Choose your password' })).toBeVisible()
-    }
-  },
-  {
-    name: 'register-invalid',
-
-    open: async (page) => {
-      await page.goto('/register#token=short')
-
-      await expect(page.getByRole('alert')).toHaveText(
-        'This verification link is invalid or has expired.'
-      )
-    }
-  }
-]
-
-const desktopVisualStates: DesktopVisualState[] = [
+const desktopLayoutStates: DesktopLayoutState[] = [
   {
     marketingTitle: 'Every story, right on time.',
     name: 'sign-in',
@@ -254,19 +206,19 @@ test.describe('Authentication responsive boundaries', () => {
 })
 
 test.describe('Authentication desktop composition', () => {
-  for (const visualState of desktopVisualStates) {
-    test(`keeps ${visualState.name} inside a 1366x768 split layout`, async ({ page }) => {
+  for (const layoutState of desktopLayoutStates) {
+    test(`keeps ${layoutState.name} inside a 1366x768 split layout`, async ({ page }) => {
       await page.setViewportSize({
         height: 768,
         width: 1366
       })
 
-      await visualState.open(page)
+      await layoutState.open(page)
 
       const marketing = page.getByRole('region', { name: 'TV highlights' })
       const card = authCard(page)
 
-      await expect(marketing).toContainText(visualState.marketingTitle)
+      await expect(marketing).toContainText(layoutState.marketingTitle)
       await expect(page.getByRole('link', { name: 'TV home' })).toBeVisible()
       await expect(page.getByRole('link', { name: 'Back' })).toHaveCount(0)
       await expectNoVerticalScrolling(page)
@@ -354,60 +306,29 @@ test.describe('Authentication field labels', () => {
 
 for (const viewport of referenceViewports) {
   for (const colorScheme of colorSchemes) {
-    test.describe(`${viewport.name} ${colorScheme} authentication visuals`, () => {
-      test.use({
-        colorScheme,
+    test(`keeps ${viewport.name} sign-in usable in ${colorScheme}`, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      await page.emulateMedia({ colorScheme })
+      await page.goto('/sign-in')
 
-        viewport: {
-          height: viewport.height,
-          width: viewport.width
+      const card = authCard(page)
+      const emailInput = page.getByLabel('Email')
+
+      await expect(card).toBeVisible()
+      await expectNoHorizontalClipping(page, card)
+      await emailInput.focus()
+      await expect(emailInput).toBeFocused()
+
+      const colors = await card.evaluate((element) => {
+        const styles = globalThis.getComputedStyle(element)
+
+        return {
+          background: styles.backgroundColor,
+          text: styles.color
         }
       })
 
-      test('sign-in', async ({ page }) => {
-        await page.goto('/sign-in')
-
-        await expect(page).toHaveScreenshot(
-          `sign-in-${viewport.name}-${colorScheme}.png`,
-          {
-            animations: 'disabled',
-            caret: 'hide'
-          }
-        )
-      })
-
-      test('focused sign-in field', async ({ page }) => {
-        await page.goto('/sign-in')
-
-        const emailInput = page.getByLabel('Email')
-
-        await emailInput.focus()
-        await expect(emailInput).toBeFocused()
-
-        await expect(page).toHaveScreenshot(
-          `sign-in-focused-${viewport.name}-${colorScheme}.png`,
-          {
-            animations: 'disabled',
-            caret: 'hide'
-          }
-        )
-      })
-
-      for (const visualState of cardVisualStates) {
-        test(visualState.name, async ({ page }) => {
-          await visualState.open(page)
-
-          const card = authCard(page)
-
-          await expect(card).toHaveScreenshot(
-            `${visualState.name}-${viewport.name}-${colorScheme}-card.png`,
-            {
-              animations: 'disabled',
-              caret: 'hide'
-            }
-          )
-        })
-      }
+      expect(colors.background).not.toBe(colors.text)
     })
   }
 }

@@ -2,6 +2,7 @@ import type { CatalogReleaseItem } from '@tv/shared/catalog'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  formatCalendarDateForDisplay,
   getCalendarMonthDays,
   getCalendarReleaseRange,
   getCalendarWeekDays,
@@ -37,6 +38,15 @@ describe('calendar date parsing and normalization', () => {
     expect(getLocalCalendarDate(browserDate)).toBe('2026-09-11')
   })
 
+  it('formats a stored date without moving it in a non-UTC timezone', () => {
+    vi.stubEnv('TZ', 'Pacific/Kiritimati')
+
+    const formatted = formatCalendarDateForDisplay('2026-09-12', { dateStyle: 'medium' })
+
+    expect(formatted).toMatch(/\b12\b/u)
+    expect(formatted).not.toMatch(/\b11\b/u)
+  })
+
   it.each([undefined, null, ['2026-10-01'], 'broken', '2026-09-11'])('canonicalizes %# to today', (value) => {
     expect(normalizeCalendarQuery(value, today)).toBe(today)
   })
@@ -68,6 +78,13 @@ describe('calendar month calculations', () => {
     expect(getCalendarReleaseRange('2028-02-17', today)).toStrictEqual({
       from: '2028-02-01',
       to: '2028-02-29'
+    })
+  })
+
+  it('includes the selected cross-month week in the visible month range', () => {
+    expect(getCalendarReleaseRange('2026-09-30', today, '2026-09-30')).toStrictEqual({
+      from: today,
+      to: '2026-10-04'
     })
   })
 
@@ -140,6 +157,8 @@ describe('calendar month calculations', () => {
 
     expect(weekDays.at(-1)?.year).toBe(10_000)
     expect(shiftCalendarMonth('9999-12-31', 1, today)).toBe('9999-12-31')
+    expect(shiftCalendarWeek('9999-12-25', 1, today)).toBe('9999-12-31')
+    expect(shiftCalendarWeek('9999-12-27', 1, today)).toBe('9999-12-27')
     expect(shiftCalendarWeek('9999-12-31', 1, today)).toBe('9999-12-31')
   })
 })
@@ -163,13 +182,21 @@ describe(groupReleasesByDate, () => {
 
     const nextEpisode = {
       ...item,
-      episodeNumber: null,
-      releaseId: '01991a00-0000-7000-8000-000000000003',
-      seasonNumber: null
+      episodeNumber: 2,
+      releaseId: '01991a00-0000-7000-8000-000000000003'
     } as const satisfies CatalogReleaseItem
 
-    const grouped = groupReleasesByDate([item, nextEpisode])
+    const laterRelease = {
+      ...item,
+      episodeNumber: 3,
+      releaseDate: '2026-10-09',
+      releaseId: '01991a00-0000-7000-8000-000000000004'
+    } as const satisfies CatalogReleaseItem
+
+    const grouped = groupReleasesByDate([item, nextEpisode, laterRelease])
 
     expect(grouped.get(item.releaseDate)).toStrictEqual([item, nextEpisode])
+    expect(grouped.get(laterRelease.releaseDate)).toStrictEqual([laterRelease])
+    expect(grouped.size).toBe(2)
   })
 })

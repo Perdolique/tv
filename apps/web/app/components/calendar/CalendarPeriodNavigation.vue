@@ -4,7 +4,7 @@
       <Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-left-01" />
       Previous
     </AppButton>
-    <p :class="$style.label" aria-live="polite">{{ label }}</p>
+    <p :class="$style.label">{{ label }}</p>
     <AppButton :aria-label="nextLabel" :disabled="isNextDisabled" variant="secondary" @click="emit('next')">
       Next
       <Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-right-01" />
