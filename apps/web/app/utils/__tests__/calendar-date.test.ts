@@ -7,9 +7,11 @@ import {
   getCalendarWeekDays,
   getLocalCalendarDate,
   groupReleasesByDate,
+  normalizeCalendarMonthQuery,
   normalizeCalendarQuery,
   parseCalendarDate,
-  shiftCalendarMonth
+  shiftCalendarMonth,
+  shiftCalendarWeek
 } from '../calendar-date.ts'
 
 const today = '2026-09-12'
@@ -42,6 +44,15 @@ describe('calendar date parsing and normalization', () => {
   it('keeps a valid current or future date', () => {
     expect(normalizeCalendarQuery(today, today)).toBe(today)
     expect(normalizeCalendarQuery('2027-02-28', today)).toBe('2027-02-28')
+  })
+
+  it.each([undefined, null, ['2026-10'], 'broken', '2026-9', '2026-08'])('rejects invalid or past month query %#', (value) => {
+    expect(normalizeCalendarMonthQuery(value, today)).toBeNull()
+  })
+
+  it('keeps a valid current or future month query', () => {
+    expect(normalizeCalendarMonthQuery('2026-09', today)).toBe('2026-09')
+    expect(normalizeCalendarMonthQuery('9999-12', today)).toBe('9999-12')
   })
 })
 
@@ -92,12 +103,27 @@ describe('calendar month calculations', () => {
     ])
   })
 
-  it('clamps month navigation at month length and today', () => {
-    expect(shiftCalendarMonth('2027-01-31', 1, today)).toBe('2027-02-28')
-    expect(shiftCalendarMonth('2026-12-31', 1, today)).toBe('2027-01-31')
-    expect(shiftCalendarMonth('2027-01-31', -1, today)).toBe('2026-12-31')
+  it('keeps every future day in a cross-month week selectable', () => {
+    const days = getCalendarWeekDays('2026-09-30', today)
+
+    expect(days.find(day => day.date === '2026-10-01')).toMatchObject({
+      inMonth: false,
+      selectable: true
+    })
+  })
+
+  it('starts a newly opened month at its first day and clamps at today', () => {
+    expect(shiftCalendarMonth('2027-01-31', 1, today)).toBe('2027-02-01')
+    expect(shiftCalendarMonth('2026-12-31', 1, today)).toBe('2027-01-01')
+    expect(shiftCalendarMonth('2027-01-31', -1, today)).toBe('2026-12-01')
     expect(shiftCalendarMonth('2026-10-01', -1, today)).toBe(today)
     expect(shiftCalendarMonth('2026-09-20', -1, today)).toBe(today)
+  })
+
+  it('moves Agenda by full weeks and clamps at today', () => {
+    expect(shiftCalendarWeek('2026-09-13', 1, today)).toBe('2026-09-20')
+    expect(shiftCalendarWeek('2026-10-01', -1, today)).toBe('2026-09-24')
+    expect(shiftCalendarWeek('2026-09-13', -1, today)).toBe(today)
   })
 
   it('keeps the supported maximum year renderable', () => {
@@ -114,6 +140,7 @@ describe('calendar month calculations', () => {
 
     expect(weekDays.at(-1)?.year).toBe(10_000)
     expect(shiftCalendarMonth('9999-12-31', 1, today)).toBe('9999-12-31')
+    expect(shiftCalendarWeek('9999-12-31', 1, today)).toBe('9999-12-31')
   })
 })
 

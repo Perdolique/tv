@@ -78,7 +78,7 @@
       font-weight: 700;
     }
     .weekday, .today { font-size: 0.625rem; line-height: 1; }
-    .number { font-weight: 700; }
+    .number { font-weight: 700; white-space: nowrap; }
     .today { font-weight: 700; }
   }
 </style>

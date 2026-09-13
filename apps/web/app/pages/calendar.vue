@@ -12,43 +12,55 @@
         <header :class="$style.pageHeader">
           <div>
             <h1 ref="heading" :class="$style.heading" tabindex="-1">Release calendar</h1>
-            <p :class="$style.supportingText">Upcoming movies and episodes from your watchlist.</p>
           </div>
-          <div :class="$style.monthNavigation" aria-label="Calendar navigation">
-            <AppButton :disabled="isPreviousDisabled" variant="secondary" @click="previousMonth">
-              <Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-left-01" />
-              Previous
-            </AppButton>
-            <p :class="$style.monthLabel" aria-live="polite">{{ monthLabel }}</p>
-            <AppButton :disabled="isNextDisabled" variant="secondary" @click="nextMonth">
-              Next
-              <Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-right-01" />
-            </AppButton>
-            <AppButton :disabled="isTodaySelected" variant="secondary" @click="selectToday">Today</AppButton>
-          </div>
+          <CalendarPeriodNavigation
+            :class="$style.wideMonthNavigation"
+            :is-next-disabled="isNextMonthDisabled"
+            :is-previous-disabled="isPreviousMonthDisabled"
+            :is-today-disabled="isTodaySelected"
+            :label="monthLabel"
+            layout="wide"
+            navigation-label="Month navigation"
+            next-label="Next month"
+            previous-label="Previous month"
+            @next="navigateMonth(1)"
+            @previous="navigateMonth(-1)"
+            @today="selectToday"
+          />
         </header>
 
         <div :class="$style.mobileModes" role="group" aria-label="Calendar view">
-          <button :class="$style.modeButton" :aria-pressed="mobileMode === 'agenda'" @click="mobileMode = 'agenda'">Agenda</button>
-          <button :class="$style.modeButton" :aria-pressed="mobileMode === 'month'" @click="mobileMode = 'month'">Month</button>
+          <button :class="$style.modeButton" :aria-pressed="mobileMode === 'agenda'" @click="openMobileAgenda">Agenda</button>
+          <button :class="$style.modeButton" :aria-pressed="mobileMode === 'month'" @click="openMobileMonth">Month</button>
         </div>
 
+        <CalendarPeriodNavigation
+          :class="$style.mobilePeriodNavigation"
+          :is-next-disabled="isMobileNextDisabled"
+          :is-previous-disabled="isMobilePreviousDisabled"
+          :is-today-disabled="isTodaySelected"
+          :label="mobilePeriodLabel"
+          layout="compact"
+          navigation-label="Calendar period navigation"
+          :next-label="mobileNextLabel"
+          :previous-label="mobilePreviousLabel"
+          @next="navigateMobilePeriod(1)"
+          @previous="navigateMobilePeriod(-1)"
+          @today="selectToday"
+        />
+
         <CalendarWeek
-          v-if="selectedDate !== null"
+          v-if="selectedDate !== null && mobileMode === 'agenda'"
           :class="$style.mobileWeek"
           :days="weekDays"
           :selected-date="selectedDate"
           @select="pushDate"
         />
-        <div v-else :class="$style.weekSkeleton" aria-hidden="true">
+        <div v-else-if="mobileMode === 'agenda'" :class="$style.weekSkeleton" aria-hidden="true">
           <span v-for="day in 7" :key="day" />
         </div>
 
-        <div
-          :class="$style.layout"
-          :data-mobile-mode="mobileMode"
-          :data-show-mobile-agenda-outcome="showMobileAgendaOutcome"
-        >
+        <div :class="$style.layout" :data-mobile-mode="mobileMode">
           <CalendarMonth
             :class="$style.month"
             :days="monthDays"
@@ -62,8 +74,9 @@
             :class="$style.agenda"
             :has-error="hasError"
             :is-loading="showLoading"
-            :items="selectedItems"
+            :items="agendaItems"
             :month-has-items="items.length > 0"
+            :period-label="monthLabel"
             :selected-date="selectedDate"
             @retry="retryReleases"
           />
@@ -74,33 +87,27 @@
 </template>
 
 <script lang="ts" setup>
-  import { Icon } from '#components'
   import { definePageMeta } from '#app/composables/pages'
-  import { navigateTo, useHead, useResponseHeader, useRoute, useRouter } from '#app'
+  import { navigateTo, useHead, useResponseHeader, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
   import AppShell from '~/components/app/AppShell.vue'
   import CalendarAgenda from '~/components/calendar/CalendarAgenda.vue'
   import CalendarMonth from '~/components/calendar/CalendarMonth.vue'
+  import CalendarPeriodNavigation from '~/components/calendar/CalendarPeriodNavigation.vue'
   import CalendarWeek from '~/components/calendar/CalendarWeek.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
+  import { useCalendarPeriodNavigation } from '~/composables/use-calendar-period-navigation.ts'
   import { useCatalogReleases } from '~/composables/use-catalog-releases.ts'
 
   import {
-    formatCalendarDateForDisplay,
     getCalendarMonthDays,
     getCalendarReleaseRange,
-    getCalendarWeekDays,
     getLocalCalendarDate,
     groupReleasesByDate,
-    normalizeCalendarQuery,
-    parseCalendarDate,
-    shiftCalendarMonth,
     type CalendarReleaseRange
   } from '~/utils/calendar-date.ts'
-
-  type MobileMode = 'agenda' | 'month'
 
   definePageMeta({ middleware: 'authenticated' })
   useHead({ title: 'Release calendar · TV' })
@@ -110,14 +117,13 @@
   cacheControlHeader.value = 'private, no-store'
 
   const route = useRoute()
-  const router = useRouter()
   const { restoreSession, setAnonymous, state } = useAuthSession()
   const agenda = useTemplateRef('agenda')
   const heading = useTemplateRef('heading')
   const sessionRetryButton = useTemplateRef('sessionRetryButton')
   const today = ref<string | null>(null)
+  const visibleDate = ref<string | null>(null)
   const selectedDate = ref<string | null>(null)
-  const mobileMode = ref<MobileMode>('agenda')
   const isRetryingSession = ref(false)
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
   const isAnonymous = computed(() => state.value.status === 'anonymous')
@@ -125,58 +131,54 @@
   const accountId = computed(() => state.value.status === 'authenticated' ? state.value.user.id : null)
 
   const range = computed<CalendarReleaseRange | null>(() => {
-    if (selectedDate.value === null || today.value === null) {
+    if (visibleDate.value === null || today.value === null) {
       return null
     }
 
-    return getCalendarReleaseRange(selectedDate.value, today.value)
+    return getCalendarReleaseRange(visibleDate.value, today.value)
   })
 
   const { hasError, isLoading, items, reload, unauthorized } = useCatalogReleases(accountId, range)
-  const showLoading = computed(() => selectedDate.value === null || isLoading.value)
+
+  const {
+    isMobileNextDisabled,
+    isMobilePreviousDisabled,
+    isNextMonthDisabled,
+    isPreviousMonthDisabled,
+    isTodaySelected,
+    mobileMode,
+    mobileNextLabel,
+    mobilePeriodLabel,
+    mobilePreviousLabel,
+    monthLabel,
+    navigateMobilePeriod,
+    navigateMonth,
+    openMobileAgenda,
+    openMobileMonth,
+    pushDate,
+    selectToday,
+    weekDays
+  } = useCalendarPeriodNavigation({
+    hasError,
+    isLoading,
+    items,
+    selectedDate,
+    today,
+    visibleDate
+  })
+
+  const showLoading = computed(() => visibleDate.value === null || isLoading.value)
   const shouldSignIn = computed(() => isAnonymous.value || unauthorized.value)
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
   const releasesByDate = computed(() => groupReleasesByDate(items.value))
 
-  const selectedItems = computed(() => selectedDate.value === null
-    ? []
+  const agendaItems = computed(() => selectedDate.value === null
+    ? items.value
     : releasesByDate.value.get(selectedDate.value) ?? [])
 
-  const monthDays = computed(() => selectedDate.value === null || today.value === null
+  const monthDays = computed(() => visibleDate.value === null || today.value === null
     ? []
-    : getCalendarMonthDays(selectedDate.value, today.value))
-
-  const weekDays = computed(() => selectedDate.value === null || today.value === null
-    ? []
-    : getCalendarWeekDays(selectedDate.value, today.value))
-
-  const showMobileAgendaOutcome = computed(() => (
-    !showLoading.value
-    && !unauthorized.value
-    && (hasError.value || items.value.length === 0 || selectedItems.value.length === 0)
-  ))
-
-  const monthLabel = computed(() => {
-    if (selectedDate.value === null) {
-      return 'Loading month…'
-    }
-
-    return formatCalendarDateForDisplay(`${selectedDate.value.slice(0, 7)}-01`, {
-      month: 'long',
-      year: 'numeric'
-    })
-  })
-
-  const isPreviousDisabled = computed(() => {
-    if (selectedDate.value === null || today.value === null) {
-      return true
-    }
-
-    return selectedDate.value.slice(0, 7) === today.value.slice(0, 7)
-  })
-
-  const isTodaySelected = computed(() => selectedDate.value === null || selectedDate.value === today.value)
-  const isNextDisabled = computed(() => selectedDate.value?.startsWith('9999-12') ?? true)
+    : getCalendarMonthDays(visibleDate.value, today.value))
 
   const signInLocation = computed(() => {
     return {
@@ -195,26 +197,6 @@
     }
 
     await navigateTo(signInLocation.value, { replace: true })
-  }, {
-    flush: 'sync',
-    immediate: true
-  })
-
-  watch([() => route.query.date, today], ([value, currentToday]) => {
-    if (currentToday === null) {
-      return
-    }
-
-    const normalized = normalizeCalendarQuery(value, currentToday)
-
-    selectedDate.value = normalized
-
-    if (value !== normalized) {
-      void router.replace({
-        path: '/calendar',
-        query: { date: normalized }
-      })
-    }
   }, {
     flush: 'sync',
     immediate: true
@@ -256,50 +238,8 @@
     globalThis.document.removeEventListener('visibilitychange', refreshVisibleCalendar)
   })
 
-  async function pushDate(date: string): Promise<void> {
-    if (
-      today.value === null
-      || date < today.value
-      || parseCalendarDate(date) === null
-      || route.query.date === date
-    ) {
-      return
-    }
-
-    await router.push({
-      path: '/calendar',
-      query: { date }
-    })
-  }
-
   async function selectDateFromMonth(date: string): Promise<void> {
-    mobileMode.value = 'agenda'
-
     await pushDate(date)
-    await nextTick()
-    agenda.value?.focusHeading()
-  }
-
-  function previousMonth(): void {
-    if (selectedDate.value === null || today.value === null || isPreviousDisabled.value) {
-      return
-    }
-
-    void pushDate(shiftCalendarMonth(selectedDate.value, -1, today.value))
-  }
-
-  function nextMonth(): void {
-    if (selectedDate.value === null || today.value === null || isNextDisabled.value) {
-      return
-    }
-
-    void pushDate(shiftCalendarMonth(selectedDate.value, 1, today.value))
-  }
-
-  function selectToday(): void {
-    if (today.value !== null) {
-      void pushDate(today.value)
-    }
   }
 
   async function retrySession(): Promise<void> {
@@ -345,20 +285,7 @@
     .pageHeader { display: grid; gap: var(--space-5); }
     .heading { font-size: 1.75rem; font-weight: 600; line-height: 1.15; }
     .supportingText { color: var(--color-text-secondary); }
-    .monthNavigation {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      align-items: center;
-      gap: var(--space-2);
-    }
-    .monthLabel {
-      grid-column: 1 / -1;
-      grid-row: 1;
-      font-size: 1.125rem;
-      font-weight: 700;
-      text-align: center;
-    }
-    .monthNavigation > :last-child { grid-column: 1 / -1; justify-self: center; }
+    .wideMonthNavigation { display: none; }
     .mobileModes {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -387,13 +314,8 @@
       border-radius: var(--radius-sm);
       background: var(--color-surface-muted);
     }
-    .layout { min-inline-size: 0; }
+    .layout { display: grid; gap: var(--space-5); min-inline-size: 0; }
     .layout[data-mobile-mode='agenda'] .month { display: none; }
-    .layout[data-mobile-mode='month'] .agenda { display: none; }
-    .layout[data-mobile-mode='month'][data-show-mobile-agenda-outcome='true'] .agenda {
-      display: grid;
-      margin-block-start: var(--space-5);
-    }
     .sessionPanel {
       display: grid;
       justify-items: start;
@@ -416,11 +338,9 @@
     @media (width >= 40rem) {
       .content { gap: var(--space-6); padding-inline: var(--layout-page-compact); }
       .heading { font-size: 2.25rem; line-height: 1.17; }
-      .monthNavigation { grid-template-columns: auto minmax(10rem, auto) auto auto; }
-      .monthLabel { grid-column: auto; grid-row: auto; }
-      .monthNavigation > :last-child { grid-column: auto; justify-self: auto; }
-      .mobileModes, .mobileWeek, .weekSkeleton { display: none; }
-      .layout { display: grid; gap: var(--space-6); }
+      .wideMonthNavigation { display: grid; }
+      .mobileModes, .mobilePeriodNavigation, .mobileWeek, .weekSkeleton { display: none; }
+      .layout { gap: var(--space-6); }
       .layout[data-mobile-mode] .month, .layout[data-mobile-mode] .agenda { display: grid; }
     }
     @media (width >= 64rem) {

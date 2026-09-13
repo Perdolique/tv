@@ -1,12 +1,6 @@
 <template>
   <div :class="$style.component" :data-authenticated="isAuthenticated">
-    <header v-if="isAuthenticated" :class="$style.accountBar">
-      <p :class="$style.wordmark">TV</p>
-      <p :class="$style.accountEmail">Signed in as <strong>{{ userEmail }}</strong></p>
-      <AppMessage v-if="hasSignOutError" role="alert" tone="danger">{{ signOutError }}</AppMessage>
-      <AppButton ref="signOutButton" :disabled="isSigningOut" variant="secondary" @click="signOut">Sign out</AppButton>
-    </header>
-    <header v-else :class="$style.guestBar">
+    <header v-if="!isAuthenticated" :class="$style.guestBar">
       <NuxtLink :class="$style.wordmark" to="/" aria-label="TV home">TV</NuxtLink>
       <nav :class="$style.guestNavigation" aria-label="Main navigation">
         <NuxtLink :class="$style.guestLink" to="/" :aria-current="catalogCurrent">Catalog</NuxtLink>
@@ -20,31 +14,49 @@
     </header>
     <nav v-if="isAuthenticated" :class="$style.desktopNavigation" aria-label="Main navigation">
       <NuxtLink :class="$style.navigationLink" to="/" :aria-current="catalogCurrent">
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
-        <span>Catalog</span>
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" /></span>
+        <span :class="$style.navigationLabel">Catalog</span>
       </NuxtLink>
       <NuxtLink :class="$style.navigationLink" to="/calendar" :aria-current="calendarCurrent">
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" />
-        <span>Calendar</span>
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" /></span>
+        <span :class="$style.navigationLabel">Calendar</span>
       </NuxtLink>
       <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" />
-        <span>Watchlist</span>
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" /></span>
+        <span :class="$style.navigationLabel">Watchlist</span>
       </NuxtLink>
     </nav>
+    <header v-if="isAuthenticated" :class="$style.accountBar">
+      <p :class="$style.wordmark">TV</p>
+      <div :class="$style.accountActions">
+        <p :class="$style.accountEmail" :title="userEmail">Signed in as <strong>{{ userEmail }}</strong></p>
+        <AppMessage v-if="hasSignOutError" :class="$style.accountError" role="alert" tone="danger">{{ signOutError }}</AppMessage>
+        <AppButton
+          ref="signOutButton"
+          :class="$style.signOutButton"
+          :disabled="isSigningOut"
+          title="Sign out"
+          variant="secondary"
+          @click="signOut"
+        >
+          <Icon aria-hidden="true" mode="svg" name="hugeicons:logout-03" />
+          <span :class="$style.signOutLabel">Sign out</span>
+        </AppButton>
+      </div>
+    </header>
     <slot />
     <nav v-if="isAuthenticated" :class="$style.mobileNavigation" aria-label="Main navigation">
       <NuxtLink :class="$style.navigationLink" to="/" :aria-current="catalogCurrent">
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" />
-        <span>Catalog</span>
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" /></span>
+        <span :class="$style.navigationLabel">Catalog</span>
       </NuxtLink>
       <NuxtLink :class="$style.navigationLink" to="/calendar" :aria-current="calendarCurrent">
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" />
-        <span>Calendar</span>
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" /></span>
+        <span :class="$style.navigationLabel">Calendar</span>
       </NuxtLink>
       <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" />
-        <span>Watchlist</span>
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" /></span>
+        <span :class="$style.navigationLabel">Watchlist</span>
       </NuxtLink>
     </nav>
   </div>
@@ -135,7 +147,7 @@
       background: var(--color-canvas);
     }
     .component[data-authenticated='true'] {
-      padding-block-end: calc(5rem + env(safe-area-inset-bottom));
+      padding-block-end: calc(5.5rem + env(safe-area-inset-bottom));
     }
     .accountBar, .guestBar {
       display: flex;
@@ -147,7 +159,7 @@
       border-block-end: 1px solid var(--color-border);
       background: var(--color-surface);
     }
-    .accountBar { gap: var(--space-3); }
+    .accountBar { justify-content: space-between; gap: var(--space-3); }
     .wordmark {
       color: var(--color-accent);
       font-size: 1.5rem;
@@ -156,10 +168,32 @@
       line-height: 1;
       text-decoration: none;
     }
+    .accountActions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-3);
+      margin-inline-start: auto;
+    }
     .accountEmail {
-      flex: 1 1 10rem;
+      display: none;
       color: var(--color-text-secondary);
       font-size: 0.875rem;
+    }
+    .accountError { flex: 1 0 100%; }
+    .signOutButton {
+      inline-size: 3.5rem;
+      padding-inline: var(--space-3);
+      border-radius: var(--radius-round);
+    }
+    .signOutLabel {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
     .guestNavigation {
       display: flex;
@@ -194,86 +228,163 @@
       z-index: 2;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: var(--space-2);
-      padding: var(--space-2) var(--space-4);
+      gap: var(--space-1);
+      padding: var(--space-2) var(--space-3);
       padding-block-end: max(var(--space-2), env(safe-area-inset-bottom));
       border-block-start: 1px solid var(--color-border);
       background: var(--color-surface);
+      box-shadow: var(--shadow-card);
     }
     .desktopNavigation { display: none; }
     .navigationLink {
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: var(--space-2);
-      min-block-size: 2.75rem;
-      padding: var(--space-2);
+      gap: var(--space-1);
+      min-block-size: 3.75rem;
+      padding: var(--space-1);
       border-radius: var(--radius-sm);
       color: var(--color-text-primary);
-      font-weight: 600;
       text-decoration: none;
       white-space: nowrap;
     }
+    .navigationIcon {
+      display: inline-grid;
+      place-items: center;
+      inline-size: 4rem;
+      block-size: 2rem;
+      border-radius: var(--radius-round);
+    }
+    .navigationIcon :global(svg) {
+      inline-size: 1.5rem;
+      block-size: 1.5rem;
+    }
+    .navigationLabel { font-size: 0.75rem; font-weight: 600; line-height: 1; }
     .navigationLink[aria-current='page'] {
-      background: var(--color-surface-muted);
       color: var(--color-accent);
       font-weight: 700;
-      text-decoration: underline;
-      text-decoration-thickness: 0.125em;
-      text-underline-offset: 0.25em;
+    }
+    .navigationLink[aria-current='page'] .navigationIcon {
+      background: var(--color-accent-fill);
+      color: var(--color-on-accent);
+    }
+    .navigationLink[aria-current='page'] .navigationLabel {
+      font-weight: 800;
     }
     @media (width >= 40rem) {
       .component[data-authenticated='true'] {
         padding-block-end: 0;
         padding-inline-start: var(--layout-sidebar-compact);
       }
+      .accountBar {
+        position: fixed;
+        inset-inline-start: 0;
+        inset-block: 0;
+        z-index: 1;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        inline-size: var(--layout-sidebar-compact);
+        padding: var(--space-4) var(--space-2);
+        border-block-end: 0;
+        border-inline-end: 1px solid var(--color-border);
+      }
+      .accountActions {
+        display: grid;
+        justify-items: center;
+        inline-size: 100%;
+        margin-block-start: auto;
+        margin-inline-start: 0;
+      }
+      .accountError {
+        position: fixed;
+        inset-inline-start: calc(var(--layout-sidebar-compact) + var(--space-3));
+        inset-block-end: var(--space-4);
+        inline-size: min(20rem, calc(100vi - var(--layout-sidebar-compact) - 2 * var(--space-3)));
+      }
       .mobileNavigation { display: none; }
       .desktopNavigation {
         position: fixed;
         inset-inline-start: 0;
-        inset-block: 0;
+        inset-block: 5rem 5rem;
         z-index: 2;
         display: grid;
         align-content: start;
         gap: var(--space-2);
         inline-size: var(--layout-sidebar-compact);
-        padding: var(--space-4) var(--space-1);
-        border-inline-end: 1px solid var(--color-border);
+        padding: var(--space-2) var(--space-1);
       }
       .navigationLink {
-        flex-direction: column;
         padding-inline: var(--space-1);
-        font-size: 0.875rem;
       }
       .guestBar { padding-inline: var(--layout-page-compact); }
     }
     @media (width >= 64rem) {
       .component[data-authenticated='true'] { padding-inline-start: var(--layout-sidebar-wide); }
       .desktopNavigation {
-        inset-block: auto 0;
+        inset-block: 5.5rem 11rem;
         inline-size: var(--layout-sidebar-wide);
-        padding: var(--space-8) var(--space-4);
-        border-inline-end: 0;
+        padding: var(--space-3) var(--space-4);
       }
       .navigationLink {
         flex-direction: row;
         justify-content: flex-start;
-        padding-inline: var(--space-2);
-        font-size: 1rem;
+        gap: var(--space-2);
+        min-block-size: 2.75rem;
+        padding: var(--space-2);
+      }
+      .navigationIcon {
+        inline-size: 2rem;
+        block-size: 2rem;
+      }
+      .navigationLabel { font-size: 1rem; }
+      .navigationLink[aria-current='page'] {
+        background: var(--color-surface-muted);
+      }
+      .navigationLink[aria-current='page'] .navigationIcon {
+        background: transparent;
+        color: inherit;
       }
       .accountBar {
-        position: fixed;
-        inset-inline-start: 0;
-        inset-block: 0;
-        flex-direction: column;
         align-items: stretch;
         inline-size: var(--layout-sidebar-wide);
         padding: var(--space-8) var(--space-4);
-        border-block-end: 0;
-        border-inline-end: 1px solid var(--color-border);
       }
-      .accountEmail { flex: 0 1 auto; }
+      .accountActions {
+        justify-items: stretch;
+      }
+      .accountEmail {
+        display: block;
+        min-inline-size: 0;
+        max-inline-size: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .accountError {
+        position: static;
+        inline-size: auto;
+      }
+      .signOutButton {
+        inline-size: auto;
+        border-radius: var(--radius-md);
+      }
+      .signOutLabel {
+        position: static;
+        inline-size: auto;
+        block-size: auto;
+        overflow: visible;
+        clip-path: none;
+        white-space: normal;
+      }
       .guestBar { padding-inline: var(--layout-page-wide); }
+    }
+    @media (forced-colors: active) {
+      .navigationLink[aria-current='page'] {
+        text-decoration: underline;
+        text-decoration-thickness: 0.125em;
+        text-underline-offset: 0.25em;
+      }
     }
   }
 </style>

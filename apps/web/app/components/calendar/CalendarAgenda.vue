@@ -1,8 +1,8 @@
 <template>
   <section :class="$style.component" :aria-labelledby="headingId">
-    <header :class="$style.header">
+    <header :class="$style.header" aria-live="polite">
       <p :class="$style.eyebrow">Agenda</p>
-      <h2 :id="headingId" ref="headingElement" :class="$style.heading" tabindex="-1">{{ heading }}</h2>
+      <h2 :id="headingId" :class="$style.heading">{{ heading }}</h2>
     </header>
 
     <div v-if="isLoading" :class="$style.loadingList" role="status" aria-label="Loading agenda" aria-busy="true">
@@ -25,10 +25,10 @@
 
     <div v-else-if="items.length === 0" :class="$style.message">
       <h3 :class="$style.subheading">Nothing releases on this day</h3>
-      <p :class="$style.supportingText">Choose another available date in this month.</p>
+      <p :class="$style.supportingText">Choose another date with a release.</p>
     </div>
 
-    <ul v-else :class="$style.list" aria-label="Releases for selected day">
+    <ul v-else :class="$style.list" :aria-label="listLabel">
       <li v-for="row in rows" :key="row.releaseId" :class="$style.item">
         <NuxtLink :class="$style.itemLink" :to="row.location">
           <CatalogPoster compact :poster-url="row.posterUrl" :title="row.title" />
@@ -56,6 +56,7 @@
     isLoading: boolean;
     items: CatalogReleaseItem[];
     monthHasItems: boolean;
+    periodLabel: string;
     selectedDate: string | null;
   }
 
@@ -63,15 +64,18 @@
     retry: [];
   }
 
-  const { hasError, isLoading, items, monthHasItems, selectedDate } = defineProps<Props>()
+  const { hasError, isLoading, items, monthHasItems, periodLabel, selectedDate } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const headingId = useId()
-  const headingElement = useTemplateRef('headingElement')
   const retryButton = useTemplateRef('retryButton')
 
   const heading = computed(() => selectedDate === null
-    ? 'Loading selected day…'
+    ? periodLabel
     : formatCalendarDateForDisplay(selectedDate, { dateStyle: 'full' }))
+
+  const listLabel = computed(() => selectedDate === null
+    ? `Releases in ${periodLabel}`
+    : 'Releases for selected day')
 
   const rows = computed(() => items.map((item) => {
     const metadata = [
@@ -96,12 +100,7 @@
     retryButton.value?.focus()
   }
 
-  function focusHeading(): void {
-    headingElement.value?.focus()
-  }
-
   defineExpose({
-    focusHeading,
     focusRetry
   })
 </script>

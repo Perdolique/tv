@@ -14,6 +14,31 @@ if (databaseUrl === undefined || databaseUrl === '') {
 
 const client = new Client({ connectionString: databaseUrl })
 
+const testReleaseIds = [
+  '60000000-0000-4000-8000-000000000011',
+  '60000000-0000-4000-8000-000000000012',
+  '60000000-0000-4000-8000-000000000013',
+  '60000000-0000-4000-8000-000000000014',
+  '60000000-0000-4000-8000-000000000015',
+  '60000000-0000-4000-8000-000000000016',
+  '60000000-0000-4000-8000-000000000017'
+] as const
+
+const upcomingCatalogItemIds = [
+  '10000000-0000-4000-8000-000000000013',
+  '10000000-0000-4000-8000-000000000014',
+  '10000000-0000-4000-8000-000000000015',
+  '10000000-0000-4000-8000-000000000016'
+] as const
+
+interface SeededCatalogItem {
+  id: string;
+  releases: string[];
+  releaseYear: number;
+  title: string;
+  type: 'movie' | 'series';
+}
+
 await client.connect()
 
 async function findCatalogItemId(title: string): Promise<string> {
@@ -34,6 +59,80 @@ describe('postgreSQL catalog releases', () => {
     await client.end()
   })
 
+  it('seeds officially announced upcoming releases as distinct catalog items', async () => {
+    await assertDisposableTestDatabase(client)
+
+    const result = await client.query<SeededCatalogItem>(`
+      SELECT
+        item.id,
+        item.type,
+        item.release_year AS "releaseYear",
+        title.title,
+        array_agg(
+          concat(
+            release.release_date::text,
+            CASE WHEN release.season_number IS NULL THEN '' ELSE ':S' || release.season_number END,
+            CASE WHEN release.episode_number IS NULL THEN '' ELSE ':E' || release.episode_number END
+          )
+          ORDER BY release.release_date, release.episode_number NULLS LAST
+        ) AS releases
+      FROM catalog_items AS item
+      INNER JOIN catalog_item_titles AS title
+        ON title.catalog_item_id = item.id AND title.is_original
+      INNER JOIN catalog_releases AS release ON release.catalog_item_id = item.id
+      WHERE item.id = ANY($1::uuid[])
+      GROUP BY item.id, item.type, item.release_year, title.title
+      ORDER BY item.id
+    `, [upcomingCatalogItemIds])
+
+    expect(result.rows).toStrictEqual([
+      {
+        id: upcomingCatalogItemIds[0],
+
+        releases: [
+          '2026-09-24:S13:E1',
+          '2026-09-24:S13:E2',
+          '2026-09-24:S13:E3',
+          '2026-10-01:S13:E4',
+          '2026-10-01:S13:E5',
+          '2026-10-01:S13:E6',
+          '2026-10-08:S13:E7',
+          '2026-10-08:S13:E8',
+          '2026-10-15:S13:E9',
+          '2026-10-15:S13:E10',
+          '2026-10-22:S13:E11',
+          '2026-10-22:S13:E12',
+          '2026-10-29:S13:E13'
+        ],
+
+        releaseYear: 2011,
+        title: 'American Horror Story',
+        type: 'series'
+      },
+      {
+        id: upcomingCatalogItemIds[1],
+        releases: ['2026-11-20:S3'],
+        releaseYear: 2023,
+        title: 'Percy Jackson and the Olympians',
+        type: 'series'
+      },
+      {
+        id: upcomingCatalogItemIds[2],
+        releases: ['2026-11-20'],
+        releaseYear: 2026,
+        title: 'The Hunger Games: Sunrise on the Reaping',
+        type: 'movie'
+      },
+      {
+        id: upcomingCatalogItemIds[3],
+        releases: ['2026-12-18'],
+        releaseYear: 2026,
+        title: 'Avengers: Doomsday',
+        type: 'movie'
+      }
+    ])
+  })
+
   it('returns separate localized releases for the current account in an inclusive stable range', async () => {
     await assertDisposableTestDatabase(client)
 
@@ -44,6 +143,7 @@ describe('postgreSQL catalog releases', () => {
     const duneId = await findCatalogItemId('Dune')
     const wireId = await findCatalogItemId('The Wire')
     const deadManId = await findCatalogItemId('Dead Man')
+    const generatedReleaseIds: string[] = []
 
     try {
       await client.query(`
@@ -74,8 +174,11 @@ describe('postgreSQL catalog releases', () => {
           ('60000000-0000-4000-8000-000000000017', $1, '2026-10-02', 2, 10)
       `, [wireId, deadManId])
 
-      expect(generated.rows).toHaveLength(1)
-      expect(generated.rows[0]?.version).toBe(7)
+      const [generatedRelease] = generated.rows
+
+      assert(generatedRelease !== undefined, 'Expected one generated release')
+      expect(generatedRelease.version).toBe(7)
+      generatedReleaseIds.push(generatedRelease.id)
 
       const constraints = await client.query<{ definition: string }>(`
         SELECT pg_get_constraintdef(oid) AS definition
@@ -186,11 +289,9 @@ describe('postgreSQL catalog releases', () => {
 
       expect(cascaded.rows[0]?.count).toBe('0')
     } finally {
-      await client.query(`
-        DELETE FROM catalog_releases
-        WHERE release_date BETWEEN '2026-09-30' AND '2026-10-03'
-      `)
+      const releaseIds = [...testReleaseIds, ...generatedReleaseIds]
 
+      await client.query('DELETE FROM catalog_releases WHERE id = ANY($1::uuid[])', [releaseIds])
       await client.query('DELETE FROM catalog_items WHERE id = $1', [temporaryItemId])
       await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[firstUserId, secondUserId]])
     }

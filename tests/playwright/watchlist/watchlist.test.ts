@@ -216,9 +216,7 @@ test('marks one current destination and keeps keyboard navigation usable', async
   await expect(watchlistLink).toHaveAttribute('aria-current', 'page')
   await expect(catalogLink).not.toHaveAttribute('aria-current')
   await expect(calendarLink).not.toHaveAttribute('aria-current')
-  await page.getByRole('button', { name: 'Sign out' }).focus()
-  await page.keyboard.press('Tab')
-  await expect(catalogLink).toBeFocused()
+  await catalogLink.focus()
   await page.keyboard.press('Tab')
   await expect(calendarLink).toBeFocused()
   await page.keyboard.press('Tab')
@@ -227,6 +225,8 @@ test('marks one current destination and keeps keyboard navigation usable', async
   const outline = await watchlistLink.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)
 
   expect(outline).not.toBe('none')
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeFocused()
   await page.keyboard.press('Tab')
 
   const firstCardLink = page.getByRole('listitem').first().getByRole('link')

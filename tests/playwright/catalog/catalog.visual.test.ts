@@ -65,7 +65,13 @@ for (const colorScheme of ['light', 'dark'] as const) {
   }
 }
 
-for (const [width, expectedWidth] of [[320, 320], [639, 639], [640, 80], [1023, 80], [1024, 224]] as const) {
+for (const [width, expectedWidth, expectedAccountDisplay] of [
+  [320, 320, 'none'],
+  [639, 639, 'none'],
+  [640, 80, 'none'],
+  [1023, 80, 'none'],
+  [1024, 224, 'block']
+] as const) {
   test(`reflows long titles and email at ${width}px`, async ({ page }) => {
     await page.setViewportSize({
       width,
@@ -78,8 +84,10 @@ for (const [width, expectedWidth] of [[320, 320], [639, 639], [640, 80], [1023, 
 
     const navigation = page.getByRole('navigation', { name: 'Main navigation' })
     const bounds = await navigation.boundingBox()
+    const accountEmail = page.getByText('Signed in as')
 
     expect(bounds?.width).toBe(expectedWidth)
+    await expect(accountEmail).toHaveCSS('display', expectedAccountDisplay)
 
     await expect(page.getByRole('link', {
       name: 'Catalog',
@@ -130,16 +138,16 @@ test('supports keyboard search and clear with visible focus and reduced motion',
 
   const signOutBounds = await getVisibleBounds(signOutButton)
   const catalogBounds = await getVisibleBounds(catalogLink)
-  const signOutBottom = signOutBounds.y + signOutBounds.height
+  const catalogBottom = catalogBounds.y + catalogBounds.height
 
-  expect(signOutBottom).toBeLessThan(catalogBounds.y)
-  await signOutButton.focus()
-  await page.keyboard.press('Tab')
-  await expect(catalogLink).toBeFocused()
+  expect(catalogBottom).toBeLessThan(signOutBounds.y)
+  await catalogLink.focus()
   await page.keyboard.press('Tab')
   await expect(calendarLink).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(watchlistLink).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(signOutButton).toBeFocused()
   await page.keyboard.press('Tab')
 
   const input = page.getByRole('textbox')
@@ -168,6 +176,21 @@ test('keeps mobile keyboard order aligned with the bottom navigation', async ({ 
 
   await page.goto('/')
   await waitForHydration(page)
+
+  const catalogLink = page.getByRole('link', {
+    name: 'Catalog',
+    exact: true
+  })
+
+  const catalogIcon = catalogLink.locator('span').first()
+
+  await expect(catalogIcon).toHaveCount(1)
+
+  const navigationDirection = await catalogLink.evaluate(element => globalThis.getComputedStyle(element).flexDirection)
+  const activeIconBackground = await catalogIcon.evaluate(element => globalThis.getComputedStyle(element).backgroundColor)
+
+  expect(navigationDirection).toBe('column')
+  expect(activeIconBackground).not.toBe('rgba(0, 0, 0, 0)')
   await page.getByRole('button', { name: 'Sign out' }).focus()
   await page.keyboard.press('Tab')
 
@@ -175,12 +198,7 @@ test('keeps mobile keyboard order aligned with the bottom navigation', async ({ 
 
   await expect(input).toBeFocused()
   await page.keyboard.press('Tab')
-
-  await expect(page.getByRole('link', {
-    name: 'Catalog',
-    exact: true
-  })).toBeFocused()
-
+  await expect(catalogLink).toBeFocused()
   await page.keyboard.press('Tab')
 
   await expect(page.getByRole('link', {

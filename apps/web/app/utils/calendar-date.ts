@@ -18,7 +18,14 @@ interface CalendarReleaseRange {
   to: string;
 }
 
+interface CreateCalendarDayOptions {
+  allowOutsideMonth?: boolean;
+  selected: CalendarDateParts;
+  today: CalendarDateParts;
+}
+
 const DATE_PATTERN = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/u
+const MONTH_PATTERN = /^(?<year>\d{4})-(?<month>\d{2})$/u
 const DAYS_PER_WEEK = 7
 const GRID_DAY_COUNT = 42
 const MAX_CALENDAR_YEAR = 9999
@@ -128,6 +135,20 @@ function normalizeCalendarQuery(value: unknown, today: string): string {
   return value
 }
 
+function normalizeCalendarMonthQuery(value: unknown, today: string): string | null {
+  if (typeof value !== 'string' || !MONTH_PATTERN.test(value)) {
+    return null
+  }
+
+  const monthStart = `${value}-01`
+
+  if (parseCalendarDate(monthStart) === null || value < today.slice(0, 7)) {
+    return null
+  }
+
+  return value
+}
+
 function getCalendarReleaseRange(selectedDate: string, today: string): CalendarReleaseRange {
   const selected = parseCalendarDate(selectedDate)
   const current = parseCalendarDate(today)
@@ -170,19 +191,20 @@ function compareCalendarDates(left: CalendarDateParts, right: CalendarDateParts)
 
 function createCalendarDay(
   parts: CalendarDateParts,
-  selected: CalendarDateParts,
-  today: CalendarDateParts
+  options: CreateCalendarDayOptions
 ): CalendarDay {
+  const { allowOutsideMonth = false, selected, today } = options
   const date = serializeCalendarDate(parts)
   const inMonth = parts.year === selected.year && parts.month === selected.month
   const isPast = compareCalendarDates(parts, today) < 0
+  const isWithinSupportedYears = parts.year <= MAX_CALENDAR_YEAR
 
   return {
     ...parts,
     date,
     inMonth,
     isToday: compareCalendarDates(parts, today) === 0,
-    selectable: inMonth && !isPast
+    selectable: !isPast && isWithinSupportedYears && (inMonth || allowOutsideMonth)
   }
 }
 
@@ -212,7 +234,10 @@ function getCalendarMonthDays(selectedDate: string, today: string): CalendarDay[
   return Array.from({ length: GRID_DAY_COUNT }, (_value, index) => {
     const parts = addCalendarDays(gridStart, index)
 
-    return createCalendarDay(parts, selected, current)
+    return createCalendarDay(parts, {
+      selected,
+      today: current
+    })
   })
 }
 
@@ -231,7 +256,11 @@ function getCalendarWeekDays(selectedDate: string, today: string): CalendarDay[]
   return Array.from({ length: DAYS_PER_WEEK }, (_value, index) => {
     const parts = addCalendarDays(weekStart, index)
 
-    return createCalendarDay(parts, selected, current)
+    return createCalendarDay(parts, {
+      allowOutsideMonth: true,
+      selected,
+      today: current
+    })
   })
 }
 
@@ -255,15 +284,36 @@ function shiftCalendarMonth(selectedDate: string, amount: number, today: string)
     return today
   }
 
-  const targetDay = Math.min(selected.day, getDaysInMonth(targetYear, targetMonth))
-
   const target = serializeCalendarDate({
-    day: targetDay,
+    day: 1,
     month: targetMonth,
     year: targetYear
   })
 
   return target < today ? today : target
+}
+
+function shiftCalendarWeek(selectedDate: string, amount: number, today: string): string {
+  const selected = parseCalendarDate(selectedDate)
+  const current = parseCalendarDate(today)
+
+  if (selected === null || current === null) {
+    throw new Error('Calendar navigation requires valid dates')
+  }
+
+  const target = addCalendarDays(selected, amount * DAYS_PER_WEEK)
+
+  if (target.year > MAX_CALENDAR_YEAR) {
+    return selectedDate
+  }
+
+  if (target.year < 1) {
+    return today
+  }
+
+  const serializedTarget = serializeCalendarDate(target)
+
+  return serializedTarget < today ? today : serializedTarget
 }
 
 function groupReleasesByDate(items: CatalogReleaseItem[]): Map<string, CatalogReleaseItem[]> {
@@ -289,9 +339,11 @@ export {
   getCalendarWeekDays,
   getLocalCalendarDate,
   groupReleasesByDate,
+  normalizeCalendarMonthQuery,
   normalizeCalendarQuery,
   parseCalendarDate,
-  shiftCalendarMonth
+  shiftCalendarMonth,
+  shiftCalendarWeek
 }
 
 export type {

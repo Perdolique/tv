@@ -31,11 +31,11 @@
         @keydown="moveFocus($event, day)"
       >
         <span :class="$style.dayHeader">
-          <span>{{ day.day }}</span>
+          <span :class="$style.dayNumber">{{ day.day }}</span>
           <span v-if="day.isToday" :class="$style.today">Today</span>
           <span v-if="day.date === selectedDate" :class="$style.selectedMark" aria-hidden="true">✓</span>
         </span>
-        <span v-if="getReleaseCount(day) > 0" :class="$style.releaseSummary" aria-hidden="true">
+        <span v-if="getReleaseCount(day) > 0" :class="$style.releaseSummary" data-release-summary aria-hidden="true">
           <span v-for="cue in getReleaseCues(day)" :key="cue.releaseId" :class="$style.cue" :data-type="cue.type">
             <span :class="$style.cueLabel">{{ cue.label }}</span>
           </span>
@@ -72,11 +72,27 @@
   const emit = defineEmits<Emits>()
   const headingId = useId()
   const dayButtons = useTemplateRef('dayButtons')
-  const focusedDate = ref<string | null>(selectedDate)
+  const focusedDate = ref<string | null>(null)
 
-  watch(() => selectedDate, (date) => {
-    focusedDate.value = date
-  })
+  watch(
+    [() => selectedDate, () => days],
+    ([date, currentDays]) => {
+      const selectedDay = currentDays.find(day => day.date === date && day.selectable)
+
+      if (selectedDay !== undefined) {
+        focusedDate.value = selectedDay.date
+
+        return
+      }
+
+      const focusedDay = currentDays.find(day => day.date === focusedDate.value && day.selectable)
+
+      if (focusedDay === undefined) {
+        focusedDate.value = currentDays.find(day => day.selectable)?.date ?? null
+      }
+    },
+    { immediate: true }
+  )
 
   function getReleaseCount(day: CalendarDay): number {
     return releasesByDate.get(day.date)?.length ?? 0
@@ -194,6 +210,7 @@
 
   @layer components {
     .component {
+      container-type: inline-size;
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
       background: var(--color-surface);
@@ -259,8 +276,16 @@
       background: var(--color-surface-muted);
       font-weight: 700;
     }
-    .dayHeader { display: flex; align-items: center; gap: var(--space-1); }
+    .dayHeader { display: flex; align-items: center; gap: var(--space-1); min-inline-size: 0; }
+    .dayNumber { flex: 0 0 auto; white-space: nowrap; }
+    .day[aria-current='date'] .dayNumber {
+      text-decoration: underline;
+      text-decoration-color: var(--color-accent);
+      text-decoration-thickness: 0.125rem;
+      text-underline-offset: 0.2rem;
+    }
     .today {
+      min-inline-size: 0;
       overflow: hidden;
       font-size: 0.75rem;
       font-weight: 700;
@@ -302,7 +327,10 @@
     .skeletonCell {
       background: linear-gradient(135deg, var(--color-surface-muted), var(--color-surface));
     }
-    @media (width >= 40rem) {
+    @container (width < 35rem) {
+      .today { display: none; }
+    }
+    @container (width >= 35rem) {
       .day { padding: var(--space-2); }
       .cue,
       .cue:nth-child(n + 2) {

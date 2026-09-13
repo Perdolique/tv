@@ -74,7 +74,7 @@ for (const [width, expectedNavigationWidth] of [[320, 320], [639, 639], [640, 80
     await expectNoHorizontalOverflow(page)
 
     const navigation = page.getByRole('navigation', { name: 'Main navigation' })
-    const watchlistLabel = navigation.getByRole('link', { name: 'Watchlist' }).locator('span')
+    const watchlistLabel = navigation.getByRole('link', { name: 'Watchlist' }).locator('span').last()
     const longTitle = page.getByRole('heading', { name: watchlistItems[1].title })
 
     expect(await getWidth(navigation)).toBe(expectedNavigationWidth)

@@ -1,9 +1,37 @@
 /* oxlint-disable vitest/prefer-each -- Playwright uses loops for viewport and color-scheme snapshots. */
+import type { Locator } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { expectNoHorizontalOverflow, getVisibleLineCount } from '../helpers.ts'
 
 const FIXED_NOW = new Date('2026-09-12T10:00:00.000Z')
+
+async function expectReleaseSummaryInsideDay(day: Locator): Promise<void> {
+  const dayBounds = await day.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+
+    return {
+      left: bounds.left,
+      right: bounds.right
+    }
+  })
+
+  const releaseSummary = day.locator('[data-release-summary]')
+
+  await expect(releaseSummary).toHaveCount(1)
+
+  const summaryBounds = await releaseSummary.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+
+    return {
+      left: bounds.left,
+      right: bounds.right
+    }
+  })
+
+  expect(summaryBounds.left).toBeGreaterThanOrEqual(dayBounds.left)
+  expect(summaryBounds.right).toBeLessThanOrEqual(dayBounds.right)
+}
 
 const viewports = [
   {
@@ -82,7 +110,11 @@ for (const width of [320, 390]) {
     })
 
     await page.goto('/calendar?date=2026-09-13')
-    await page.getByRole('button', { name: 'Month' }).click()
+
+    await page.getByRole('button', {
+      name: 'Month',
+      exact: true
+    }).click()
 
     const selectedDay = page.getByRole('group', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')
     const visibleCue = selectedDay.locator('[data-type="episode"]:visible')
@@ -95,6 +127,24 @@ for (const width of [320, 390]) {
     await expectNoHorizontalOverflow(page)
   })
 }
+
+test('shows the selected release agenda below mobile Month', async ({ page }) => {
+  await page.setViewportSize({
+    height: 844,
+    width: 390
+  })
+
+  await page.goto('/calendar?date=2026-09-12')
+
+  await page.getByRole('button', {
+    name: 'Month',
+    exact: true
+  }).click()
+
+  await page.getByRole('button', { name: /Sunday, September 13, 2026.*2 releases/u }).click()
+  await page.evaluate(async () => { await globalThis.document.fonts.ready })
+  await expect(page).toHaveScreenshot('calendar-mobile-month-selected.png', { fullPage: true })
+})
 
 test('keeps slow and missing posters inside release rows', async ({ page }) => {
   await page.route('**/posters/dune-2021.webp', async (route) => {
@@ -110,6 +160,59 @@ test('keeps slow and missing posters inside release rows', async ({ page }) => {
   await page.goto('/calendar?date=2026-09-13')
   await expect(page.getByText('No poster available')).toHaveCount(2)
   await expectNoHorizontalOverflow(page)
+})
+
+test('keeps narrow desktop dates, release cues, and navigation icons aligned', async ({ page }) => {
+  await page.setViewportSize({
+    height: 768,
+    width: 1024
+  })
+
+  await page.goto('/calendar?date=2026-09-13')
+
+  const calendarDays = page.getByRole('group', { name: 'Calendar days' })
+  const today = calendarDays.locator('button[aria-current="date"]')
+  const todayNumber = today.getByText('12', { exact: true })
+  const todayText = today.getByText('Today', { exact: true })
+  const nextMonth = page.getByRole('button', { name: 'Next month' })
+  const nextIcon = nextMonth.locator('svg')
+
+  await expect(nextIcon).toHaveCount(1)
+
+  const buttonMiddle = await nextMonth.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+
+    return bounds.y + bounds.height / 2
+  })
+
+  const iconMiddle = await nextIcon.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+
+    return bounds.y + bounds.height / 2
+  })
+
+  expect(await getVisibleLineCount(todayNumber)).toBe(1)
+  await expect(todayText).toBeHidden()
+  await expect(todayNumber).toHaveCSS('text-decoration-line', 'underline')
+  await expect(nextMonth).toHaveCSS('align-items', 'center')
+  expect(Math.abs(buttonMiddle - iconMiddle)).toBeLessThanOrEqual(1)
+  await nextMonth.click()
+
+  const busyDay = calendarDays.getByRole('button', {
+    name: /Thursday, October 1, 2026.*3 releases/u
+  })
+
+  await busyDay.click()
+  await expectReleaseSummaryInsideDay(busyDay)
+  await expect(busyDay.locator('[data-type]:visible')).toHaveCount(1)
+
+  await page.setViewportSize({
+    height: 768,
+    width: 1280
+  })
+
+  await expect(busyDay.locator('[data-type]:visible')).toHaveCount(2)
+  await expectReleaseSummaryInsideDay(busyDay)
 })
 
 test('keeps calendar usable with reduced motion and forced colors', async ({ page }) => {
