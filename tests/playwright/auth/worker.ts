@@ -1,6 +1,7 @@
 /* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
 import { catalogItems } from '../catalog/fixtures.ts'
 import { detailsItems, dune, russianDune } from '../catalog/details.fixtures.ts'
+import { calendarReleases } from '../calendar/fixtures.ts'
 import { watchlistItems } from '../watchlist/fixtures.ts'
 import { longEmail } from './constants.ts'
 
@@ -55,6 +56,7 @@ const UNAVAILABLE_VERIFICATION_TOKEN = 'u'.repeat(43)
 const SESSION_COOKIE = 'tv_session=e2e-session'
 const LONG_EMAIL_SESSION_COOKIE = 'tv_session=e2e-long-email-session'
 const FOLLOW_COOKIE_NAME = 'tv_followed_item'
+const LONG_EMAIL_EMPTY_RELEASE_DATE = '2026-09-12'
 
 const LONG_EMAIL_USER = {
   email: longEmail,
@@ -475,6 +477,60 @@ async function handleCatalogWatchlist(request: Request): Promise<Response> {
   })
 }
 
+async function handleCatalogReleases(request: Request, url: URL): Promise<Response> {
+  const expiringSession = getExpiringSession(request)
+  const authenticated = hasAuthenticatedCatalogSession(request)
+
+  if (!authenticated || hasCookie(request, 'expire_calendar=1')) {
+    if (expiringSession !== undefined) {
+      expiredCatalogSessions.add(expiringSession)
+    }
+
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_calendar=2')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_calendar=1; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_calendar=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_calendar=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'slow_calendar=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- Browser tests need a real pending calendar request.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
+  }
+
+  const from = url.searchParams.get('from') ?? ''
+  const to = url.searchParams.get('to') ?? ''
+
+  const accountReleases = hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
+    ? calendarReleases.filter(item => item.releaseDate !== LONG_EMAIL_EMPTY_RELEASE_DATE)
+    : calendarReleases
+
+  const items = hasCookie(request, 'empty_calendar=1')
+    ? []
+    : accountReleases.filter(item => item.releaseDate >= from && item.releaseDate <= to)
+
+  return json({ items })
+}
+
 function getFollowedCatalogItemId(request: Request): string | undefined {
   const cookies = request.headers.get('Cookie') ?? ''
   const prefix = `${FOLLOW_COOKIE_NAME}=`
@@ -572,6 +628,7 @@ async function handleCatalogDetails(request: Request, url: URL): Promise<Respons
 
 // oxlint-disable-next-line import/no-default-export -- Cloudflare Workers require a default entrypoint.
 export default {
+  // oxlint-disable-next-line eslint/complexity -- One explicit dispatcher keeps the fake service routes auditable.
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
 
@@ -593,6 +650,10 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/watchlist') {
       return handleCatalogWatchlist(request)
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/catalog/releases') {
+      return handleCatalogReleases(request, url)
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/register') {

@@ -39,6 +39,10 @@
 
   @layer components {
     .component {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
       min-block-size: 3.5rem;
       padding: var(--space-3) var(--space-6);
       border-radius: var(--radius-md);
@@ -47,6 +51,12 @@
       transition:
         filter var(--duration-fast) var(--ease-standard),
         transform var(--duration-fast) var(--ease-standard);
+    }
+
+    .component :global(svg) {
+      flex: 0 0 auto;
+      inline-size: 1.25rem;
+      block-size: 1.25rem;
     }
 
     .component[data-variant='primary'] {

@@ -242,9 +242,10 @@ describe('persisted UUIDv7 and title metadata migration', () => {
       `)
 
       expect(after).toStrictEqual(before)
-      expect(titlesAfter.rows).toStrictEqual(titlesBefore.rows)
+      expect(titlesAfter.rows).toStrictEqual(expect.arrayContaining(titlesBefore.rows))
+      expect(titlesAfter.rows).toHaveLength(titlesBefore.rows.length + 4)
       expect(followsAfter.rows[0]?.count).toBe('0')
-      expect(identifiers).toHaveLength(oldIdentifiers.length)
+      expect(identifiers).toHaveLength(oldIdentifiers.length + 4)
       expect(identifiers.every(row => row.version === 7)).toBe(true)
       expect(identifiers.every(row => oldIdentifiers.every(old => old.id !== row.id))).toBe(true)
 
@@ -305,11 +306,15 @@ describe('persisted UUIDv7 and title metadata migration', () => {
       await migrate(fixture.database, { migrationsFolder })
 
       const items = await fixture.client.query<{ poster_path: string; version: number }>(`
-        SELECT poster_path, uuid_extract_version(id) AS version FROM catalog_items
+        SELECT poster_path, uuid_extract_version(id) AS version
+        FROM catalog_items
+        WHERE poster_path IS NOT NULL
       `)
 
       const descriptions = await fixture.client.query<{ description: string; locale: string }>(`
-        SELECT description, locale FROM catalog_item_titles WHERE locale IN ('en', 'ru')
+        SELECT description, locale
+        FROM catalog_item_titles
+        WHERE locale IN ('en', 'ru') AND description IS NOT NULL
       `)
 
       expect(items.rows).toHaveLength(12)

@@ -1,7 +1,7 @@
 <template>
   <div :class="$style.component" :aria-busy="isLoading" :data-compact="compact">
-    <img v-if="hasImage" ref="image" :class="$style.image" :data-loaded="hasLoaded" :src="imageSource" :alt="alternative" width="480" height="720" decoding="async" @load="imageLoaded" @error="imageFailed" />
-    <p v-if="showPlaceholder" :class="$style.placeholder" role="status">{{ placeholder }}</p>
+    <img v-if="hasImage" ref="image" :class="$style.image" :data-loaded="hasLoaded" :src="imageSource" :alt="alternative" width="480" height="720" decoding="async" :loading="loading" @load="imageLoaded" @error="imageFailed" />
+    <p v-if="showPlaceholder" :class="$style.placeholder">{{ placeholder }}</p>
   </div>
 </template>
 
@@ -10,11 +10,12 @@
 
   interface Props {
     compact?: boolean;
+    loading?: 'eager' | 'lazy';
     posterUrl: string | null;
     title: string;
   }
 
-  const { compact = false, posterUrl, title } = defineProps<Props>()
+  const { compact = false, loading = 'eager', posterUrl, title } = defineProps<Props>()
   const hasLoaded = ref(false)
   const hasFailed = ref(false)
   const image = useTemplateRef('image')

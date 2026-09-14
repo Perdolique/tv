@@ -4,6 +4,11 @@
 
 - Use `vp` for package manager commands run locally by users, agents, and Git hooks.
 
+## Local development servers
+
+- Agents may start local development servers when needed. Before handing work back, stop every long-running process you started for the task, including its child processes. Then confirm that all ports used by those processes are free.
+- Keep a process running only when the user asks. Do not stop a process that the user started or that was already running before the task without the user's approval.
+
 ## UI implementation
 
 - Read `apps/web/DESIGN.md` before changing UI, styling, themes, or responsive behavior.

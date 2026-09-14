@@ -148,6 +148,7 @@ shell.
 - Preserve at least `16px` horizontal page padding; use `20-24px` when space
   allows.
 - Keep the bottom navigation fixed and account for safe-area insets.
+- Stack each bottom-navigation icon above its short label and use a compact active indicator around the icon.
 - Use horizontal scrolling for poster collections instead of shrinking cards.
 - Default the calendar to agenda view.
 - Auth and focused add/request flows do not show application bottom navigation.
@@ -163,6 +164,7 @@ shell.
 ### Desktop rules
 
 - Use a `224px` application sidebar.
+- Keep primary navigation below the wordmark and place lower-priority account details and actions at the bottom of the sidebar.
 - Keep the main content readable; do not stretch text-heavy cards indefinitely.
 - A secondary rail is normally `280-340px` wide.
 - Keep high-priority content inside the first `1024px` of viewport height when
@@ -658,12 +660,14 @@ Desktop uses a sidebar, wide main column, and `320px` secondary rail.
 ### Personal calendar
 
 - Mobile defaults to Agenda and exposes Month as an alternate mode.
-- Tablet and desktop default to a readable month grid plus selected-day agenda.
+- Mobile Agenda uses previous and next week controls with a seven-day picker. Mobile Month uses previous and next month controls and does not keep the week picker visible.
+- Mobile Month keeps the grid visible when a day is selected and shows its agenda below the grid. Changing the selected day must not switch modes.
+- Tablet and desktop default to a readable month grid plus agenda.
+- The first calendar visit selects today. Month navigation changes only the visible month, clears day selection, and shows every release in that month. It must not select the first day or first release.
 - The selected day uses lime fill or border and remains distinguishable without
   color.
 - Event cells contain a thumbnail or short title when space permits.
-- Episode, movie, and premiere types use icon or shape differences in addition
-  to color.
+- Movie, episode, and generic series-release types use icon or shape differences in addition to color. Show Premiere only when the API provides an explicit event type; nullable season or episode metadata does not prove a premiere.
 - Reminder actions expose scheduled, unscheduled, loading, and error states.
 - Use the viewer's timezone for release times and state it when the source time
   is ambiguous.
@@ -847,9 +851,8 @@ Verify at minimum:
 
 - Add focused Vitest tests for state and token logic.
 - Add Playwright coverage for page-critical flows and theme switching.
-- Capture visual snapshots at the three reference viewports for both themes.
-- Do not use generated references as pixel-perfect golden images. They contain
-  illustrative artwork and may contain non-deterministic visual details.
+- Add semantic and geometry-based Playwright checks at the three reference viewports for both themes.
+- Do not use pixel screenshot snapshots or generated references as golden images. Rendering varies by browser platform, and the references contain illustrative artwork and non-deterministic visual details.
 
 Follow repository verification instructions for changed Vue or TypeScript files.
 For changes to this file, run:
@@ -880,7 +883,7 @@ When changing a visual rule:
 2. Update the semantic token or shared component when the change is systemic.
 3. Check both themes and all responsive modes.
 4. Update this document when the rule or intent changes.
-5. Update affected tests and visual snapshots.
+5. Update affected semantic and geometry-based tests.
 
 Do not add a new component variant to solve a single screenshot discrepancy.
 Do not change dark and light theme structures independently.

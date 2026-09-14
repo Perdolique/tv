@@ -1,16 +1,9 @@
 /* oxlint-disable eslint/max-lines -- Catalog browser contracts share one end-to-end service harness. */
-import type { APIResponse, BrowserContext, Page } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { addCookie, getRedirectLocation } from '../helpers.ts'
 import { waitForHydration } from './helpers.ts'
-
-async function addCookie(context: BrowserContext, name: string, value: string): Promise<void> {
-  await context.addCookies([{
-    name,
-    value,
-    url: appBaseUrl
-  }])
-}
 
 async function openCatalog(page: Page, context: BrowserContext, target = '/'): Promise<void> {
   await addCookie(context, 'tv_session', 'e2e-session')
@@ -22,16 +15,6 @@ async function openCatalog(page: Page, context: BrowserContext, target = '/'): P
 async function search(page: Page, query: string): Promise<void> {
   await page.getByRole('textbox', { name: 'Search movies and series' }).fill(query)
   await page.getByRole('textbox', { name: 'Search movies and series' }).press('Enter')
-}
-
-function getRedirectLocation(response: APIResponse): URL {
-  const { location } = response.headers()
-
-  if (location === undefined) {
-    throw new Error('Expected a redirect location')
-  }
-
-  return new URL(location, appBaseUrl)
 }
 
 const failedSearchTest = test.extend({ expectedHttpErrors: { values: [{
