@@ -44,6 +44,42 @@ function observeReleaseRequests(page: Page): URL[] {
   return requests
 }
 
+function observeUpcomingReleaseRequests(page: Page): URL[] {
+  const requests: URL[] = []
+
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+
+    if (url.pathname === '/api/catalog/releases/upcoming') {
+      requests.push(url)
+    }
+  })
+
+  return requests
+}
+
+async function disableIntersectionObserver(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class NoopIntersectionObserver {
+      readonly root = null
+      readonly rootMargin = '0px'
+      readonly thresholds = [0]
+
+      disconnect(): void { void this.root }
+      observe(): void { void this.root }
+      takeRecords(): IntersectionObserverEntry[] {
+        void this.root
+
+        return []
+      }
+      unobserve(): void { void this.root }
+    }
+
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The browser shim deliberately implements the observer methods used by VueUse.
+    globalThis.IntersectionObserver = NoopIntersectionObserver as unknown as typeof globalThis.IntersectionObserver
+  })
+}
+
 async function getVisibleBounds(locator: Locator): Promise<NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>> {
   const bounds = await locator.boundingBox()
 
@@ -85,6 +121,22 @@ const expiredCalendarTest = test.extend({ expectedHttpErrors: { values: [{
   status: 401
 }] } })
 
+const failedUpcomingTest = test.extend({ expectedHttpErrors: { values: [
+  {
+    pathname: '/api/catalog/releases/upcoming',
+    status: 503
+  },
+  {
+    pathname: '/api/catalog/releases/upcoming',
+    status: 503
+  }
+] } })
+
+const failedUpcomingPageTest = test.extend({ expectedHttpErrors: { values: [{
+  pathname: '/api/catalog/releases/upcoming',
+  status: 503
+}] } })
+
 const failedSessionTest = test.extend({ expectedHttpErrors: { values: [
   {
     pathname: '/api/auth/session',
@@ -113,6 +165,173 @@ test('redirects a guest through sign in and returns to the full calendar URL', a
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(`${appBaseUrl}${target}`)
   await expect(page.getByRole('list', { name: 'Releases for selected day' }).getByRole('listitem')).toHaveCount(2)
+})
+
+test('redirects a guest to sign in with the full Upcoming URL', async ({ page, context }) => {
+  await page.clock.setFixedTime(FIXED_NOW)
+
+  const target = '/calendar?view=upcoming'
+  const response = await context.request.get(target, { maxRedirects: 0 })
+  const location = getRedirectLocation(response)
+
+  expect(response.status()).toBe(302)
+  expect(location.pathname).toBe('/sign-in')
+  expect(location.searchParams.get('redirectTo')).toBe(target)
+  await page.goto(target)
+  await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/calendar?view=upcoming`)
+})
+
+test('switches Calendar and Upcoming with canonical browser history URLs', async ({ page, context }) => {
+  const rangeRequests = observeReleaseRequests(page)
+  const upcomingRequests = observeUpcomingReleaseRequests(page)
+
+  await openCalendar(page, context, '/calendar?view=upcoming&date=2026-10-01&month=2026-10')
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?view=upcoming`)
+  await expect(page.getByRole('button', { name: 'Upcoming' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Agenda' })).toHaveCount(0)
+
+  await expect(page.getByRole('heading', {
+    name: 'Upcoming releases',
+    exact: true
+  })).toBeVisible()
+
+  await expect(page.getByRole('region', { name: 'Upcoming releases' })).toBeVisible()
+  expect(rangeRequests).toHaveLength(0)
+  expect(upcomingRequests).toHaveLength(1)
+  await page.reload()
+  await waitForHydration(page)
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?view=upcoming`)
+
+  await page.getByRole('button', {
+    name: 'Calendar',
+    exact: true
+  }).click()
+
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=${TODAY}`)
+
+  await expect(page.getByRole('button', {
+    name: 'Calendar',
+    exact: true
+  })).toHaveAttribute('aria-pressed', 'true')
+
+  await page.goBack()
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?view=upcoming`)
+  await page.goForward()
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=${TODAY}`)
+})
+
+test('auto-loads every cursor page without bursts and merges split date groups', async ({ page, context }) => {
+  const upcomingRequests = observeUpcomingReleaseRequests(page)
+
+  await openCalendar(page, context, '/calendar?view=upcoming')
+
+  const upcomingButton = page.getByRole('button', { name: 'Upcoming' })
+  const loadMoreButton = page.getByRole('button', { name: 'Load more releases' })
+
+  await expect(page.getByRole('listitem')).toHaveCount(20)
+  await expect(page.getByRole('heading', { name: /Today · Saturday, September 12, 2026/u })).toBeVisible()
+  await upcomingButton.focus()
+  await loadMoreButton.evaluate(element => { element.scrollIntoView() })
+  await expect(page.getByRole('listitem')).toHaveCount(40)
+  await loadMoreButton.evaluate(element => { element.scrollIntoView() })
+  await expect(page.getByText('That’s all your upcoming releases.')).toBeVisible()
+  await expect(page.getByText('20 more releases loaded.')).toHaveCount(1)
+  await expect(upcomingButton).toBeFocused()
+  await page.waitForTimeout(200)
+  expect(upcomingRequests.map(request => request.searchParams.get('cursor'))).toStrictEqual([null, '20', '40'])
+  await expect(page.getByRole('listitem')).toHaveCount(60)
+
+  const releaseIds = await page.locator('[data-release-id]').evaluateAll(elements => (
+    elements.map(element => element.attributes.getNamedItem('data-release-id')?.value)
+  ))
+
+  expect(new Set(releaseIds).size).toBe(60)
+
+  const firstSplitDateHeading = page.getByRole('heading', { name: 'Thursday, October 1, 2026' })
+  const secondSplitDateHeading = page.getByRole('heading', { name: 'Thursday, October 22, 2026' })
+
+  await expect(firstSplitDateHeading).toHaveCount(1)
+  await expect(secondSplitDateHeading).toHaveCount(1)
+  await expect(page.getByRole('list', { name: 'Releases for Thursday, October 1, 2026' }).getByRole('listitem')).toHaveCount(3)
+  await expect(page.getByRole('list', { name: 'Releases for Thursday, October 22, 2026' }).getByRole('listitem')).toHaveCount(2)
+})
+
+test('manually loads another page and focuses its first new release', async ({ page, context }) => {
+  await disableIntersectionObserver(page)
+  await openCalendar(page, context, '/calendar?view=upcoming')
+  await page.getByRole('button', { name: 'Load more releases' }).click()
+  await expect(page.getByRole('listitem')).toHaveCount(40)
+  await expect(page.locator('[data-release-id="01991a00-0000-7000-8000-000000000109"] a')).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Load more releases' })).toBeVisible()
+})
+
+test('keeps Upcoming cards visible while another page loads', async ({ page, context }) => {
+  await disableIntersectionObserver(page)
+  await openCalendar(page, context, '/calendar?view=upcoming')
+  await addCookie(context, 'slow_upcoming', '1')
+  await page.getByRole('button', { name: 'Load more releases' }).click()
+  await expect(page.getByText('Loading more releases…', { exact: true })).toBeFocused()
+  await expect(page.getByRole('listitem')).toHaveCount(20)
+  await expect(page.getByRole('listitem')).toHaveCount(40)
+  await expect(page.getByRole('button', { name: 'Load more releases' })).toBeVisible()
+})
+
+test('shows stable Upcoming loading and empty states', async ({ page, context }) => {
+  await page.clock.setFixedTime(FIXED_NOW)
+  await addCookie(context, 'tv_session', 'e2e-session')
+  await addCookie(context, 'slow_upcoming', '1')
+  await page.goto('/calendar?view=upcoming')
+  await expect(page.getByRole('status', { name: 'Loading upcoming releases' }).locator(':scope > div')).toHaveCount(5)
+
+  await expect(page.getByRole('heading', {
+    name: 'Upcoming releases',
+    exact: true
+  })).toBeVisible()
+
+  await context.clearCookies({ name: 'slow_upcoming' })
+  await addCookie(context, 'empty_upcoming', '1')
+  await page.reload()
+  await waitForHydration(page)
+  await expect(page.getByRole('heading', { name: 'No upcoming releases' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open watchlist' })).toHaveAttribute('href', '/watchlist')
+})
+
+// oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with expected HTTP errors.
+failedUpcomingTest('keeps the initial Upcoming error actionable across retry outcomes', async ({ page, context }) => {
+  await page.clock.setFixedTime(FIXED_NOW)
+  await addCookie(context, 'tv_session', 'e2e-session')
+  await addCookie(context, 'fail_upcoming', '2')
+  await page.goto('/calendar?view=upcoming')
+
+  const alert = page.getByRole('alert')
+  const retryButton = page.getByRole('button', { name: 'Try again' })
+
+  await expect(alert).toHaveText('We couldn’t load your upcoming releases. Try again.')
+  await expect(alert).not.toContainText('database')
+  await retryButton.click()
+  await expect(retryButton).toBeFocused()
+  await addCookie(context, 'slow_upcoming', '1')
+  await retryButton.click()
+  await expect(page.getByRole('status', { name: 'Loading upcoming releases' })).toBeFocused()
+  await expect(page.getByRole('heading', { name: 'Release calendar' })).toBeFocused()
+  await expect(page.getByRole('listitem')).toHaveCount(20)
+})
+
+// oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with an expected HTTP error.
+failedUpcomingPageTest('preserves Upcoming cards and retry focus after a load-more error', async ({ page, context }) => {
+  await disableIntersectionObserver(page)
+  await openCalendar(page, context, '/calendar?view=upcoming')
+  await addCookie(context, 'fail_upcoming_more', '1')
+  await page.getByRole('button', { name: 'Load more releases' }).click()
+
+  const retryButton = page.getByRole('button', { name: 'Try again' })
+
+  await expect(page.getByRole('listitem')).toHaveCount(20)
+  await expect(page.getByText('We couldn’t load more releases. Try again.', { exact: true }).first()).toBeVisible()
+  await expect(retryButton).toBeFocused()
+  await retryButton.click()
+  await expect(page.getByRole('listitem')).toHaveCount(40)
+  await expect(page.locator('[data-release-id="01991a00-0000-7000-8000-000000000109"] a')).toBeFocused()
 })
 
 // oxlint-disable-next-line vitest/prefer-each -- Playwright's test API does not expose test.each.
@@ -205,7 +424,7 @@ test('loads a future month and keeps push navigation in browser history', async 
 
   await expect(calendarDays.locator('button[aria-pressed="true"]')).toHaveCount(0)
   await expect(calendarDays.locator('button[tabindex="0"]')).toHaveCount(1)
-  await expect(futureItems).toHaveCount(10)
+  await expect(futureItems).toHaveCount(23)
   await expect(futureItems.getByRole('heading', { name: 'American Horror Story' })).toHaveCount(10)
   await expect(futureItems.nth(0)).toContainText('Series · S13 · E4')
   expect(futureUrl.searchParams.get('from')).toBe('2026-10-01')
@@ -226,6 +445,18 @@ test('loads a future month and keeps push navigation in browser history', async 
   await expect(page.getByRole('button', { name: 'Previous month' })).toBeDisabled()
 })
 
+test('opens today when the top Calendar mode is already active', async ({ page, context }) => {
+  await openCalendar(page, context, '/calendar?month=2026-10')
+
+  await page.getByRole('button', {
+    name: 'Calendar',
+    exact: true
+  }).click()
+
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=${TODAY}`)
+  await expect(page.locator('button[aria-current="date"]').last()).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('shows movie, series, nullable metadata, and separate episodes', async ({ page, context }) => {
   await page.setViewportSize({
     height: 1024,
@@ -242,6 +473,13 @@ test('shows movie, series, nullable metadata, and separate episodes', async ({ p
   await expect(todayButton.locator('[data-type="movie"]')).toHaveText('M')
   await expect(todayList.getByRole('listitem')).toContainText('Movie')
   await expect(todayList.getByRole('listitem')).not.toContainText('·')
+
+  const movieCue = todayList.locator('[data-type="movie"]')
+
+  await expect(movieCue).toHaveCount(1)
+
+  const movieRadius = await movieCue.evaluate(element => globalThis.getComputedStyle(element).borderRadius)
+
   await expect(todayList.getByRole('time')).toHaveAttribute('datetime', TODAY)
   await expect(todayList.getByRole('link')).toHaveAttribute('href', /\/titles\//u)
   await page.getByRole('button', { name: /Sunday, September 13, 2026.*2 releases/u }).click()
@@ -252,6 +490,14 @@ test('shows movie, series, nullable metadata, and separate episodes', async ({ p
   await expect(episodeRows).toHaveCount(2)
   await expect(episodeRows.nth(0)).toContainText('Series · S2 · E7')
   await expect(episodeRows.nth(1)).toContainText('Series · S2 · E8')
+
+  const episodeCue = episodeRows.nth(0).locator('[data-type="episode"]')
+
+  await expect(episodeCue).toHaveCount(1)
+
+  const episodeRadius = await episodeCue.evaluate(element => globalThis.getComputedStyle(element).borderRadius)
+
+  expect(episodeRadius).not.toBe(movieRadius)
 
   await expect(calendarDays.getByRole('button', {
     name: /Sunday, September 13, 2026/u
@@ -273,6 +519,12 @@ test('shows movie, series, nullable metadata, and separate episodes', async ({ p
 
   await expect(genericSeriesDay.locator('[data-type="series"]')).toHaveText('S')
   await expect(genericSeriesDay.locator('[data-type="movie"]')).toHaveText('M')
+  await genericSeriesDay.click()
+
+  const genericSeriesCue = page.getByRole('list', { name: 'Releases for selected day' }).locator('[data-type="series"]')
+  const genericSeriesBounds = await getVisibleBounds(genericSeriesCue)
+
+  expect(genericSeriesBounds.width).toBeGreaterThan(genericSeriesBounds.height)
 })
 
 test('opens the exact catalog title from a calendar release', async ({ page, context }) => {
@@ -347,9 +599,9 @@ test('navigates mobile Agenda by week and selects its first release', async ({ p
   await openCalendar(page, context)
   await expect(page.getByRole('button', { name: 'Previous week' })).toBeDisabled()
   await page.getByRole('button', { name: 'Next week' }).click()
-  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-09-18`)
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-09-16`)
   await expect(page.getByText('Sep 14 – Sep 20, 2026', { exact: true })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'A very long title' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'South Park' })).toBeVisible()
 })
 
 test('keeps a month URL in mobile Month across reload and opens Agenda at its first day', async ({ page, context }) => {
@@ -369,7 +621,7 @@ test('keeps a month URL in mobile Month across reload and opens Agenda at its fi
   await page.getByRole('button', { name: 'Next month' }).click()
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?month=2026-10`)
   await expect(page.getByRole('grid', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')).toHaveCount(0)
-  await expect(page.getByRole('list', { name: 'Releases in October 2026' }).getByRole('listitem')).toHaveCount(10)
+  await expect(page.getByRole('list', { name: 'Releases in October 2026' }).getByRole('listitem')).toHaveCount(23)
   await expect(page.getByLabel('Calendar period navigation').getByText('October 2026', { exact: true })).toBeVisible()
   await page.reload()
   await waitForHydration(page)
@@ -409,8 +661,8 @@ test('loads a cross-month week before selecting its first release', async ({ pag
 
   expect(requestUrl.searchParams.get('from')).toBe(TODAY)
   expect(requestUrl.searchParams.get('to')).toBe('2026-10-04')
-  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-10-01`)
-  await expect(page.getByRole('heading', { name: 'American Horror Story' }).first()).toBeVisible()
+  await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=2026-09-30`)
+  await expect(page.getByRole('heading', { name: 'South Park' })).toBeVisible()
 })
 
 test('restores mobile Month mode when browser history returns to a month URL', async ({ page, context }) => {
@@ -733,7 +985,10 @@ test('preserves calendar page and proxy no-store responses', async ({ page, cont
   })).toHaveAttribute('aria-current', 'page')
 
   const releases = await context.request.get(`/api/catalog/releases?from=${TODAY}&to=2026-09-30`)
+  const upcoming = await context.request.get(`/api/catalog/releases/upcoming?from=${TODAY}`)
 
   expect(releases.status()).toBe(200)
   expect(releases.headers()['cache-control']).toBe('no-store')
+  expect(upcoming.status()).toBe(200)
+  expect(upcoming.headers()['cache-control']).toBe('no-store')
 })

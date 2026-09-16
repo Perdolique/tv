@@ -53,14 +53,14 @@ describe('postgreSQL catalog schema and search', () => {
     `)
 
     expect(counts.rows[0]).toStrictEqual({
-      items: '16',
-      movies: '8',
-      originals: '16',
-      series: '8',
-      titles: '31'
+      items: '24',
+      movies: '10',
+      originals: '24',
+      series: '14',
+      titles: '39'
     })
 
-    expect(originalCounts.rows).toHaveLength(16)
+    expect(originalCounts.rows).toHaveLength(24)
     expect(originalCounts.rows.every(row => row.originals === '1')).toBe(true)
   })
 

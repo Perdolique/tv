@@ -30,10 +30,25 @@ interface CatalogReleaseRange {
   to: string;
 }
 
+interface CatalogReleaseCursor {
+  catalogItemId: string;
+  episodeNumber: number | null;
+  releaseDate: string;
+  releaseId: string;
+  seasonNumber: number | null;
+}
+
+interface CatalogUpcomingReleaseQuery {
+  cursor: CatalogReleaseCursor | null;
+  from: string;
+}
+
 export type {
   CatalogDetailsRow,
   CatalogReleaseRange,
+  CatalogReleaseCursor,
   CatalogReleaseRow,
   CatalogTitleRow,
+  CatalogUpcomingReleaseQuery,
   CatalogWatchlistRow
 }

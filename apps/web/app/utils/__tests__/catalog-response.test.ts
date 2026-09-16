@@ -5,6 +5,7 @@ import {
   catalogDetailsResponseSchema,
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
+  catalogUpcomingReleasesResponseSchema,
   catalogWatchlistResponseSchema
 } from '../catalog-response.ts'
 
@@ -164,6 +165,28 @@ describe('catalog releases response contract', () => {
     }
 
     expect(v.parse(catalogReleasesResponseSchema, response)).toStrictEqual(response)
+  })
+
+  it('validates upcoming cursors independently from release rows', () => {
+    const response = {
+      items: [release],
+      nextCursor: 'opaque-cursor'
+    }
+
+    expect(v.parse(catalogUpcomingReleasesResponseSchema, response)).toStrictEqual(response)
+
+    expect(v.parse(catalogUpcomingReleasesResponseSchema, {
+      items: [],
+      nextCursor: null
+    })).toStrictEqual({
+      items: [],
+      nextCursor: null
+    })
+
+    expect(v.safeParse(catalogUpcomingReleasesResponseSchema, {
+      items: [],
+      nextCursor: 42
+    }).success).toBe(false)
   })
 
   it.each([

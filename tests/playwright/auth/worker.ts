@@ -477,6 +477,25 @@ async function handleCatalogWatchlist(request: Request): Promise<Response> {
   })
 }
 
+function compareNullableNumbers(left: number | null, right: number | null): number {
+  if (left === null) {
+    return right === null ? 0 : 1
+  }
+
+  return right === null ? -1 : left - right
+}
+
+function compareCalendarReleaseOrder(
+  left: (typeof calendarReleases)[number],
+  right: (typeof calendarReleases)[number]
+): number {
+  return left.releaseDate.localeCompare(right.releaseDate)
+    || left.id.localeCompare(right.id)
+    || compareNullableNumbers(left.seasonNumber, right.seasonNumber)
+    || compareNullableNumbers(left.episodeNumber, right.episodeNumber)
+    || left.releaseId.localeCompare(right.releaseId)
+}
+
 async function handleCatalogReleases(request: Request, url: URL): Promise<Response> {
   const expiringSession = getExpiringSession(request)
   const authenticated = hasAuthenticatedCatalogSession(request)
@@ -526,9 +545,80 @@ async function handleCatalogReleases(request: Request, url: URL): Promise<Respon
 
   const items = hasCookie(request, 'empty_calendar=1')
     ? []
-    : accountReleases.filter(item => item.releaseDate >= from && item.releaseDate <= to)
+    : accountReleases
+      .filter(item => item.releaseDate >= from && item.releaseDate <= to)
+      .toSorted(compareCalendarReleaseOrder)
 
   return json({ items })
+}
+
+async function handleCatalogUpcomingReleases(request: Request, url: URL): Promise<Response> {
+  const authenticated = hasAuthenticatedCatalogSession(request)
+
+  if (!authenticated || hasCookie(request, 'expire_upcoming=1')) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_upcoming=2')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_upcoming=1; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_upcoming=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_upcoming=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  const cursor = url.searchParams.get('cursor')
+
+  if (cursor !== null && hasCookie(request, 'fail_upcoming_more=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_upcoming_more=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'slow_upcoming=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- Browser tests need a pending upcoming request for cancellation checks.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
+  }
+
+  if (hasCookie(request, 'empty_upcoming=1')) {
+    return json({
+      items: [],
+      nextCursor: null
+    })
+  }
+
+  const from = url.searchParams.get('from') ?? ''
+  const startIndex = cursor === null ? 0 : Number(cursor)
+
+  const matchingItems = calendarReleases
+    .filter(item => item.releaseDate >= from)
+    .toSorted(compareCalendarReleaseOrder)
+
+  const pageItems = matchingItems.slice(startIndex, startIndex + 20)
+  const nextIndex = startIndex + pageItems.length
+
+  return json({
+    items: pageItems,
+    nextCursor: nextIndex < matchingItems.length ? String(nextIndex) : null
+  })
 }
 
 function getFollowedCatalogItemId(request: Request): string | undefined {
@@ -650,6 +740,10 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/watchlist') {
       return handleCatalogWatchlist(request)
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/catalog/releases/upcoming') {
+      return handleCatalogUpcomingReleases(request, url)
     }
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/releases') {

@@ -10,10 +10,15 @@
     <AppShell v-else-if="isAuthenticated" active-destination="calendar">
       <main :class="$style.content">
         <header :class="$style.pageHeader">
-          <div>
+          <div :class="$style.pageTitle">
             <h1 ref="heading" :class="$style.heading" tabindex="-1">Release calendar</h1>
+            <div :class="$style.viewModes" role="group" aria-label="Release view">
+              <button :class="$style.modeButton" :aria-pressed="isCalendarView" @click="openCalendarView">Calendar</button>
+              <button :class="$style.modeButton" :aria-pressed="isUpcomingView" @click="openUpcomingView">Upcoming</button>
+            </div>
           </div>
           <CalendarPeriodNavigation
+            v-if="isCalendarView"
             :class="$style.wideMonthNavigation"
             :is-next-disabled="isNextMonthDisabled"
             :is-previous-disabled="isPreviousMonthDisabled"
@@ -29,58 +34,76 @@
           />
         </header>
 
-        <div :class="$style.mobileModes" role="group" aria-label="Calendar view">
-          <button :class="$style.modeButton" :aria-pressed="mobileMode === 'agenda'" @click="openMobileAgenda">Agenda</button>
-          <button :class="$style.modeButton" :aria-pressed="mobileMode === 'month'" @click="openMobileMonth">Month</button>
-        </div>
+        <template v-if="isCalendarView">
+          <div :class="$style.mobileModes" role="group" aria-label="Calendar view">
+            <button :class="$style.modeButton" :aria-pressed="mobileMode === 'agenda'" @click="openMobileAgenda">Agenda</button>
+            <button :class="$style.modeButton" :aria-pressed="mobileMode === 'month'" @click="openMobileMonth">Month</button>
+          </div>
 
-        <CalendarPeriodNavigation
-          :class="$style.mobilePeriodNavigation"
-          :is-next-disabled="isMobileNextDisabled"
-          :is-previous-disabled="isMobilePreviousDisabled"
-          :is-today-disabled="isTodaySelected"
-          :label="mobilePeriodLabel"
-          layout="compact"
-          navigation-label="Calendar period navigation"
-          :next-label="mobileNextLabel"
-          :previous-label="mobilePreviousLabel"
-          @next="navigateMobilePeriod(1)"
-          @previous="navigateMobilePeriod(-1)"
-          @today="selectToday"
-        />
+          <CalendarPeriodNavigation
+            :class="$style.mobilePeriodNavigation"
+            :is-next-disabled="isMobileNextDisabled"
+            :is-previous-disabled="isMobilePreviousDisabled"
+            :is-today-disabled="isTodaySelected"
+            :label="mobilePeriodLabel"
+            layout="compact"
+            navigation-label="Calendar period navigation"
+            :next-label="mobileNextLabel"
+            :previous-label="mobilePreviousLabel"
+            @next="navigateMobilePeriod(1)"
+            @previous="navigateMobilePeriod(-1)"
+            @today="selectToday"
+          />
 
-        <CalendarWeek
-          v-if="selectedDate !== null && mobileMode === 'agenda'"
-          :class="$style.mobileWeek"
-          :days="weekDays"
-          :selected-date="selectedDate"
-          @select="pushDate"
-        />
-        <div v-else-if="mobileMode === 'agenda'" :class="$style.weekSkeleton" aria-hidden="true">
-          <span v-for="day in 7" :key="day" />
-        </div>
-
-        <div :class="$style.layout" :data-mobile-mode="mobileMode">
-          <CalendarMonth
-            :class="$style.month"
-            :days="monthDays"
-            :is-loading="showLoading"
-            :releases-by-date="releasesByDate"
+          <CalendarWeek
+            v-if="selectedDate !== null && mobileMode === 'agenda'"
+            :class="$style.mobileWeek"
+            :days="weekDays"
             :selected-date="selectedDate"
             @select="pushDate"
           />
-          <CalendarAgenda
-            ref="agenda"
-            :class="$style.agenda"
-            :has-error="hasError"
-            :is-loading="showLoading"
-            :items="agendaItems"
-            :month-has-items="items.length > 0"
-            :period-label="monthLabel"
-            :selected-date="selectedDate"
-            @retry="retryReleases"
-          />
-        </div>
+          <div v-else-if="mobileMode === 'agenda'" :class="$style.weekSkeleton" aria-hidden="true">
+            <span v-for="day in 7" :key="day" />
+          </div>
+
+          <div :class="$style.layout" :data-mobile-mode="mobileMode">
+            <CalendarMonth
+              :class="$style.month"
+              :days="monthDays"
+              :is-loading="showLoading"
+              :releases-by-date="releasesByDate"
+              :selected-date="selectedDate"
+              @select="pushDate"
+            />
+            <CalendarAgenda
+              ref="agenda"
+              :class="$style.agenda"
+              :has-error="hasError"
+              :is-loading="showLoading"
+              :items="agendaItems"
+              :month-has-items="items.length > 0"
+              :period-label="monthLabel"
+              :selected-date="selectedDate"
+              @retry="retryReleases"
+            />
+          </div>
+        </template>
+
+        <CalendarUpcoming
+          v-else
+          ref="upcoming"
+          :class="$style.upcoming"
+          :announcement="upcomingAnnouncement"
+          :has-initial-error="upcomingHasInitialError"
+          :has-load-more-error="upcomingHasLoadMoreError"
+          :has-more="upcomingHasMore"
+          :is-initial-loading="today === null || upcomingIsInitialLoading"
+          :is-loading-more="upcomingIsLoadingMore"
+          :items="upcomingItems"
+          :today="today ?? ''"
+          @load-more="loadMoreUpcoming"
+          @retry-initial="retryUpcoming"
+        />
       </main>
     </AppShell>
   </div>
@@ -88,18 +111,20 @@
 
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
-  import { navigateTo, useHead, useResponseHeader, useRoute } from '#app'
+  import { navigateTo, useHead, useResponseHeader, useRoute, useRouter } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
   import AppShell from '~/components/app/AppShell.vue'
   import CalendarAgenda from '~/components/calendar/CalendarAgenda.vue'
   import CalendarMonth from '~/components/calendar/CalendarMonth.vue'
   import CalendarPeriodNavigation from '~/components/calendar/CalendarPeriodNavigation.vue'
+  import CalendarUpcoming from '~/components/calendar/CalendarUpcoming.vue'
   import CalendarWeek from '~/components/calendar/CalendarWeek.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCalendarPeriodNavigation } from '~/composables/use-calendar-period-navigation.ts'
   import { useCatalogReleases } from '~/composables/use-catalog-releases.ts'
+  import { useUpcomingReleases } from '~/composables/use-upcoming-releases.ts'
 
   import {
     getCalendarMonthDays,
@@ -117,21 +142,26 @@
   cacheControlHeader.value = 'private, no-store'
 
   const route = useRoute()
+  const router = useRouter()
   const { restoreSession, setAnonymous, state } = useAuthSession()
   const agenda = useTemplateRef('agenda')
+  const upcoming = useTemplateRef('upcoming')
   const heading = useTemplateRef('heading')
   const sessionRetryButton = useTemplateRef('sessionRetryButton')
   const today = ref<string | null>(null)
   const visibleDate = ref<string | null>(null)
   const selectedDate = ref<string | null>(null)
   const isRetryingSession = ref(false)
+  const upcomingAnnouncement = ref('')
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
   const isAnonymous = computed(() => state.value.status === 'anonymous')
   const hasSessionError = computed(() => state.value.status === 'error')
   const accountId = computed(() => state.value.status === 'authenticated' ? state.value.user.id : null)
+  const isUpcomingView = computed(() => route.query.view === 'upcoming')
+  const isCalendarView = computed(() => !isUpcomingView.value)
 
   const range = computed<CalendarReleaseRange | null>(() => {
-    if (visibleDate.value === null || today.value === null) {
+    if (!isCalendarView.value || visibleDate.value === null || today.value === null) {
       return null
     }
 
@@ -143,6 +173,20 @@
   })
 
   const { clear, hasError, isLoading, items, reload, unauthorized } = useCatalogReleases(accountId, range)
+  const upcomingFrom = computed(() => isUpcomingView.value ? today.value : null)
+
+  const {
+    clear: clearUpcoming,
+    hasInitialError: upcomingHasInitialError,
+    hasLoadMoreError: upcomingHasLoadMoreError,
+    hasMore: upcomingHasMore,
+    isInitialLoading: upcomingIsInitialLoading,
+    isLoadingMore: upcomingIsLoadingMore,
+    items: upcomingItems,
+    loadMore: requestMoreUpcoming,
+    reload: reloadUpcoming,
+    unauthorized: upcomingUnauthorized
+  } = useUpcomingReleases(accountId, upcomingFrom, isUpcomingView)
 
   const {
     isMobileNextDisabled,
@@ -163,6 +207,7 @@
     selectToday,
     weekDays
   } = useCalendarPeriodNavigation({
+    active: isCalendarView,
     hasError,
     isLoading,
     items,
@@ -172,7 +217,7 @@
   })
 
   const showLoading = computed(() => visibleDate.value === null || isLoading.value)
-  const shouldSignIn = computed(() => isAnonymous.value || unauthorized.value)
+  const shouldSignIn = computed(() => isAnonymous.value || unauthorized.value || upcomingUnauthorized.value)
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
   const releasesByDate = computed(() => groupReleasesByDate(items.value))
 
@@ -196,7 +241,7 @@
       return
     }
 
-    if (unauthorized.value) {
+    if (unauthorized.value || upcomingUnauthorized.value) {
       setAnonymous()
     }
 
@@ -205,6 +250,22 @@
     flush: 'sync',
     immediate: true
   })
+
+  watch(
+    [() => route.query.view, () => route.query.date, () => route.query.month],
+    ([view, date, month]) => {
+      if (view === 'upcoming' && (date !== undefined || month !== undefined)) {
+        void router.replace({
+          path: '/calendar',
+          query: { view: 'upcoming' }
+        })
+      }
+    },
+    {
+      flush: 'sync',
+      immediate: true
+    }
+  )
 
   const MINIMUM_TODAY_REFRESH_DELAY_MS = 1000
   const MIDNIGHT_REFRESH_BUFFER_MS = 100
@@ -233,10 +294,13 @@
     const previousAccountId = accountId.value
 
     clear()
+    clearUpcoming()
     await restoreSession({ force: true })
 
     if (accountId.value !== null && accountId.value === previousAccountId) {
-      await reload()
+      const reloadActiveView = isUpcomingView.value ? reloadUpcoming : reload
+
+      await reloadActiveView()
     }
   }
 
@@ -311,6 +375,86 @@
       heading.value?.focus()
     }
   }
+
+  async function openCalendarView(): Promise<void> {
+    if (today.value === null) {
+      return
+    }
+
+    await router.push({
+      path: '/calendar',
+      query: { date: today.value }
+    })
+  }
+
+  async function openUpcomingView(): Promise<void> {
+    if (isUpcomingView.value) {
+      return
+    }
+
+    await router.push({
+      path: '/calendar',
+      query: { view: 'upcoming' }
+    })
+  }
+
+  async function retryUpcoming(): Promise<void> {
+    const request = reloadUpcoming()
+
+    await nextTick()
+    upcoming.value?.focusInitialLoading()
+
+    await request
+
+    await nextTick()
+
+    if (upcomingHasInitialError.value) {
+      upcoming.value?.focusInitialRetry()
+    } else {
+      heading.value?.focus()
+    }
+  }
+
+  async function loadMoreUpcoming(source: 'auto' | 'manual'): Promise<void> {
+    upcomingAnnouncement.value = ''
+
+    const request = requestMoreUpcoming()
+
+    if (source === 'manual') {
+      await nextTick()
+      upcoming.value?.focusLoadMoreLoading()
+    }
+
+    const result = await request
+
+    await nextTick()
+
+    if (result.status === 'error') {
+      upcomingAnnouncement.value = 'We couldn’t load more releases. Try again.'
+
+      if (source === 'manual') {
+        upcoming.value?.focusLoadMoreRetry()
+      }
+
+      return
+    }
+
+    if (result.status !== 'loaded') {
+      return
+    }
+
+    const firstAddedItem = result.addedItems.at(0)
+
+    if (source === 'manual' && firstAddedItem !== undefined) {
+      upcoming.value?.focusRelease(firstAddedItem.releaseId)
+    }
+
+    if (source === 'auto' && result.addedItems.length > 0) {
+      const releaseLabel = result.addedItems.length === 1 ? 'release' : 'releases'
+
+      upcomingAnnouncement.value = `${result.addedItems.length} more ${releaseLabel} loaded.`
+    }
+  }
 </script>
 
 <style module>
@@ -325,11 +469,11 @@
       margin-inline: auto;
       padding: var(--space-8) var(--layout-page-mobile) var(--space-12);
     }
-    .pageHeader { display: grid; gap: var(--space-5); }
+    .pageHeader, .pageTitle { display: grid; gap: var(--space-5); }
     .heading { font-size: 1.75rem; font-weight: 600; line-height: 1.15; }
     .supportingText { color: var(--color-text-secondary); }
     .wideMonthNavigation { display: none; }
-    .mobileModes {
+    .viewModes, .mobileModes {
       display: grid;
       grid-template-columns: 1fr 1fr;
       padding: var(--space-1);
@@ -337,6 +481,7 @@
       border-radius: var(--radius-md);
       background: var(--color-surface-muted);
     }
+    .viewModes { inline-size: min(100%, 22rem); }
     .modeButton {
       min-block-size: 2.75rem;
       border: 0;
@@ -358,6 +503,7 @@
       background: var(--color-surface-muted);
     }
     .layout { display: grid; gap: var(--space-5); min-inline-size: 0; }
+    .upcoming { justify-self: center; }
     .layout[data-mobile-mode='agenda'] .month { display: none; }
     .sessionPanel {
       display: grid;
@@ -381,6 +527,7 @@
     @media (width >= 40rem) {
       .content { gap: var(--space-6); padding-inline: var(--layout-page-compact); }
       .heading { font-size: 2.25rem; line-height: 1.17; }
+      .pageTitle { align-items: start; }
       .wideMonthNavigation { display: grid; }
       .mobileModes, .mobilePeriodNavigation, .mobileWeek, .weekSkeleton { display: none; }
       .layout { gap: var(--space-6); }

@@ -659,14 +659,18 @@ Desktop uses a sidebar, wide main column, and `320px` secondary rail.
 
 ### Personal calendar
 
+- Calendar and Upcoming are top-level modes at every viewport size. Calendar opens the viewer's local current day; Upcoming uses a continuous single-column list from that day forward.
 - Mobile defaults to Agenda and exposes Month as an alternate mode.
 - Mobile Agenda uses previous and next week controls with a seven-day picker. Mobile Month uses previous and next month controls and does not keep the week picker visible.
 - Mobile Month keeps the grid visible when a day is selected and shows its agenda below the grid. Changing the selected day must not switch modes.
 - Tablet and desktop default to a readable month grid plus agenda.
+- Mobile Agenda and Month controls belong only to Calendar. Upcoming keeps the same bounded readable list on mobile, tablet, and desktop rather than stretching rows across the application canvas.
 - The first calendar visit selects today. Month navigation changes only the visible month, clears day selection, and shows every release in that month. It must not select the first day or first release.
 - The selected day uses lime fill or border and remains distinguishable without
   color.
 - Event cells contain a thumbnail or short title when space permits.
+- Upcoming groups release cards under semantic date headings, identifies Today in text, and keeps one date group when pagination splits that date. Load-more failures preserve existing cards and a manual Load more releases action remains available whenever another page exists.
+- Upcoming uses stable skeleton rows for its initial load, retains visible content while loading another page, announces automatic additions once through a polite live region, and moves focus to the first new card only after a manual load.
 - Movie, episode, and generic series-release types use icon or shape differences in addition to color. Show Premiere only when the API provides an explicit event type; nullable season or episode metadata does not prove a premiere.
 - Reminder actions expose scheduled, unscheduled, loading, and error states.
 - Use the viewer's timezone for release times and state it when the source time

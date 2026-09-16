@@ -37,3 +37,6 @@ minimumReleaseAgeExclude:
   - miniflare@5.20260908.0-alpha
   - workerd@1.20260908.1
   - wrangler@4.130.0
+  - '@vueuse/core@15.0.0'
+  - '@vueuse/metadata@15.0.0'
+  - '@vueuse/shared@15.0.0'

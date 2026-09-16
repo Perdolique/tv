@@ -1,15 +1,11 @@
-import { findRootCause, serializeError } from '@tv/shared/errors'
-import { type Context, Hono } from 'hono'
-import { requestId, type RequestIdVariables } from 'hono/request-id'
+import { Hono } from 'hono'
+import { requestId } from 'hono/request-id'
 
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog reuses the shared API session resolver.
 import { resolveCurrentSession } from '../auth/current-session.ts'
 
 // oxlint-disable-next-line import/no-relative-parent-imports -- Protected routes share the auth transport contract.
 import { isSessionTransportAllowed } from '../auth/session.ts'
-
-// oxlint-disable-next-line import/no-relative-parent-imports -- Catalog uses the shared API database adapter.
-import { connectDatabaseAdapter } from '../database.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
 import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
 
@@ -23,134 +19,25 @@ import {
   unfollowCatalogItem
 } from './repository.ts'
 
+import { findCatalogUpcomingReleaseRows } from './upcoming-releases-repository.ts'
 import { canonicalizeTitleLocale, createCatalogSearchItems, normalizeCatalogQuery } from './search.ts'
-import { createCatalogReleaseItems, validateCatalogReleaseRange } from './releases.ts'
+
+import {
+  createCatalogReleaseItems,
+  createCatalogUpcomingReleasesResponse,
+  validateCatalogReleaseRange,
+  validateCatalogUpcomingReleaseQuery
+} from './releases.ts'
+
 import { createCatalogWatchlistItems } from './watchlist.ts'
 
-interface CatalogEnvironment {
-  Bindings: CloudflareBindings;
-  Variables: RequestIdVariables;
-}
-
-type CatalogContext = Context<CatalogEnvironment>
-type CatalogSession = NonNullable<Awaited<ReturnType<typeof resolveCurrentSession>>>
-type ConnectCatalogDatabase = typeof connectDatabaseAdapter
-
-interface CatalogDependencies {
-  connectDatabase: ConnectCatalogDatabase;
-}
-
-interface CatalogOperationFailure {
-  error: CatalogHttpError;
-  status: 'failure';
-}
-
-interface CatalogOperationSuccess<Result> {
-  result: Result;
-  status: 'success';
-}
-
-type CatalogOperationOutcome<Result> = CatalogOperationFailure | CatalogOperationSuccess<Result>
-
-const defaultCatalogDependencies: CatalogDependencies = {
-  connectDatabase: connectDatabaseAdapter
-}
-
-function toCatalogHttpError(error: unknown): CatalogHttpError {
-  return error instanceof CatalogHttpError
-    ? error
-    : new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
-}
-
-async function closeCatalogAdapter(
-  adapter: Awaited<ReturnType<ConnectCatalogDatabase>> | undefined
-): Promise<CatalogHttpError | null> {
-  if (adapter === undefined) {
-    return null
-  }
-
-  try {
-    await adapter.client.end()
-
-    return null
-  } catch (error) {
-    return new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
-  }
-}
-
-async function captureCatalogOperation<Result>(operation: () => Promise<Result>): Promise<CatalogOperationOutcome<Result>> {
-  try {
-    const result = await operation()
-
-    return {
-      result,
-      status: 'success'
-    }
-  } catch (error) {
-    return {
-      error: toCatalogHttpError(error),
-      status: 'failure'
-    }
-  }
-}
-
-function logCatalogServerError(
-  context: CatalogContext,
-  error: CatalogHttpError
-): void {
-  const technicalError = findRootCause(error.cause ?? error)
-  const serializedTechnicalError = serializeError(technicalError)
-
-  const logEntry = JSON.stringify({
-    code: error.code,
-    error: serializedTechnicalError,
-    message: 'catalog request failed',
-    requestId: context.get('requestId')
-  })
-
-  // oxlint-disable-next-line eslint/no-console -- Worker logs retain safe technical failures and request IDs.
-  console.error(logEntry)
-}
-
-async function withCatalogSession<Result>(
-  context: CatalogContext,
-  connectDatabase: ConnectCatalogDatabase,
-  operation: (session: CatalogSession) => Promise<Result>
-): Promise<Result> {
-  let adapter: Awaited<ReturnType<typeof connectDatabaseAdapter>> | undefined = undefined
-
-  const operationOutcome = await captureCatalogOperation(async () => {
-    const session = await resolveCurrentSession(context, async () => {
-      adapter = await connectDatabase(
-        context.env.DATABASE.connectionString
-      )
-
-      return adapter.database
-    })
-
-    if (session === null) {
-      throw new CatalogHttpError('AUTHENTICATION_REQUIRED', 401)
-    }
-
-    return operation(session)
-  })
-
-  const closeError = await closeCatalogAdapter(adapter)
-
-  if (operationOutcome.status === 'failure') {
-    if (closeError !== null) {
-      logCatalogServerError(context, closeError)
-    }
-
-    throw operationOutcome.error
-  }
-
-  if (closeError !== null) {
-    throw closeError
-  }
-
-  return operationOutcome.result
-}
+import {
+  defaultCatalogDependencies,
+  logCatalogServerError,
+  withCatalogSession,
+  type CatalogDependencies,
+  type CatalogEnvironment
+} from './session.ts'
 
 function createCatalogApp(
   dependencies: CatalogDependencies = defaultCatalogDependencies
@@ -175,7 +62,7 @@ function createCatalogApp(
     const titleLocale = canonicalizeTitleLocale(url.searchParams.get('titleLocale'))
 
     // oxlint-disable-next-line eslint/init-declarations -- Catalog connection failures are translated below.
-    let adapter: Awaited<ReturnType<typeof connectDatabaseAdapter>> | undefined
+    let adapter: Awaited<ReturnType<CatalogDependencies['connectDatabase']>> | undefined
 
     // oxlint-disable-next-line eslint/init-declarations -- Catalog database failures are translated below.
     let rows: Awaited<ReturnType<typeof findCatalogDetailsRows>>
@@ -306,6 +193,36 @@ function createCatalogApp(
     const items = createCatalogReleaseItems(result.rows, result.titleLocale)
 
     return context.json({ items })
+  })
+
+  app.get('/api/catalog/releases/upcoming', async (context) => {
+    const url = new URL(context.req.url)
+
+    const result = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+      const query = validateCatalogUpcomingReleaseQuery(
+        url.searchParams.get('from'),
+        url.searchParams.get('cursor')
+      )
+
+      const titleLocale = canonicalizeTitleLocale(
+        url.searchParams.get('titleLocale')
+      )
+
+      const rows = await findCatalogUpcomingReleaseRows(
+        session.database,
+        session.user.id,
+        query
+      )
+
+      return {
+        rows,
+        titleLocale
+      }
+    })
+
+    const response = createCatalogUpcomingReleasesResponse(result.rows, result.titleLocale)
+
+    return context.json(response)
   })
 
   app.get('/api/catalog/search', async (context) => {
