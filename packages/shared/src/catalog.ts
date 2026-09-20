@@ -47,6 +47,11 @@ interface CatalogReleasesResponse {
   items: CatalogReleaseItem[];
 }
 
+interface CatalogUpcomingReleasesResponse {
+  items: CatalogReleaseItem[];
+  nextCursor: string | null;
+}
+
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
   | 'INTERNAL_ERROR'
@@ -75,6 +80,7 @@ export type {
   CatalogSearchItem,
   CatalogSearchResponse,
   CatalogItemType,
+  CatalogUpcomingReleasesResponse,
   CatalogWatchlistItem,
   CatalogWatchlistResponse
 }

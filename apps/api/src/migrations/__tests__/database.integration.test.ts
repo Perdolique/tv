@@ -243,9 +243,9 @@ describe('persisted UUIDv7 and title metadata migration', () => {
 
       expect(after).toStrictEqual(before)
       expect(titlesAfter.rows).toStrictEqual(expect.arrayContaining(titlesBefore.rows))
-      expect(titlesAfter.rows).toHaveLength(titlesBefore.rows.length + 4)
+      expect(titlesAfter.rows).toHaveLength(titlesBefore.rows.length + 12)
       expect(followsAfter.rows[0]?.count).toBe('0')
-      expect(identifiers).toHaveLength(oldIdentifiers.length + 4)
+      expect(identifiers).toHaveLength(oldIdentifiers.length + 12)
       expect(identifiers.every(row => row.version === 7)).toBe(true)
       expect(identifiers.every(row => oldIdentifiers.every(old => old.id !== row.id))).toBe(true)
 

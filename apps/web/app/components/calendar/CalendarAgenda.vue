@@ -29,16 +29,7 @@
     </div>
 
     <ul v-else :class="$style.list" :aria-label="listLabel">
-      <li v-for="row in rows" :key="row.releaseId" :class="$style.item">
-        <NuxtLink :class="$style.itemLink" :to="row.location">
-          <CatalogPoster compact loading="lazy" :poster-url="row.posterUrl" :title="row.title" />
-          <div :class="$style.copy">
-            <time :class="$style.date" :datetime="row.releaseDate">{{ row.formattedDate }}</time>
-            <h3 :class="$style.title" :lang="row.titleLocale">{{ row.title }}</h3>
-            <p :class="$style.metadata">{{ row.metadata }}</p>
-          </div>
-        </NuxtLink>
-      </li>
+      <CalendarReleaseCard v-for="item in items" :key="item.releaseId" :item show-date />
     </ul>
   </section>
 </template>
@@ -46,7 +37,7 @@
 <script lang="ts" setup>
   import type { CatalogReleaseItem } from '@tv/shared/catalog'
   import { computed, useId, useTemplateRef } from 'vue'
-  import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
+  import CalendarReleaseCard from '~/components/calendar/CalendarReleaseCard.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import { formatCalendarDateForDisplay } from '~/utils/calendar-date.ts'
@@ -77,25 +68,6 @@
     ? `Releases in ${periodLabel}`
     : 'Releases for selected day')
 
-  const rows = computed(() => items.map((item) => {
-    const metadata = [
-      item.type === 'movie' ? 'Movie' : 'Series',
-      item.seasonNumber === null ? null : `S${item.seasonNumber}`,
-      item.episodeNumber === null ? null : `E${item.episodeNumber}`
-    ].filter(value => value !== null).join(' · ')
-
-    return {
-      formattedDate: formatCalendarDateForDisplay(item.releaseDate, { dateStyle: 'medium' }),
-      location: { path: `/titles/${item.id}` },
-      metadata,
-      posterUrl: item.posterUrl,
-      releaseDate: item.releaseDate,
-      releaseId: item.releaseId,
-      title: item.title,
-      titleLocale: item.titleLocale
-    }
-  }))
-
   function focusRetry(): void {
     retryButton.value?.focus()
   }
@@ -125,36 +97,17 @@
     .heading { font-size: 1.25rem; line-height: 1.3; }
     .list, .loadingList { display: grid; gap: var(--space-3); }
     .list { padding: 0; list-style: none; }
-    .item, .skeletonRow {
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: var(--color-surface);
-    }
-    .itemLink, .skeletonRow {
+    .skeletonRow {
       display: grid;
       grid-template-columns: 6rem minmax(0, 1fr);
       align-items: center;
       gap: var(--space-3);
       min-block-size: 6.5rem;
       padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
     }
-    .itemLink { color: var(--color-text-primary); text-decoration: none; }
-    .copy {
-      /* Let long localized titles shrink instead of widening the agenda rail. */
-      min-inline-size: 0;
-      display: grid;
-      gap: var(--space-1);
-    }
-    .date, .metadata { color: var(--color-text-secondary); font-size: 0.75rem; }
-    .title {
-      display: -webkit-box;
-      overflow: hidden;
-      font-size: 1rem;
-      line-height: 1.3;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-    }
-    .itemLink:hover .title { text-decoration: underline; text-underline-offset: 0.2em; }
     .skeletonPoster {
       aspect-ratio: 2 / 3;
       border-radius: var(--radius-sm);

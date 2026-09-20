@@ -14,6 +14,7 @@ import {
 } from '~/utils/calendar-date.ts'
 
 interface CalendarPeriodNavigationOptions {
+  active?: Readonly<Ref<boolean>>;
   hasError: Readonly<Ref<boolean>>;
   isLoading: Readonly<Ref<boolean>>;
   items: Readonly<Ref<CatalogReleaseItem[]>>;
@@ -28,7 +29,7 @@ type RouterNavigationMethod = 'push' | 'replace'
 
 // Owns route-backed month and week navigation while keeping the visible period and day selection distinct.
 function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
-  const { hasError, isLoading, items, selectedDate, today, visibleDate } = options
+  const { active = ref(true), hasError, isLoading, items, selectedDate, today, visibleDate } = options
   const route = useRoute()
   const router = useRouter()
   const pendingWeekSelection = ref<CalendarReleaseRange | null>(null)
@@ -115,7 +116,7 @@ function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
 
   async function navigateToDate(date: string, method: RouterNavigationMethod): Promise<void> {
     if (
-      today.value === null
+      !active.value || today.value === null
       || date < today.value
       || parseCalendarDate(date) === null
       || (route.query.date === date && route.query.month === undefined)
@@ -131,7 +132,7 @@ function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
 
   async function navigateToMonth(month: string, method: RouterNavigationMethod): Promise<void> {
     if (
-      today.value === null
+      !active.value || today.value === null
       || normalizeCalendarMonthQuery(month, today.value) === null
       || (route.query.month === month && route.query.date === undefined)
     ) {
@@ -144,7 +145,14 @@ function useCalendarPeriodNavigation(options: CalendarPeriodNavigationOptions) {
     })
   }
 
-  watch([() => route.query.date, () => route.query.month, today], ([dateValue, monthValue, currentToday]) => {
+  watch([() => route.query.date, () => route.query.month, today, active], ([dateValue, monthValue, currentToday, isActive]) => {
+    if (!isActive) {
+      visibleDate.value = null
+      selectedDate.value = null
+
+      return
+    }
+
     if (currentToday === null) {
       return
     }

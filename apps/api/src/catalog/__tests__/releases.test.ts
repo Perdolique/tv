@@ -1,9 +1,18 @@
 import type { Database } from '@tv/database'
 import { catalogItemTitles, catalogItems, catalogReleases } from '@tv/database/schema'
 import { sql } from 'drizzle-orm'
-import { describe, expect, it, vi } from 'vitest'
+import { assert, describe, expect, it, vi } from 'vitest'
 import { findCatalogReleaseRows } from '../repository.ts'
-import { createCatalogReleaseItems, validateCatalogReleaseRange } from '../releases.ts'
+
+import {
+  createCatalogReleaseItems,
+  createCatalogUpcomingReleasesResponse,
+  decodeCatalogReleaseCursor,
+  encodeCatalogReleaseCursor,
+  validateCatalogReleaseRange,
+  validateCatalogUpcomingReleaseQuery
+} from '../releases.ts'
+
 import type { CatalogReleaseRow } from '../types.ts'
 
 const firstReleaseId = '01991a00-0000-7000-8000-000000000001'
@@ -194,6 +203,108 @@ describe(createCatalogReleaseItems, () => {
       ...firstRussian,
       releaseId: '01991a00-0000-7000-8000-000000000004'
     }], 'en')).toThrow('Catalog release 01991a00-0000-7000-8000-000000000004 has no original title')
+  })
+})
+
+describe('upcoming release cursor pagination', () => {
+  it('round-trips nullable metadata through an opaque versioned cursor', () => {
+    const [item] = createCatalogReleaseItems([{
+      ...firstOriginal,
+      episodeNumber: null,
+      seasonNumber: null
+    }], 'en')
+
+    assert(item !== undefined)
+
+    const cursor = encodeCatalogReleaseCursor(item)
+
+    expect(cursor).not.toContain('{')
+    expect(cursor).not.toContain('=')
+
+    expect(decodeCatalogReleaseCursor(cursor)).toStrictEqual({
+      catalogItemId: item.id,
+      episodeNumber: null,
+      releaseDate: item.releaseDate,
+      releaseId: item.releaseId,
+      seasonNumber: null
+    })
+  })
+
+  it.each([
+    'not-base64url!',
+    btoa(JSON.stringify({ version: 2 })).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+  ])('rejects a malformed or unsupported cursor', (cursor) => {
+    expect(() => validateCatalogUpcomingReleaseQuery('2026-10-01', cursor)).toThrow(expect.objectContaining({
+      code: 'INVALID_REQUEST',
+      fields: { cursor: 'Use a valid releases cursor.' },
+      status: 400
+    }))
+  })
+
+  it.each(['seasonNumber', 'episodeNumber'] as const)('accepts the int32 limit and rejects an out-of-range %s', (field) => {
+    const payload = {
+      catalogItemId: firstOriginal.catalogItemId,
+      episodeNumber: 1,
+      releaseDate: firstOriginal.releaseDate,
+      releaseId: firstOriginal.releaseId,
+      seasonNumber: 1,
+      version: 1,
+      [field]: 2_147_483_648
+    }
+
+    const cursor = btoa(JSON.stringify(payload)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+
+    expect(() => validateCatalogUpcomingReleaseQuery('2026-10-01', cursor)).toThrow(expect.objectContaining({
+      code: 'INVALID_REQUEST',
+      fields: { cursor: 'Use a valid releases cursor.' },
+      status: 400
+    }))
+
+    const largestValidPayload = {
+      ...payload,
+      [field]: 2_147_483_647
+    }
+
+    const largestValidCursor = btoa(JSON.stringify(largestValidPayload)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+
+    expect(validateCatalogUpcomingReleaseQuery('2026-10-01', largestValidCursor).cursor?.[field]).toBe(2_147_483_647)
+  })
+
+  it('validates the inclusive start date', () => {
+    expect(validateCatalogUpcomingReleaseQuery('2026-10-01', null)).toStrictEqual({
+      cursor: null,
+      from: '2026-10-01'
+    })
+
+    expect(() => validateCatalogUpcomingReleaseQuery('2026-02-30', null)).toThrow(expect.objectContaining({
+      code: 'INVALID_REQUEST',
+      fields: { from: 'Use a valid calendar date in YYYY-MM-DD format.' },
+      status: 400
+    }))
+  })
+
+  it('returns 20 localized releases and a cursor for the last visible release', () => {
+    const rows = Array.from({ length: 21 }, (_value, index): CatalogReleaseRow => {
+      return {
+        ...firstOriginal,
+        episodeNumber: index + 1,
+        releaseId: `01991a00-0000-7000-8000-${String(index + 1).padStart(12, '0')}`
+      }
+    })
+
+    const response = createCatalogUpcomingReleasesResponse(rows, 'en')
+
+    expect(response.items).toHaveLength(20)
+    expect(response.items.at(-1)?.episodeNumber).toBe(20)
+    assert(response.nextCursor !== null)
+    expect(decodeCatalogReleaseCursor(response.nextCursor).releaseId).toBe(response.items.at(-1)?.releaseId)
+  })
+
+  it('returns a null cursor for the final page', () => {
+    expect(createCatalogUpcomingReleasesResponse([firstOriginal], 'en')).toStrictEqual({
+      items: createCatalogReleaseItems([firstOriginal], 'en'),
+      nextCursor: null
+    })
   })
 })
 

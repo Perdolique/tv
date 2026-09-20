@@ -3,8 +3,16 @@ import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, assert, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
+
+import {
+  type SeededCatalogItem,
+  seededCatalogItems,
+  seededReleaseCatalogItemIds
+} from '../../../testing/seeded-releases.ts'
+
 import { createCatalogReleaseItems } from '../../releases.ts'
 import { findCatalogReleaseRows, followCatalogItem, unfollowCatalogItem } from '../../repository.ts'
+import { findCatalogUpcomingReleaseRows } from '../../upcoming-releases-repository.ts'
 
 const databaseUrl = env.TEST_DATABASE_URL
 
@@ -23,26 +31,6 @@ const testReleaseIds = [
   '60000000-0000-4000-8000-000000000016',
   '60000000-0000-4000-8000-000000000017'
 ] as const
-
-const americanHorrorStoryId = '10000000-0000-7000-8000-000000000013'
-const percyJacksonId = '10000000-0000-7000-8000-000000000014'
-const sunriseOnTheReapingId = '10000000-0000-7000-8000-000000000015'
-const avengersDoomsdayId = '10000000-0000-7000-8000-000000000016'
-
-const upcomingCatalogItemIds = [
-  americanHorrorStoryId,
-  percyJacksonId,
-  sunriseOnTheReapingId,
-  avengersDoomsdayId
-] as const
-
-interface SeededCatalogItem {
-  id: string;
-  releases: string[];
-  releaseYear: number;
-  title: string;
-  type: 'movie' | 'series';
-}
 
 await client.connect()
 
@@ -64,7 +52,7 @@ describe('postgreSQL catalog releases', () => {
     await client.end()
   })
 
-  it('seeds officially announced upcoming releases as distinct catalog items', async () => {
+  it('seeds sourced releases as distinct catalog items', async () => {
     await assertDisposableTestDatabase(client)
 
     const result = await client.query<SeededCatalogItem>(`
@@ -88,64 +76,18 @@ describe('postgreSQL catalog releases', () => {
       WHERE item.id = ANY($1::uuid[])
       GROUP BY item.id, item.type, item.release_year, title.title
       ORDER BY item.id
-    `, [upcomingCatalogItemIds])
+    `, [seededReleaseCatalogItemIds])
 
     const releaseIdentifiers = await client.query<{ id: string; version: number }>(`
       SELECT release.id, uuid_extract_version(release.id) AS version
       FROM catalog_releases AS release
       WHERE release.catalog_item_id = ANY($1::uuid[])
       ORDER BY release.id
-    `, [upcomingCatalogItemIds])
+    `, [seededReleaseCatalogItemIds])
 
-    expect(releaseIdentifiers.rows).toHaveLength(16)
+    expect(releaseIdentifiers.rows).toHaveLength(57)
     expect(releaseIdentifiers.rows.every(release => release.version === 7)).toBe(true)
-
-    expect(result.rows).toStrictEqual([
-      {
-        id: americanHorrorStoryId,
-
-        releases: [
-          '2026-09-24:S13:E1',
-          '2026-09-24:S13:E2',
-          '2026-09-24:S13:E3',
-          '2026-10-01:S13:E4',
-          '2026-10-01:S13:E5',
-          '2026-10-01:S13:E6',
-          '2026-10-08:S13:E7',
-          '2026-10-08:S13:E8',
-          '2026-10-15:S13:E9',
-          '2026-10-15:S13:E10',
-          '2026-10-22:S13:E11',
-          '2026-10-22:S13:E12',
-          '2026-10-29:S13:E13'
-        ],
-
-        releaseYear: 2011,
-        title: 'American Horror Story',
-        type: 'series'
-      },
-      {
-        id: percyJacksonId,
-        releases: ['2026-11-20:S3'],
-        releaseYear: 2023,
-        title: 'Percy Jackson and the Olympians',
-        type: 'series'
-      },
-      {
-        id: sunriseOnTheReapingId,
-        releases: ['2026-11-20'],
-        releaseYear: 2026,
-        title: 'The Hunger Games: Sunrise on the Reaping',
-        type: 'movie'
-      },
-      {
-        id: avengersDoomsdayId,
-        releases: ['2026-12-18'],
-        releaseYear: 2026,
-        title: 'Avengers: Doomsday',
-        type: 'movie'
-      }
-    ])
+    expect(result.rows).toStrictEqual(seededCatalogItems)
   })
 
   it('returns separate localized releases for the current account in an inclusive stable range', async () => {
@@ -253,6 +195,39 @@ describe('postgreSQL catalog releases', () => {
         releaseDate: '2026-10-02',
         title: 'Прослушка',
         titleLocale: 'ru'
+      })
+
+      const upcomingRows = await findCatalogUpcomingReleaseRows(
+        database,
+        firstUserId,
+        {
+          cursor: null,
+          from: '2026-10-02'
+        }
+      )
+
+      const upcomingItems = createCatalogReleaseItems(upcomingRows, 'ru-RU')
+
+      expect(upcomingItems.map(item => item.releaseId)).toStrictEqual([
+        testReleaseIds[6],
+        testReleaseIds[0],
+        testReleaseIds[1],
+        testReleaseIds[2],
+        testReleaseIds[5]
+      ])
+
+      expect(upcomingItems.map(item => item.title)).toStrictEqual([
+        'Прослушка',
+        'Прослушка',
+        'Прослушка',
+        'Прослушка',
+        'Прослушка'
+      ])
+
+      expect(upcomingItems.at(3)).toMatchObject({
+        episodeNumber: null,
+        releaseDate: '2026-10-02',
+        seasonNumber: null
       })
 
       await unfollowCatalogItem(database, firstUserId, wireId)

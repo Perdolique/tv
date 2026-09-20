@@ -3,6 +3,7 @@ import type {
   CatalogFollowResponse,
   CatalogReleasesResponse,
   CatalogSearchResponse,
+  CatalogUpcomingReleasesResponse,
   CatalogWatchlistResponse
 } from '@tv/shared/catalog'
 
@@ -67,6 +68,11 @@ const catalogReleasesResponseSchema = v.object({
   }))
 }) satisfies v.GenericSchema<CatalogReleasesResponse>
 
+const catalogUpcomingReleasesResponseSchema = v.object({
+  ...catalogReleasesResponseSchema.entries,
+  nextCursor: v.nullable(v.string())
+}) satisfies v.GenericSchema<CatalogUpcomingReleasesResponse>
+
 function normalizeSearchQuery(value: unknown): string {
   return typeof value === 'string' ? value.trim().normalize('NFC') : ''
 }
@@ -75,6 +81,7 @@ export {
   catalogDetailsResponseSchema,
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
+  catalogUpcomingReleasesResponseSchema,
   catalogSearchResponseSchema,
   catalogWatchlistResponseSchema,
   normalizeSearchQuery

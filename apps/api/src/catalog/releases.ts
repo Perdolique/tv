@@ -1,8 +1,17 @@
-import type { CatalogReleaseItem } from '@tv/shared/catalog'
+import type { CatalogReleaseItem, CatalogUpcomingReleasesResponse } from '@tv/shared/catalog'
 import * as v from 'valibot'
+
+// oxlint-disable-next-line import/no-relative-parent-imports -- Catalog cursors reuse the API's canonical Base64URL codec.
+import { decodeBase64Url, encodeBase64Url } from '../auth/base64url.ts'
 import { CatalogHttpError } from './errors.ts'
 import { getLocaleFallbacks } from './search.ts'
-import type { CatalogReleaseRange, CatalogReleaseRow } from './types.ts'
+
+import type {
+  CatalogReleaseCursor,
+  CatalogReleaseRange,
+  CatalogReleaseRow,
+  CatalogUpcomingReleaseQuery
+} from './types.ts'
 
 const DATE_PATTERN = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/u
 const DAYS_PER_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
@@ -11,6 +20,10 @@ const MAX_RELEASE_RANGE_DAYS = 366
 const INVALID_DATE_MESSAGE = 'Use a valid calendar date in YYYY-MM-DD format.'
 const REVERSED_RANGE_MESSAGE = 'Use a date on or after from.'
 const RANGE_TOO_LONG_MESSAGE = `Use a range of ${MAX_RELEASE_RANGE_DAYS} days or fewer.`
+const INVALID_CURSOR_MESSAGE = 'Use a valid releases cursor.'
+const POSTGRES_INTEGER_MAX = 2_147_483_647
+const UPCOMING_RELEASE_PAGE_SIZE = 20
+const UPCOMING_RELEASE_QUERY_LIMIT = UPCOMING_RELEASE_PAGE_SIZE + 1
 
 function isLeapYear(year: number): boolean {
   return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
@@ -51,6 +64,15 @@ const calendarDateSchema = v.pipe(
   v.string(INVALID_DATE_MESSAGE),
   v.check(isCalendarDate, INVALID_DATE_MESSAGE)
 )
+
+const catalogReleaseCursorSchema = v.strictObject({
+  catalogItemId: v.pipe(v.string(), v.uuid()),
+  episodeNumber: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(POSTGRES_INTEGER_MAX))),
+  releaseDate: v.pipe(v.string(), v.check(isCalendarDate)),
+  releaseId: v.pipe(v.string(), v.uuid()),
+  seasonNumber: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(POSTGRES_INTEGER_MAX))),
+  version: v.literal(1)
+})
 
 const catalogReleaseRangeSchema = v.pipe(
   v.object({
@@ -103,6 +125,70 @@ function validateCatalogReleaseRange(
   }
 
   throw new CatalogHttpError('INVALID_REQUEST', 400, { fields })
+}
+
+function encodeCatalogReleaseCursor(item: CatalogReleaseItem): string {
+  const payload = JSON.stringify({
+    catalogItemId: item.id,
+    episodeNumber: item.episodeNumber,
+    releaseDate: item.releaseDate,
+    releaseId: item.releaseId,
+    seasonNumber: item.seasonNumber,
+    version: 1
+  })
+
+  const bytes = new TextEncoder().encode(payload)
+
+  return encodeBase64Url(bytes)
+}
+
+function decodeCatalogReleaseCursor(value: string): CatalogReleaseCursor {
+  try {
+    const bytes = decodeBase64Url(value)
+
+    const payload = new TextDecoder('utf-8', {
+      fatal: true,
+      ignoreBOM: false
+    }).decode(bytes)
+
+    const parsedJson: unknown = JSON.parse(payload)
+    const parsed = v.safeParse(catalogReleaseCursorSchema, parsedJson)
+
+    if (!parsed.success || encodeBase64Url(bytes) !== value) {
+      throw new Error(INVALID_CURSOR_MESSAGE)
+    }
+
+    return {
+      catalogItemId: parsed.output.catalogItemId,
+      episodeNumber: parsed.output.episodeNumber,
+      releaseDate: parsed.output.releaseDate,
+      releaseId: parsed.output.releaseId,
+      seasonNumber: parsed.output.seasonNumber
+    }
+  } catch (error) {
+    throw new CatalogHttpError('INVALID_REQUEST', 400, {
+      cause: error,
+      fields: { cursor: INVALID_CURSOR_MESSAGE }
+    })
+  }
+}
+
+function validateCatalogUpcomingReleaseQuery(
+  fromValue: string | null,
+  cursorValue: string | null
+): CatalogUpcomingReleaseQuery {
+  const result = v.safeParse(calendarDateSchema, fromValue)
+
+  if (!result.success) {
+    throw new CatalogHttpError('INVALID_REQUEST', 400, {
+      fields: { from: INVALID_DATE_MESSAGE }
+    })
+  }
+
+  return {
+    cursor: cursorValue === null ? null : decodeCatalogReleaseCursor(cursorValue),
+    from: result.output
+  }
 }
 
 function createCatalogReleaseItems(
@@ -162,7 +248,30 @@ function createCatalogReleaseItems(
   return items
 }
 
+function createCatalogUpcomingReleasesResponse(
+  rows: CatalogReleaseRow[],
+  requestedLocale: string
+): CatalogUpcomingReleasesResponse {
+  const items = createCatalogReleaseItems(rows, requestedLocale)
+  const hasNextPage = items.length > UPCOMING_RELEASE_PAGE_SIZE
+  const pageItems = hasNextPage ? items.slice(0, UPCOMING_RELEASE_PAGE_SIZE) : items
+  const lastItem = pageItems.at(-1)
+
+  return {
+    items: pageItems,
+
+    nextCursor: hasNextPage && lastItem !== undefined
+      ? encodeCatalogReleaseCursor(lastItem)
+      : null
+  }
+}
+
 export {
   createCatalogReleaseItems,
-  validateCatalogReleaseRange
+  createCatalogUpcomingReleasesResponse,
+  decodeCatalogReleaseCursor,
+  encodeCatalogReleaseCursor,
+  UPCOMING_RELEASE_QUERY_LIMIT,
+  validateCatalogReleaseRange,
+  validateCatalogUpcomingReleaseQuery
 }

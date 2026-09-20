@@ -1,5 +1,5 @@
 import { env, exports } from 'cloudflare:workers'
-import type { CatalogErrorEnvelope, CatalogReleasesResponse } from '@tv/shared/catalog'
+import type { CatalogErrorEnvelope, CatalogReleasesResponse, CatalogUpcomingReleasesResponse } from '@tv/shared/catalog'
 import { Client } from 'pg'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
@@ -157,6 +157,75 @@ describe('catalog releases Worker contract', () => {
     expectNoStore(response)
   })
 
+  it('continues after the cursor through nullable season and episode numbers', async () => {
+    const fixture = await withClient(async (client) => {
+      const seeded = await client.query<{ id: string }>(`
+        SELECT id FROM catalog_items JOIN catalog_item_titles ON catalog_item_id = id
+        WHERE title = 'The Wire' AND is_original
+      `)
+
+      const catalogItemId = seeded.rows[0]?.id
+
+      assert(catalogItemId !== undefined, 'The Wire is missing from the release catalog fixtures')
+
+      await client.query(`
+        INSERT INTO catalog_item_follows (user_id, catalog_item_id)
+        VALUES ($1, $2)
+      `, [TEST_USER_ID, catalogItemId])
+
+      const releases = await client.query<{ id: string }>(`
+        WITH inserted AS (
+          INSERT INTO catalog_releases (catalog_item_id, release_date, season_number, episode_number)
+          SELECT $1::uuid, '2026-10-02'::date, 99, episode_number FROM generate_series(1, 20) AS episode_number
+          UNION ALL SELECT $1::uuid, '2026-10-02'::date, 99, NULL
+          UNION ALL SELECT $1::uuid, '2026-10-02'::date, NULL, NULL
+          RETURNING id, season_number, episode_number
+        )
+        SELECT id FROM inserted
+        ORDER BY season_number ASC NULLS LAST, episode_number ASC NULLS LAST, id
+      `, [catalogItemId])
+
+      return releases.rows
+    })
+
+    const releaseIds = fixture.map(release => release.id)
+
+    try {
+      const firstResponse = await request('/api/catalog/releases/upcoming?from=2026-10-02')
+      const firstBody = await firstResponse.json<CatalogUpcomingReleasesResponse>()
+
+      expect(firstResponse.status).toBe(200)
+      expect(firstBody.items).toHaveLength(20)
+      expect(firstBody.nextCursor).not.toBeNull()
+      expectNoStore(firstResponse)
+      assert(firstBody.nextCursor !== null, 'The first upcoming page must have a cursor')
+
+      const secondResponse = await request(
+        `/api/catalog/releases/upcoming?from=2026-10-02&cursor=${encodeURIComponent(firstBody.nextCursor)}`
+      )
+
+      const secondBody = await secondResponse.json<CatalogUpcomingReleasesResponse>()
+      const receivedIds = [...firstBody.items, ...secondBody.items].map(item => item.releaseId)
+
+      expect(secondResponse.status).toBe(200)
+      expect(secondBody.items).toHaveLength(2)
+      expect(secondBody.nextCursor).toBeNull()
+      expect(receivedIds).toStrictEqual(releaseIds)
+
+      expect(secondBody.items.map(item => [item.seasonNumber, item.episodeNumber])).toStrictEqual([
+        [99, null],
+        [null, null]
+      ])
+
+      expect(new Set(receivedIds).size).toBe(22)
+      expectNoStore(secondResponse)
+    } finally {
+      await withClient(async (client) => {
+        await client.query('DELETE FROM catalog_releases WHERE id = ANY($1::uuid[])', [releaseIds])
+      })
+    }
+  })
+
   it('validates dates and locale only after authentication', async () => {
     const anonymous = await request('/api/catalog/releases?from=bad&to=also-bad&titleLocale=not_a_locale', null)
 
@@ -227,6 +296,26 @@ describe('catalog releases Worker contract', () => {
     for (const response of [anonymous, missing, reversed, tooWide, invalidLocale]) {
       expectNoStore(response)
     }
+
+    const anonymousUpcoming = await request(
+      '/api/catalog/releases/upcoming?from=bad&cursor=broken',
+      null
+    )
+
+    expect(anonymousUpcoming.status).toBe(401)
+    expectNoStore(anonymousUpcoming)
+
+    const invalidUpcoming = await request('/api/catalog/releases/upcoming?from=2026-10-01&cursor=broken')
+
+    expect(invalidUpcoming.status).toBe(400)
+
+    await expect(invalidUpcoming.json()).resolves.toStrictEqual({ error: {
+      code: 'INVALID_REQUEST',
+      fields: { cursor: 'Use a valid releases cursor.' },
+      message: 'The request is invalid.'
+    } })
+
+    expectNoStore(invalidUpcoming)
   })
 
   it('returns a safe 503 and keeps the raw database failure in telemetry', async () => {
@@ -238,7 +327,7 @@ describe('catalog releases Worker contract', () => {
       await client.query('ALTER TABLE catalog_releases RENAME TO catalog_releases_unavailable')
 
       try {
-        const response = await request()
+        const response = await request('/api/catalog/releases/upcoming?from=2026-10-01')
         const body = await response.json<CatalogErrorEnvelope>()
 
         expect(response.status).toBe(503)

@@ -1,6 +1,7 @@
 import type { CatalogReleaseItem } from '../../../packages/shared/src/catalog.ts'
 import { dark, longTitle } from '../catalog/fixtures.ts'
 import { dune } from '../catalog/details.fixtures.ts'
+import { paginationCalendarReleases } from './pagination.fixtures.ts'
 
 type CalendarFixtureItem = Pick<
   CatalogReleaseItem,
@@ -230,7 +231,38 @@ const calendarReleases = [
     releaseDate: '2026-12-18',
     releaseId: '01991a00-0000-7000-8000-000000000120',
     seasonNumber: null
-  })
+  }),
+  createCalendarRelease(americanHorrorStory, {
+    episodeNumber: 14,
+    releaseDate: '2026-12-18',
+    releaseId: '01991a00-0000-7000-8000-000000000121',
+    seasonNumber: 13
+  }),
+  createCalendarRelease(americanHorrorStory, {
+    episodeNumber: 15,
+    releaseDate: '2026-12-18',
+    releaseId: '01991a00-0000-7000-8000-000000000122',
+    seasonNumber: 13
+  }),
+  createCalendarRelease(americanHorrorStory, {
+    episodeNumber: 16,
+    releaseDate: '2026-12-18',
+    releaseId: '01991a00-0000-7000-8000-000000000123',
+    seasonNumber: 13
+  }),
+  createCalendarRelease(americanHorrorStory, {
+    episodeNumber: 17,
+    releaseDate: '2026-12-18',
+    releaseId: '01991a00-0000-7000-8000-000000000124',
+    seasonNumber: 13
+  }),
+  createCalendarRelease(americanHorrorStory, {
+    episodeNumber: 18,
+    releaseDate: '2026-12-18',
+    releaseId: '01991a00-0000-7000-8000-000000000125',
+    seasonNumber: 13
+  }),
+  ...paginationCalendarReleases
 ] as const satisfies readonly CatalogReleaseItem[]
 
 export { calendarReleases }

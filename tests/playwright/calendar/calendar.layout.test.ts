@@ -22,30 +22,21 @@ async function getVisibleBounds(locator: Locator): Promise<NonNullable<Awaited<R
 }
 
 async function expectReleaseSummaryInsideDay(day: Locator): Promise<void> {
-  const dayBounds = await day.evaluate((element) => {
-    const bounds = element.getBoundingClientRect()
-
-    return {
-      left: bounds.left,
-      right: bounds.right
-    }
-  })
-
   const releaseSummary = day.locator('[data-release-summary]')
 
   await expect(releaseSummary).toHaveCount(1)
 
-  const summaryBounds = await releaseSummary.evaluate((element) => {
-    const bounds = element.getBoundingClientRect()
+  await expect.poll(async () => {
+    const [dayBounds, summaryBounds] = await Promise.all([
+      day.boundingBox(),
+      releaseSummary.boundingBox()
+    ])
 
-    return {
-      left: bounds.left,
-      right: bounds.right
-    }
-  })
-
-  expect(summaryBounds.left).toBeGreaterThanOrEqual(dayBounds.left)
-  expect(summaryBounds.right).toBeLessThanOrEqual(dayBounds.right)
+    return dayBounds !== null
+      && summaryBounds !== null
+      && summaryBounds.x >= dayBounds.x
+      && summaryBounds.x + summaryBounds.width <= dayBounds.x + dayBounds.width
+  }).toBe(true)
 }
 
 const viewports = [
@@ -108,6 +99,55 @@ for (const colorScheme of ['light', 'dark'] as const) {
       }).locator('xpath=..')).toHaveCSS('display', viewport.calendarDisplay)
     })
   }
+}
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  for (const viewport of viewports) {
+    test(`${viewport.name} Upcoming list in ${colorScheme}`, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      await page.emulateMedia({ colorScheme })
+      await page.goto('/calendar?view=upcoming')
+
+      await expect(page.getByRole('heading', {
+        name: 'Upcoming releases',
+        exact: true
+      })).toBeVisible()
+
+      await expect(page.getByRole('button', { name: 'Upcoming' })).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByRole('button', { name: 'Agenda' })).toHaveCount(0)
+      await expect(page.getByRole('heading', { name: /A very long title/u })).toBeVisible()
+      await expectNoHorizontalOverflow(page)
+
+      const listBounds = await getVisibleBounds(page.getByRole('list', { name: /Releases for/u }).first())
+
+      expect(listBounds.width).toBeLessThanOrEqual(736)
+    })
+  }
+}
+
+for (const width of [320, 639, 640, 1023, 1024]) {
+  test(`keeps Upcoming cards readable inside ${width}px`, async ({ page }) => {
+    await page.setViewportSize({
+      height: 1024,
+      width
+    })
+
+    await page.goto('/calendar?view=upcoming')
+
+    await expect(page.getByRole('heading', {
+      name: 'Upcoming releases',
+      exact: true
+    })).toBeVisible()
+
+    await expectNoHorizontalOverflow(page)
+
+    const firstCard = page.locator('[data-release-id]').first()
+    const cardBounds = await getVisibleBounds(firstCard)
+    const longTitle = page.getByRole('heading', { name: /A very long title/u })
+
+    expect(cardBounds.width).toBeLessThanOrEqual(736)
+    expect(await getVisibleLineCount(longTitle)).toBeLessThanOrEqual(2)
+  })
 }
 
 for (const [width, expectedNavigationWidth] of [[320, 320], [639, 639], [640, 80], [1023, 80], [1024, 224]] as const) {
@@ -290,6 +330,14 @@ test('keeps calendar usable with reduced motion and forced colors', async ({ pag
   })
 
   await expectNoHorizontalOverflow(page)
+  await page.getByRole('button', { name: 'Upcoming' }).click()
+
+  const upcomingButton = page.getByRole('button', { name: 'Upcoming' })
+
+  await upcomingButton.focus()
+  await expect(upcomingButton).toBeFocused()
+  await expect(upcomingButton).toHaveAttribute('aria-pressed', 'true')
+  await expectNoHorizontalOverflow(page)
 })
 
 test('reflows the calendar at a 200% zoom-equivalent viewport', async ({ page }) => {
@@ -301,5 +349,13 @@ test('reflows the calendar at a 200% zoom-equivalent viewport', async ({ page })
   await page.goto('/calendar?date=2026-09-13')
   await expect(page.getByRole('heading', { name: 'Release calendar' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.getByRole('button', { name: 'Upcoming' }).click()
+
+  await expect(page.getByRole('heading', {
+    name: 'Upcoming releases',
+    exact: true
+  })).toBeVisible()
+
   await expectNoHorizontalOverflow(page)
 })
