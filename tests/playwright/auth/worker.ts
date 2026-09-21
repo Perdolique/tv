@@ -1,6 +1,7 @@
 /* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
 import { catalogItems } from '../catalog/fixtures.ts'
 import { detailsItems, dune, russianDune } from '../catalog/details.fixtures.ts'
+import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 import { calendarReleases } from '../calendar/fixtures.ts'
 import { watchlistItems } from '../watchlist/fixtures.ts'
 import { longEmail } from './constants.ts'
@@ -58,6 +59,8 @@ const LONG_EMAIL_SESSION_COOKIE = 'tv_session=e2e-long-email-session'
 const FOLLOW_COOKIE_NAME = 'tv_followed_item'
 const WATCHED_COOKIE_NAME = 'tv_watched_item'
 const LONG_EMAIL_WATCHED_COOKIE_NAME = 'tv_long_email_watched_item'
+const EPISODE_WATCHED_COOKIE_NAME = 'tv_watched_episode'
+const LONG_EMAIL_EPISODE_WATCHED_COOKIE_NAME = 'tv_long_email_watched_episode'
 const LONG_EMAIL_EMPTY_RELEASE_DATE = '2026-09-12'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
@@ -638,6 +641,12 @@ function getWatchedCookieName(request: Request): string {
     : WATCHED_COOKIE_NAME
 }
 
+function getEpisodeWatchedCookieName(request: Request): string {
+  return hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
+    ? LONG_EMAIL_EPISODE_WATCHED_COOKIE_NAME
+    : EPISODE_WATCHED_COOKIE_NAME
+}
+
 function getWatchedCatalogItemIds(request: Request, cookieName: string): Set<string> {
   const value = getCookieValue(request, cookieName)
   const ids = value === undefined || value === '' ? [] : value.split('|')
@@ -795,6 +804,133 @@ async function handleCatalogWatched(request: Request, url: URL): Promise<Respons
   return json({ watched: watchedCatalogItemIds.has(id) })
 }
 
+async function handleCatalogEpisodes(request: Request, url: URL): Promise<Response> {
+  if (hasCookie(request, 'fail_episodes=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_episodes=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'slow_episodes=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- Browser tests exercise the independent public loading state.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
+  }
+
+  const id = url.pathname.split('/').at(-2)
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined || id === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  return json({ items: episodeFixtures.get(id) ?? [] })
+}
+
+function handleCatalogEpisodeWatches(request: Request, url: URL): Response {
+  if (!hasAuthenticatedCatalogSession(request) || hasCookie(request, 'expire_episode_watches=1')) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_episode_watches_load=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_episode_watches_load=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  const id = url.pathname.split('/').at(-3)
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined || id === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  if (item.type !== 'series') {
+    return json({ error: {
+      code: 'INVALID_REQUEST',
+      message: 'The request is invalid.'
+    } }, 400)
+  }
+
+  const cookieName = getEpisodeWatchedCookieName(request)
+  const watchedIds = getWatchedCatalogItemIds(request, cookieName)
+  const episodeIds = new Set((episodeFixtures.get(id) ?? []).map(episode => episode.id))
+  const watchedEpisodeIds = [...watchedIds].filter(episodeId => episodeIds.has(episodeId))
+
+  return json({ watchedEpisodeIds })
+}
+
+async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<Response> {
+  const expiresDuringMutation = hasCookie(request, 'expire_episode_watched_mutation=1')
+
+  if (!hasAuthenticatedCatalogSession(request) || expiresDuringMutation) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_episode_watched=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- Browser tests require an observable optimistic state before rollback.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 500) })
+
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_episode_watched=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  const episodeId = url.pathname.split('/').at(-2)
+
+  const episodeExists = [...episodeFixtures.values()].some(episodes => (
+    episodes.some(episode => episode.id === episodeId)
+  ))
+
+  if (episodeId === undefined || !episodeExists) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  const cookieName = getEpisodeWatchedCookieName(request)
+  const watchedIds = getWatchedCatalogItemIds(request, cookieName)
+
+  if (request.method === 'PUT') {
+    watchedIds.add(episodeId)
+
+    return json({ watched: true }, 200, {
+      'Set-Cookie': createWatchedCookie(cookieName, watchedIds)
+    })
+  }
+
+  watchedIds.delete(episodeId)
+
+  return json({ watched: false }, 200, {
+    'Set-Cookie': createWatchedCookie(cookieName, watchedIds)
+  })
+}
+
 async function handleCatalogDetails(request: Request, url: URL): Promise<Response> {
   if (hasCookie(request, 'fail_details=1')) {
     return json({ error: {
@@ -829,6 +965,30 @@ export default {
   // oxlint-disable-next-line eslint/complexity -- One explicit dispatcher keeps the fake service routes auditable.
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
+
+    if (
+      request.method === 'GET'
+      && url.pathname.startsWith('/api/catalog/items/')
+      && url.pathname.endsWith('/episodes/watched')
+    ) {
+      return handleCatalogEpisodeWatches(request, url)
+    }
+
+    if (
+      request.method === 'GET'
+      && url.pathname.startsWith('/api/catalog/items/')
+      && url.pathname.endsWith('/episodes')
+    ) {
+      return handleCatalogEpisodes(request, url)
+    }
+
+    if (
+      ['PUT', 'DELETE'].includes(request.method)
+      && url.pathname.startsWith('/api/catalog/episodes/')
+      && url.pathname.endsWith('/watched')
+    ) {
+      return handleCatalogEpisodeWatched(request, url)
+    }
 
     if (
       ['GET', 'PUT', 'DELETE'].includes(request.method)

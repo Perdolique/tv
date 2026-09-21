@@ -32,6 +32,22 @@ interface CatalogWatchedResponse {
   watched: boolean;
 }
 
+interface CatalogEpisode {
+  airDate: string | null;
+  episodeNumber: number;
+  id: string;
+  seasonNumber: number;
+  sourceTitle: string | null;
+}
+
+interface CatalogEpisodesResponse {
+  items: CatalogEpisode[];
+}
+
+interface CatalogEpisodeWatchesResponse {
+  watchedEpisodeIds: string[];
+}
+
 interface CatalogWatchlistItem extends CatalogSearchItem {
   posterUrl: string | null;
 }
@@ -76,6 +92,9 @@ interface CatalogErrorEnvelope {
 export type {
   CatalogDetailsItem,
   CatalogDetailsResponse,
+  CatalogEpisode,
+  CatalogEpisodesResponse,
+  CatalogEpisodeWatchesResponse,
   CatalogErrorCode,
   CatalogErrorEnvelope,
   CatalogFollowResponse,

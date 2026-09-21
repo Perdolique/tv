@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -78,6 +79,41 @@ const catalogReleases = pgTable('catalog_releases', {
 }, (table) => [
   index('catalog_releases_catalog_item_id_release_date_index')
     .on(table.catalogItemId, table.releaseDate)
+])
+
+const catalogEpisodes = pgTable('catalog_episodes', {
+  id:
+    uuid()
+    .default(sql`uuidv7()`)
+    .primaryKey(),
+
+  catalogItemId:
+    uuid('catalog_item_id')
+    .notNull()
+    .references(() => catalogItems.id, { onDelete: 'cascade' }),
+
+  seasonNumber:
+    integer('season_number')
+    .notNull(),
+
+  episodeNumber:
+    integer('episode_number')
+    .notNull(),
+
+  sourceTitle: text('source_title'),
+  airDate: date('air_date', { mode: 'string' }),
+
+  tvmazeEpisodeId:
+    integer('tvmaze_episode_id')
+    .notNull()
+}, (table) => [
+  check('catalog_episodes_season_number_positive', sql`${table.seasonNumber} > 0`),
+  check('catalog_episodes_episode_number_positive', sql`${table.episodeNumber} > 0`),
+  check('catalog_episodes_tvmaze_episode_id_positive', sql`${table.tvmazeEpisodeId} > 0`),
+  uniqueIndex('catalog_episodes_catalog_item_season_episode_unique')
+    .on(table.catalogItemId, table.seasonNumber, table.episodeNumber),
+  uniqueIndex('catalog_episodes_tvmaze_episode_id_unique')
+    .on(table.tvmazeEpisodeId)
 ])
 
 const users = pgTable('users', {
@@ -157,6 +193,30 @@ const catalogMovieWatches = pgTable('catalog_movie_watches', {
   primaryKey({ columns: [table.userId, table.catalogItemId] }),
   index('catalog_movie_watches_catalog_item_id_index')
     .on(table.catalogItemId)
+])
+
+const catalogEpisodeWatches = pgTable('catalog_episode_watches', {
+  userId:
+    uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+
+  catalogEpisodeId:
+    uuid('catalog_episode_id')
+    .notNull()
+    .references(() => catalogEpisodes.id, { onDelete: 'cascade' }),
+
+  markedAt:
+    timestamp('marked_at', {
+      mode: 'date',
+      withTimezone: true
+    })
+    .defaultNow()
+    .notNull()
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.catalogEpisodeId] }),
+  index('catalog_episode_watches_catalog_episode_id_index')
+    .on(table.catalogEpisodeId)
 ])
 
 const passwordCredentials = pgTable('password_credentials', {
@@ -254,6 +314,8 @@ const sessions = pgTable('sessions', {
 ])
 
 export {
+  catalogEpisodes,
+  catalogEpisodeWatches,
   catalogItemFollows,
   catalogMovieWatches,
   catalogItemTitles,

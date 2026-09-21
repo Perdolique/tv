@@ -33,7 +33,7 @@ function observeWatchedRequestCount(page: Page): () => number {
   page.on('request', (request) => {
     const { pathname } = new URL(request.url())
 
-    if (pathname.endsWith('/watched')) {
+    if (/^\/api\/catalog\/items\/[^/]+\/watched$/u.test(pathname)) {
       count += 1
     }
   })
@@ -47,7 +47,7 @@ function observeWatchedMutationCount(page: Page): () => number {
   page.on('request', (request) => {
     const { pathname } = new URL(request.url())
 
-    if (pathname.endsWith('/watched') && request.method() !== 'GET') {
+    if (/^\/api\/catalog\/items\/[^/]+\/watched$/u.test(pathname) && request.method() !== 'GET') {
       count += 1
     }
   })

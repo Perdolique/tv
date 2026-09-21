@@ -8,6 +8,7 @@ import { resolveCurrentSession } from '../auth/current-session.ts'
 import { isSessionTransportAllowed } from '../auth/session.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
 import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
+import { registerCatalogEpisodeRoutes } from './episode-routes.ts'
 
 import {
   findCatalogDetailsRows,
@@ -87,6 +88,8 @@ function createCatalogApp(
 
     return context.json({ item })
   })
+
+  registerCatalogEpisodeRoutes(app, dependencies)
 
   app.get('/api/catalog/items/:id/follow', async (context) => {
     const id = validateCatalogItemId(context.req.param('id'))

@@ -22,6 +22,32 @@ const russianDune = {
   descriptionLocale: 'ru'
 } as const satisfies CatalogDetailsItem
 
+const chernobyl = {
+  id: '01991a00-0000-7000-8000-000000000006',
+  title: 'Chernobyl',
+  titleLocale: 'en',
+  originalTitle: 'Chernobyl',
+  originalTitleLocale: 'en',
+  releaseYear: 2019,
+  type: 'series',
+  description: 'After the 1986 explosion, scientists, workers and emergency crews struggle to contain the disaster.',
+  descriptionLocale: 'en',
+  posterUrl: '/posters/chernobyl-2019.webp'
+} as const satisfies CatalogDetailsItem
+
+const episodeEdgeSeries = {
+  id: '01991a00-0000-7000-8000-000000000007',
+  title: 'Episode edge cases',
+  titleLocale: 'en',
+  originalTitle: 'Episode edge cases',
+  originalTitleLocale: 'en',
+  releaseYear: 2099,
+  type: 'series',
+  description: null,
+  descriptionLocale: null,
+  posterUrl: null
+} as const satisfies CatalogDetailsItem
+
 const detailsItems: CatalogDetailsItem[] = []
 
 for (const item of catalogItems) {
@@ -33,6 +59,6 @@ for (const item of catalogItems) {
   })
 }
 
-detailsItems.push(dune)
+detailsItems.push(dune, chernobyl, episodeEdgeSeries)
 
-export { detailsItems, dune, russianDune }
+export { chernobyl, detailsItems, dune, episodeEdgeSeries, russianDune }
