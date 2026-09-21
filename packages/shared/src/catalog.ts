@@ -28,6 +28,10 @@ interface CatalogFollowResponse {
   followed: boolean;
 }
 
+interface CatalogWatchedResponse {
+  watched: boolean;
+}
+
 interface CatalogWatchlistItem extends CatalogSearchItem {
   posterUrl: string | null;
 }
@@ -81,6 +85,7 @@ export type {
   CatalogSearchResponse,
   CatalogItemType,
   CatalogUpcomingReleasesResponse,
+  CatalogWatchedResponse,
   CatalogWatchlistItem,
   CatalogWatchlistResponse
 }

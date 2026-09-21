@@ -1,5 +1,5 @@
 /* oxlint-disable eslint/max-lines -- Public title, follow, recovery and navigation flows share one browser contract. */
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { catalogItems } from './fixtures.ts'
@@ -10,11 +10,14 @@ const dunePath = `/titles/${dune.id}`
 const arrivalPath = `/titles/${catalogItems[0].id}`
 const missingPath = '/titles/01991a00-0000-7000-8000-999999999999'
 
-async function signIn(page: Page): Promise<void> {
+async function signIn(
+  page: Page,
+  email = 'viewer@example.com'
+): Promise<void> {
   await page.getByRole('textbox', {
     name: 'Email',
     exact: true
-  }).fill('viewer@example.com')
+  }).fill(email)
 
   await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
 
@@ -22,6 +25,41 @@ async function signIn(page: Page): Promise<void> {
     name: 'Sign in',
     exact: true
   }).click()
+}
+
+function observeWatchedRequestCount(page: Page): () => number {
+  let count = 0
+
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url())
+
+    if (pathname.endsWith('/watched')) {
+      count += 1
+    }
+  })
+
+  return () => count
+}
+
+function observeWatchedMutationCount(page: Page): () => number {
+  let count = 0
+
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url())
+
+    if (pathname.endsWith('/watched') && request.method() !== 'GET') {
+      count += 1
+    }
+  })
+
+  return () => count
+}
+
+function watchedButton(page: Page): Locator {
+  return page.getByRole('button', {
+    name: 'Watched',
+    exact: true
+  })
 }
 
 function observeFollowMutationCount(page: Page): () => number {
@@ -317,6 +355,506 @@ test('follows from the public title, persists across reload and sign-in, then un
   })
 })
 
+test('marks a movie after sign-in, preserves the full return URL and restores the state across sessions', async ({ page }) => {
+  const returnPath = `${dunePath}?query=Arrival`
+
+  await test.step('return from guest watched action without marking automatically', async () => {
+    await page.goto(returnPath)
+    await waitForHydration(page)
+
+    await page.getByRole('link', {
+      name: 'Mark as watched',
+      exact: true
+    }).click()
+
+    await signIn(page)
+    await expect(page).toHaveURL(`${appBaseUrl}${returnPath}`)
+    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  await test.step('mark the movie without following it and keep the state after reload', async () => {
+    await watchedButton(page).click()
+    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+
+    await expect(page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })).toHaveAttribute('aria-pressed', 'false')
+
+    await page.reload()
+    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  await test.step('sign out and restore the same account state', async () => {
+    await page.getByRole('button', {
+      name: 'Sign out',
+      exact: true
+    }).click()
+
+    await page.getByRole('link', {
+      name: 'Mark as watched',
+      exact: true
+    }).click()
+
+    await signIn(page)
+    await expect(page).toHaveURL(`${appBaseUrl}${returnPath}`)
+    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  await test.step('unmark and keep the saved state after reload', async () => {
+    await watchedButton(page).click()
+    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+    await page.reload()
+    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  })
+})
+
+test('keeps watched state private to the signed-in account', async ({ context, page }) => {
+  await context.addCookies([
+    {
+      name: 'tv_session',
+      value: 'e2e-session',
+      url: appBaseUrl
+    },
+    {
+      name: 'tv_watched_item',
+      value: dune.id,
+      url: appBaseUrl
+    }
+  ])
+
+  await page.goto(dunePath)
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-long-email-session',
+    url: appBaseUrl
+  }])
+
+  await page.reload()
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  await watchedButton(page).click()
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('keeps Follow and Watched independent in both directions', async ({ context, page }) => {
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  await page.goto(dunePath)
+
+  const follow = page.getByRole('button', {
+    name: 'Follow',
+    exact: true
+  })
+
+  await follow.click()
+
+  const following = page.getByRole('button', {
+    name: 'Following',
+    exact: true
+  })
+
+  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await watchedButton(page).click()
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await watchedButton(page).click()
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await watchedButton(page).click()
+  await following.click()
+  await expect(follow).toHaveAttribute('aria-pressed', 'false')
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await follow.click()
+  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('keeps separate watched marks for two movies', async ({ context, page }) => {
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  await page.goto(dunePath)
+  await watchedButton(page).click()
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await page.goto(arrivalPath)
+  await watchedButton(page).click()
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await page.goto(dunePath)
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await watchedButton(page).click()
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  await page.goto(arrivalPath)
+  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('does not expose or request watched state for a series as a guest or account', async ({ context, page }) => {
+  const getWatchedRequestCount = observeWatchedRequestCount(page)
+
+  await page.goto(`/titles/${catalogItems[1].id}`)
+
+  await expect(page.getByRole('heading', {
+    name: catalogItems[1].title,
+    exact: true
+  })).toBeVisible()
+
+  await expect(watchedButton(page)).toHaveCount(0)
+
+  await expect(page.getByRole('link', {
+    name: 'Mark as watched',
+    exact: true
+  })).toHaveCount(0)
+
+  expect(getWatchedRequestCount()).toBe(0)
+
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  await page.reload()
+  await expect(watchedButton(page)).toHaveCount(0)
+
+  await expect(page.getByRole('link', {
+    name: 'Mark as watched',
+    exact: true
+  })).toHaveCount(0)
+
+  expect(getWatchedRequestCount()).toBe(0)
+})
+
+test('returns the production invalid UUID contract from the watched browser API', async ({ context, page }) => {
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  const response = await page.request.get(`${appBaseUrl}/api/catalog/items/not-a-uuid/watched`)
+
+  expect(response.status()).toBe(400)
+})
+
+test('keeps public title details visible while the initial watched status loads', async ({ context, page }) => {
+  const response = Promise.withResolvers<boolean>()
+
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  await page.route(`${appBaseUrl}/api/catalog/items/${dune.id}/watched`, async (route) => {
+    await response.promise
+
+    await route.continue()
+  })
+
+  try {
+    await page.goto(dunePath)
+    await waitForHydration(page)
+
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeVisible()
+
+    await expect(page.getByText(dune.description, { exact: true })).toBeVisible()
+
+    const checking = page.getByRole('button', {
+      name: 'Checking watched status…',
+      exact: true
+    })
+
+    await expect(checking).toHaveAttribute('aria-busy', 'true')
+    await expect(checking).toBeDisabled()
+    response.resolve(true)
+    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  } finally {
+    response.resolve(true)
+    await page.unrouteAll({ behavior: 'wait' })
+  }
+})
+
+test.describe('personal action read failures', () => {
+  test.use({ expectedHttpErrors: { values: [
+    {
+      pathname: `/api/catalog/items/${dune.id}/follow`,
+      status: 503
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/watched`,
+      status: 503
+    }
+  ] } })
+
+  test('gives Follow and Watched recovery controls distinct accessible names', async ({ context, page }) => {
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'fail_follow_load',
+        value: '1',
+        url: appBaseUrl
+      },
+      {
+        name: 'fail_watched_load',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.goto(dunePath)
+
+    await expect(page.getByRole('button', {
+      name: 'Retry follow status',
+      exact: true
+    })).toBeVisible()
+
+    await expect(page.getByRole('button', {
+      name: 'Retry watched status',
+      exact: true
+    })).toBeVisible()
+  })
+})
+
+test.describe('watched service recovery', () => {
+  test.use({ expectedHttpErrors: { values: [
+    {
+      pathname: `/api/catalog/items/${dune.id}/watched`,
+      status: 503
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/watched`,
+      status: 503
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/watched`,
+      status: 503
+    }
+  ] } })
+
+  test('keeps public metadata and visibly recovers failed watched changes', async ({ context, page }) => {
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'fail_watched_load',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.goto(dunePath)
+
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeVisible()
+
+    await expect(page.getByText(dune.description, { exact: true })).toBeVisible()
+    await expect(page.getByText('We couldn’t check whether you watched this movie. Try again.')).toBeVisible()
+    await expect(page.getByText('private database connection details')).toHaveCount(0)
+
+    await page.getByRole('button', {
+      name: 'Retry watched status',
+      exact: true
+    }).click()
+
+    const watched = watchedButton(page)
+
+    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toBeFocused()
+
+    await context.addCookies([{
+      name: 'fail_watched',
+      value: '1',
+      url: appBaseUrl
+    }])
+
+    const mutationRequestCount = observeWatchedMutationCount(page)
+
+    await watched.click()
+    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toHaveAttribute('aria-busy', 'true')
+    await expect(watched).toBeDisabled()
+    await expect(page.getByText('Saving…', { exact: true })).toBeVisible()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('alert')).toContainText('couldn’t update your watched status')
+    await expect(page.getByText('private database connection details')).toHaveCount(0)
+    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toBeEnabled()
+    await expect(watched).toBeFocused()
+    expect(mutationRequestCount()).toBe(1)
+    await watched.click()
+    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toBeEnabled()
+    await expect(watched).toBeFocused()
+    expect(mutationRequestCount()).toBe(2)
+
+    await context.addCookies([{
+      name: 'fail_watched',
+      value: '1',
+      url: appBaseUrl
+    }])
+
+    await watched.click()
+    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toHaveAttribute('aria-busy', 'true')
+    await expect(watched).toBeDisabled()
+    await page.keyboard.press('Enter')
+
+    const follow = page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })
+
+    await follow.focus()
+    await expect(page.getByRole('alert')).toContainText('couldn’t update your watched status')
+    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toBeEnabled()
+    await expect(follow).toBeFocused()
+    expect(mutationRequestCount()).toBe(3)
+    await watched.click()
+    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toBeFocused()
+    expect(mutationRequestCount()).toBe(4)
+  })
+})
+
+test.describe('watched retry focus', () => {
+  test.use({ expectedHttpErrors: { values: [{
+    pathname: `/api/catalog/items/${dune.id}/watched`,
+    status: 503
+  }] } })
+
+  test('does not restore watched focus after the user moves to another control', async ({ context, page }) => {
+    const response = Promise.withResolvers<boolean>()
+
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'fail_watched_load',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.goto(dunePath)
+    await waitForHydration(page)
+
+    await page.route(`${appBaseUrl}/api/catalog/items/${dune.id}/watched`, async (route) => {
+      await response.promise
+
+      await route.continue()
+    })
+
+    try {
+      await page.getByRole('button', {
+        name: 'Retry watched status',
+        exact: true
+      }).click()
+
+      await expect(page.getByRole('button', {
+        name: 'Checking watched status…',
+        exact: true
+      })).toBeVisible()
+
+      const back = page.getByRole('link', {
+        name: 'Back to catalog',
+        exact: true
+      })
+
+      await back.focus()
+      response.resolve(true)
+      await expect(watchedButton(page)).toBeVisible()
+      await expect(back).toBeFocused()
+    } finally {
+      response.resolve(true)
+      await page.unrouteAll({ behavior: 'wait' })
+    }
+  })
+})
+
+test.describe('watched session expiry', () => {
+  test.use({ expectedHttpErrors: { values: [
+    {
+      pathname: `/api/catalog/items/${dune.id}/watched`,
+      status: 401
+    },
+    {
+      pathname: `/api/catalog/items/${dune.id}/watched`,
+      status: 401
+    }
+  ] } })
+
+  test('becomes a guest after a background 401 and sends a clicked watched mutation to sign-in', async ({ context, page }) => {
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'expire_watched',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.goto(dunePath)
+    await waitForHydration(page)
+
+    await expect(page.getByRole('link', {
+      name: 'Mark as watched',
+      exact: true
+    })).toBeVisible()
+
+    await expect(page.getByRole('heading', {
+      name: 'Dune',
+      exact: true
+    })).toBeVisible()
+
+    await context.clearCookies()
+
+    await context.addCookies([
+      {
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      },
+      {
+        name: 'expire_watched_mutation',
+        value: '1',
+        url: appBaseUrl
+      }
+    ])
+
+    await page.reload()
+    await watchedButton(page).click()
+    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=${dunePath}`)
+  })
+})
+
 test.describe('follow service recovery', () => {
   test.use({ expectedHttpErrors: { values: [
     {
@@ -360,7 +898,7 @@ test.describe('follow service recovery', () => {
     await expect(page.getByText('private database connection details')).toHaveCount(0)
 
     await page.getByRole('button', {
-      name: 'Retry',
+      name: 'Retry follow status',
       exact: true
     }).click()
 
@@ -533,7 +1071,7 @@ test.describe('follow retry session expiry', () => {
     await waitForHydration(page)
 
     const retry = page.getByRole('button', {
-      name: 'Retry',
+      name: 'Retry follow status',
       exact: true
     })
 

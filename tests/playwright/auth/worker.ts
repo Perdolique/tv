@@ -56,7 +56,10 @@ const UNAVAILABLE_VERIFICATION_TOKEN = 'u'.repeat(43)
 const SESSION_COOKIE = 'tv_session=e2e-session'
 const LONG_EMAIL_SESSION_COOKIE = 'tv_session=e2e-long-email-session'
 const FOLLOW_COOKIE_NAME = 'tv_followed_item'
+const WATCHED_COOKIE_NAME = 'tv_watched_item'
+const LONG_EMAIL_WATCHED_COOKIE_NAME = 'tv_long_email_watched_item'
 const LONG_EMAIL_EMPTY_RELEASE_DATE = '2026-09-12'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 const LONG_EMAIL_USER = {
   email: longEmail,
@@ -621,12 +624,35 @@ async function handleCatalogUpcomingReleases(request: Request, url: URL): Promis
   })
 }
 
-function getFollowedCatalogItemId(request: Request): string | undefined {
+function getCookieValue(request: Request, name: string): string | undefined {
   const cookies = request.headers.get('Cookie') ?? ''
-  const prefix = `${FOLLOW_COOKIE_NAME}=`
+  const prefix = `${name}=`
   const cookie = cookies.split(';').map(value => value.trim()).find(value => value.startsWith(prefix))
 
   return cookie?.slice(prefix.length)
+}
+
+function getWatchedCookieName(request: Request): string {
+  return hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
+    ? LONG_EMAIL_WATCHED_COOKIE_NAME
+    : WATCHED_COOKIE_NAME
+}
+
+function getWatchedCatalogItemIds(request: Request, cookieName: string): Set<string> {
+  const value = getCookieValue(request, cookieName)
+  const ids = value === undefined || value === '' ? [] : value.split('|')
+
+  return new Set(ids)
+}
+
+function createWatchedCookie(cookieName: string, catalogItemIds: Set<string>): string {
+  if (catalogItemIds.size === 0) {
+    return `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
+  }
+
+  const value = [...catalogItemIds].join('|')
+
+  return `${cookieName}=${value}; Path=/; SameSite=Lax`
 }
 
 async function handleCatalogFollow(request: Request, url: URL): Promise<Response> {
@@ -684,7 +710,89 @@ async function handleCatalogFollow(request: Request, url: URL): Promise<Response
     })
   }
 
-  return json({ followed: getFollowedCatalogItemId(request) === id })
+  return json({ followed: getCookieValue(request, FOLLOW_COOKIE_NAME) === id })
+}
+
+async function handleCatalogWatched(request: Request, url: URL): Promise<Response> {
+  const expiresDuringMutation = request.method !== 'GET' && hasCookie(request, 'expire_watched_mutation=1')
+
+  if (!hasAuthenticatedCatalogSession(request) || hasCookie(request, 'expire_watched=1') || expiresDuringMutation) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  const id = url.pathname.split('/').at(-2)
+
+  if (id === undefined || !UUID_PATTERN.test(id)) {
+    return json({ error: {
+      code: 'INVALID_REQUEST',
+      fields: { id: 'Use a valid catalog item UUID.' },
+      message: 'The request is invalid.'
+    } }, 400)
+  }
+
+  if (hasCookie(request, 'fail_watched_load=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_watched_load=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'fail_watched=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- The visible optimistic rollback requires a real pending request.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 500) })
+
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database connection details'
+    } }, 503, {
+      'Set-Cookie': 'fail_watched=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  if (item.type !== 'movie') {
+    return json({ error: {
+      code: 'INVALID_REQUEST',
+      fields: { id: 'Only catalog movies can be marked as watched.' },
+      message: 'The request is invalid.'
+    } }, 400)
+  }
+
+  const watchedCookieName = getWatchedCookieName(request)
+  const watchedCatalogItemIds = getWatchedCatalogItemIds(request, watchedCookieName)
+
+  if (request.method === 'PUT') {
+    watchedCatalogItemIds.add(id)
+
+    return json({ watched: true }, 200, {
+      'Set-Cookie': createWatchedCookie(watchedCookieName, watchedCatalogItemIds)
+    })
+  }
+
+  if (request.method === 'DELETE') {
+    watchedCatalogItemIds.delete(id)
+
+    return json({ watched: false }, 200, {
+      'Set-Cookie': createWatchedCookie(watchedCookieName, watchedCatalogItemIds)
+    })
+  }
+
+  return json({ watched: watchedCatalogItemIds.has(id) })
 }
 
 async function handleCatalogDetails(request: Request, url: URL): Promise<Response> {
@@ -728,6 +836,14 @@ export default {
       && url.pathname.endsWith('/follow')
     ) {
       return handleCatalogFollow(request, url)
+    }
+
+    if (
+      ['GET', 'PUT', 'DELETE'].includes(request.method)
+      && url.pathname.startsWith('/api/catalog/items/')
+      && url.pathname.endsWith('/watched')
+    ) {
+      return handleCatalogWatched(request, url)
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/')) {

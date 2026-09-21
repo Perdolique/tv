@@ -4,6 +4,7 @@ import type {
   CatalogReleasesResponse,
   CatalogSearchResponse,
   CatalogUpcomingReleasesResponse,
+  CatalogWatchedResponse,
   CatalogWatchlistResponse
 } from '@tv/shared/catalog'
 
@@ -42,6 +43,10 @@ const catalogDetailsResponseSchema = v.object({
 const catalogFollowResponseSchema = v.strictObject({
   followed: v.boolean()
 }) satisfies v.GenericSchema<CatalogFollowResponse>
+
+const catalogWatchedResponseSchema = v.strictObject({
+  watched: v.boolean()
+}) satisfies v.GenericSchema<CatalogWatchedResponse>
 
 const catalogWatchlistResponseSchema = v.object({
   items: v.array(v.object({
@@ -82,6 +87,7 @@ export {
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
+  catalogWatchedResponseSchema,
   catalogSearchResponseSchema,
   catalogWatchlistResponseSchema,
   normalizeSearchQuery

@@ -21,26 +21,53 @@
           <p :class="$style.metadata">{{ metadata }}</p>
           <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
           <p v-if="showOriginalTitle" :class="$style.originalTitle" :lang="item.originalTitleLocale">{{ item.originalTitle }}</p>
-          <div :class="$style.followAction">
-            <NuxtLink v-if="isAnonymous" :class="$style.followLink" :to="signInLocation">Follow</NuxtLink>
-            <AppButton v-else-if="hasSessionError" :class="$style.followButton" disabled variant="secondary">Follow unavailable</AppButton>
-            <template v-else-if="isAuthenticated && followStatus === 'error'">
-              <AppMessage role="alert" tone="danger">We couldn’t check your follow status. Try again.</AppMessage>
-              <AppButton ref="followRetryButton" :class="$style.followButton" variant="secondary" @click="retryFollow">Retry</AppButton>
-            </template>
-            <template v-else-if="isAuthenticated && followStatus === 'loaded'">
-              <AppButton
-                ref="followButton"
-                :aria-busy="isSaving || undefined"
-                :aria-pressed="followed"
-                :class="$style.followButton"
-                :disabled="isSaving"
-                :variant="followed ? 'secondary' : 'primary'"
-                @click="toggleFollow"
-              >{{ followed ? 'Following' : 'Follow' }}</AppButton>
-              <AppMessage v-if="saveError !== ''" role="alert" tone="danger">{{ saveError }}</AppMessage>
-            </template>
-            <AppButton v-else :class="$style.followButton" aria-busy="true" disabled variant="secondary">Checking follow status…</AppButton>
+          <div :class="$style.personalActions">
+            <section :class="$style.personalAction" aria-label="Follow action">
+              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="primary" :to="signInLocation">Follow</NuxtLink>
+              <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Follow unavailable</AppButton>
+              <template v-else-if="isAuthenticated && followStatus === 'error'">
+                <AppMessage role="alert" tone="danger">We couldn’t check your follow status. Try again.</AppMessage>
+                <AppButton ref="followRetryButton" aria-label="Retry follow status" :class="$style.actionButton" variant="secondary" @click="retryFollow">Retry</AppButton>
+              </template>
+              <template v-else-if="isAuthenticated && followStatus === 'loaded'">
+                <AppButton
+                  ref="followButton"
+                  :aria-busy="isSaving || undefined"
+                  :aria-pressed="followed"
+                  :class="$style.actionButton"
+                  :disabled="isSaving"
+                  :variant="followed ? 'secondary' : 'primary'"
+                  @click="toggleFollow"
+                >{{ followed ? 'Following' : 'Follow' }}</AppButton>
+                <AppMessage v-if="saveError !== ''" role="alert" tone="danger">{{ saveError }}</AppMessage>
+              </template>
+              <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking follow status…</AppButton>
+            </section>
+            <section v-if="isMovie" :class="$style.personalAction" aria-label="Watched action">
+              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Mark as watched</NuxtLink>
+              <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Watched unavailable</AppButton>
+              <template v-else-if="isAuthenticated && watchedStatus === 'error'">
+                <AppMessage role="alert" tone="danger">We couldn’t check whether you watched this movie. Try again.</AppMessage>
+                <AppButton ref="watchedRetryButton" aria-label="Retry watched status" :class="$style.actionButton" variant="secondary" @click="retryWatched">Retry</AppButton>
+              </template>
+              <template v-else-if="isAuthenticated && watchedStatus === 'loaded'">
+                <AppButton
+                  ref="watchedButton"
+                  :aria-busy="isSavingWatched || undefined"
+                  :aria-pressed="watched"
+                  :class="$style.actionButton"
+                  :disabled="isSavingWatched"
+                  variant="secondary"
+                  @click="toggleWatched"
+                >
+                  <Icon v-if="watched" aria-hidden="true" mode="svg" name="hugeicons:checkmark-circle-02" />
+                  Watched
+                </AppButton>
+                <span v-if="isSavingWatched" aria-hidden="true" :class="$style.savingStatus">Saving…</span>
+                <AppMessage v-if="watchedSaveError !== ''" role="alert" tone="danger">{{ watchedSaveError }}</AppMessage>
+              </template>
+              <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking watched status…</AppButton>
+            </section>
           </div>
           <section :class="$style.overview" :aria-labelledby="overviewId">
             <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
@@ -66,6 +93,7 @@
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCatalogDetails } from '~/composables/use-catalog-details.ts'
   import { useCatalogFollow } from '~/composables/use-catalog-follow.ts'
+  import { useCatalogWatched } from '~/composables/use-catalog-watched.ts'
   import { normalizeSearchQuery } from '~/utils/catalog-response.ts'
 
   definePageMeta({
@@ -87,6 +115,7 @@
   const { hasError, isLoading, isNotFound, item, ready } = useCatalogDetails(id, titleLocale)
   const accountId = computed(() => sessionState.value.status === 'authenticated' ? sessionState.value.user.id : null)
   const followCatalogItemId = computed(() => item.value?.id ?? null)
+  const watchedCatalogItemId = computed(() => item.value?.type === 'movie' ? item.value.id : null)
 
   const {
     clearUnauthorized,
@@ -99,10 +128,23 @@
     unauthorized: followUnauthorized
   } = useCatalogFollow(followCatalogItemId, accountId)
 
+  const {
+    clearUnauthorized: clearWatchedUnauthorized,
+    isSaving: isSavingWatched,
+    load: loadWatched,
+    saveError: watchedSaveError,
+    status: watchedStatus,
+    toggle: saveWatched,
+    unauthorized: watchedUnauthorized,
+    watched
+  } = useCatalogWatched(watchedCatalogItemId, accountId)
+
   const heading = useTemplateRef('heading')
   const retryButton = useTemplateRef('retryButton')
   const followButton = useTemplateRef('followButton')
   const followRetryButton = useTemplateRef('followRetryButton')
+  const watchedButton = useTemplateRef('watchedButton')
+  const watchedRetryButton = useTemplateRef('watchedRetryButton')
   const overviewId = useId()
   const posterKey = computed(() => item.value?.posterUrl ?? 'missing-poster')
   const searchQuery = computed(() => normalizeSearchQuery(route.query.query))
@@ -110,6 +152,7 @@
   const isAnonymous = computed(() => sessionState.value.status === 'anonymous')
   const isAuthenticated = computed(() => sessionState.value.status === 'authenticated')
   const hasSessionError = computed(() => sessionState.value.status === 'error')
+  const isMovie = computed(() => item.value?.type === 'movie')
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
 
   const signInLocation = computed(() => redirectTo.value === '/'
@@ -163,6 +206,21 @@
     flush: 'sync'
   })
 
+  watch(watchedUnauthorized, async (reason) => {
+    if (reason === null) {
+      return
+    }
+
+    clearWatchedUnauthorized()
+    setAnonymous()
+
+    if (reason === 'mutation') {
+      await navigateTo(signInLocation.value, { replace: true })
+    }
+  }, {
+    flush: 'sync'
+  })
+
   await ready
 
   // Lazy title requests start on mount, so only SSR waits for account restoration.
@@ -182,9 +240,21 @@
     setResponseStatus(event, status)
   }
 
+  function canRestoreActionFocus(focusOwner: Element | null): boolean {
+    const { activeElement } = globalThis.document
+
+    return activeElement === focusOwner || activeElement === globalThis.document.body
+  }
+
   async function retry(): Promise<void> {
+    const focusOwner = globalThis.document.activeElement
+
     await ready.execute({ dedupe: 'cancel' })
     await nextTick()
+
+    if (!canRestoreActionFocus(focusOwner)) {
+      return
+    }
 
     if (hasError.value) {
       retryButton.value?.focus()
@@ -194,8 +264,14 @@
   }
 
   async function retryFollow(): Promise<void> {
+    const focusOwner = globalThis.document.activeElement
+
     await loadFollow()
     await nextTick()
+
+    if (!canRestoreActionFocus(focusOwner)) {
+      return
+    }
 
     if (followStatus.value === 'error') {
       followRetryButton.value?.focus()
@@ -207,13 +283,54 @@
   }
 
   async function toggleFollow(): Promise<void> {
+    const focusOwner = globalThis.document.activeElement
+
     await saveFollow()
     await nextTick()
+
+    if (!canRestoreActionFocus(focusOwner)) {
+      return
+    }
 
     if (isAuthenticated.value && followStatus.value === 'loaded') {
       followButton.value?.focus()
     }
   }
+
+  async function retryWatched(): Promise<void> {
+    const focusOwner = globalThis.document.activeElement
+
+    await loadWatched()
+    await nextTick()
+
+    if (!canRestoreActionFocus(focusOwner)) {
+      return
+    }
+
+    if (watchedStatus.value === 'error') {
+      watchedRetryButton.value?.focus()
+    } else if (watchedStatus.value === 'loaded') {
+      watchedButton.value?.focus()
+    } else {
+      heading.value?.focus()
+    }
+  }
+
+  async function toggleWatched(): Promise<void> {
+    const focusOwner = globalThis.document.activeElement
+
+    await saveWatched()
+    await nextTick()
+
+    if (!canRestoreActionFocus(focusOwner)) {
+      return
+    }
+
+    if (isAuthenticated.value && watchedStatus.value === 'loaded') {
+      watchedButton.value?.focus()
+    }
+  }
+
 </script>
 
 <style module>
@@ -248,30 +365,46 @@
     }
     .metadata, .originalTitle, .supportingText { color: var(--color-text-secondary); }
     .metadata { font-size: 0.875rem; }
-    .followAction {
-      display: grid;
-      justify-items: start;
+    .personalActions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: start;
       gap: var(--space-3);
       margin-block-start: var(--space-6);
     }
-    .followButton, .followLink { min-inline-size: 13rem; }
-    .followLink {
+    .personalAction {
+      display: grid;
+      justify-items: start;
+      gap: var(--space-3);
+      min-inline-size: min(100%, 13rem);
+      max-inline-size: 24rem;
+    }
+    .actionButton, .actionLink { min-inline-size: min(100%, 13rem); }
+    .savingStatus { color: var(--color-text-secondary); font-size: 0.875rem; }
+    .actionLink {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       min-block-size: 3.5rem;
       padding: var(--space-3) var(--space-6);
       border-radius: var(--radius-md);
-      background: var(--color-accent-fill);
-      color: var(--color-on-accent);
       font-weight: 700;
       text-decoration: none;
       transition:
         filter var(--duration-fast) var(--ease-standard),
         transform var(--duration-fast) var(--ease-standard);
     }
-    .followLink:hover { filter: brightness(0.96); }
-    .followLink:active { transform: translateY(0.0625rem); }
+    .actionLink[data-variant='primary'] {
+      background: var(--color-accent-fill);
+      color: var(--color-on-accent);
+    }
+    .actionLink[data-variant='secondary'] {
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-surface);
+      color: var(--color-text-primary);
+    }
+    .actionLink:hover { filter: brightness(0.96); }
+    .actionLink:active { transform: translateY(0.0625rem); }
     .overview {
       margin-block-start: var(--space-8);
       padding-block-start: var(--space-6);
@@ -287,7 +420,7 @@
     .posterSkeleton { inline-size: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--color-surface-muted); }
     .loadingCopy { color: var(--color-text-secondary); }
     @media (prefers-reduced-motion: reduce) {
-      .followLink { transition: none; }
+      .actionLink { transition: none; }
     }
     @media (width >= 40rem) {
       .component { padding-inline: var(--layout-page-compact); }

@@ -135,6 +135,30 @@ const catalogItemFollows = pgTable('catalog_item_follows', {
     .on(table.userId, table.followedAt.desc())
 ])
 
+const catalogMovieWatches = pgTable('catalog_movie_watches', {
+  userId:
+    uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+
+  catalogItemId:
+    uuid('catalog_item_id')
+    .notNull()
+    .references(() => catalogItems.id, { onDelete: 'cascade' }),
+
+  markedAt:
+    timestamp('marked_at', {
+      mode: 'date',
+      withTimezone: true
+    })
+    .defaultNow()
+    .notNull()
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.catalogItemId] }),
+  index('catalog_movie_watches_catalog_item_id_index')
+    .on(table.catalogItemId)
+])
+
 const passwordCredentials = pgTable('password_credentials', {
   userId:
     uuid('user_id')
@@ -231,6 +255,7 @@ const sessions = pgTable('sessions', {
 
 export {
   catalogItemFollows,
+  catalogMovieWatches,
   catalogItemTitles,
   catalogItems,
   catalogItemType,
