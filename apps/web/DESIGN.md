@@ -214,6 +214,7 @@ argument order of CSS `light-dark()`.
 | `--color-surface` | `#FFFFFF` | `#151922` | Standard cards and controls |
 | `--color-surface-raised` | `#FFFFFF` | `#1A202B` | Floating and elevated surfaces |
 | `--color-surface-muted` | `#EFF1EC` | `#222833` | Quiet grouped content |
+| `--color-surface-selected` | `#E7EBD6` | `#343E2A` | Quiet selected toggle surface |
 | `--color-text-primary` | `#15171A` | `#F7F8F4` | Primary copy and headings |
 | `--color-text-secondary` | `#62676E` | `#A8ADB6` | Supporting copy and metadata |
 | `--color-text-tertiary` | `#858B92` | `#747B86` | Disabled and low-priority copy |
@@ -256,6 +257,7 @@ The token layer is the theme implementation:
     --color-surface: light-dark(#ffffff, #151922);
     --color-surface-raised: light-dark(#ffffff, #1a202b);
     --color-surface-muted: light-dark(#eff1ec, #222833);
+    --color-surface-selected: light-dark(#e7ebd6, #343e2a);
     --color-text-primary: light-dark(#15171a, #f7f8f4);
     --color-text-secondary: light-dark(#62676e, #a8adb6);
     --color-text-tertiary: light-dark(#858b92, #747b86);
@@ -534,6 +536,8 @@ Sizes:
 Use one primary action per local decision area. Disabled buttons reduce emphasis
 but must remain readable.
 
+Toggle buttons keep a stable label. A selected toggle uses `--color-surface-selected` with an accent border and a non-color state cue such as a filled or changed icon.
+
 ### Inputs
 
 - Default height is `52px`; compact desktop filters may use `40px`.
@@ -683,7 +687,7 @@ Header contains:
 - backdrop and poster;
 - title, year, type-specific metadata, maturity rating, and genres;
 - aggregate score;
-- Rate and Follow or Following actions;
+- Rate and Follow actions with explicit selected states;
 - personal rating and friends-watched context.
 
 Series details expose Overview, Episodes, and Reviews tabs. Episode rows contain

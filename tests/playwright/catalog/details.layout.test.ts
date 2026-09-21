@@ -24,6 +24,13 @@ interface PersonalActionGeometry {
   watched: ElementGeometry;
 }
 
+interface ActionPresentation {
+  backgroundColor: string;
+  borderColor: string;
+  iconColor: string;
+  iconMarkup: string;
+}
+
 function watchedButton(page: Page): Locator {
   return page.getByRole('button', {
     name: 'Watched',
@@ -44,6 +51,26 @@ async function readGeometry(locator: Locator): Promise<ElementGeometry> {
       left: left + globalThis.scrollX,
       top: top + globalThis.scrollY,
       width
+    }
+  })
+}
+
+async function readActionPresentation(button: Locator): Promise<ActionPresentation> {
+  return button.evaluate((element) => {
+    const icon = element.querySelector('[data-action-icon] svg')
+
+    if (icon === null) {
+      throw new TypeError('The catalog action state icon is missing')
+    }
+
+    const buttonStyles = globalThis.getComputedStyle(element)
+    const iconStyles = globalThis.getComputedStyle(icon)
+
+    return {
+      backgroundColor: buttonStyles.backgroundColor,
+      borderColor: buttonStyles.borderTopColor,
+      iconColor: iconStyles.color,
+      iconMarkup: icon.innerHTML
     }
   })
 }
@@ -177,6 +204,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expect(page.getByRole('img', { name: 'Dune poster' })).toHaveAttribute('data-loaded', 'true')
       await expectNoHorizontalOverflow(page)
 
+      const unselectedGeometry = await readPersonalActionGeometry(page)
+      const unselectedWatchedPresentation = await readActionPresentation(watched)
+
       await page.context().addCookies([{
         name: 'tv_followed_item',
         value: dune.id,
@@ -188,21 +218,72 @@ for (const colorScheme of ['light', 'dark'] as const) {
       }])
 
       await page.reload()
+      await expect(follow).toBeVisible()
+      await expect(follow).toHaveAttribute('aria-pressed', 'true')
+      await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+      await expectInsideViewport(page, follow)
+      await expectInsideViewport(page, watchedButton(page))
+      await expectNoOverlap(follow, watchedButton(page))
+      await expectNoHorizontalOverflow(page)
 
-      const following = page.getByRole('button', {
-        name: 'Following',
-        exact: true
+      const selectedGeometry = await readPersonalActionGeometry(page)
+
+      const [selectedFollowPresentation, selectedWatchedPresentation] = await Promise.all([
+        readActionPresentation(follow),
+        readActionPresentation(watchedButton(page))
+      ])
+
+      expect(selectedGeometry).toEqual(unselectedGeometry)
+
+      expect({
+        backgroundColor: selectedFollowPresentation.backgroundColor,
+        borderColor: selectedFollowPresentation.borderColor,
+        iconColor: selectedFollowPresentation.iconColor
+      }).toEqual({
+        backgroundColor: selectedWatchedPresentation.backgroundColor,
+        borderColor: selectedWatchedPresentation.borderColor,
+        iconColor: selectedWatchedPresentation.iconColor
       })
 
-      await expect(following).toBeVisible()
-      await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
-      await expectInsideViewport(page, following)
-      await expectInsideViewport(page, watchedButton(page))
-      await expectNoOverlap(following, watchedButton(page))
-      await expectNoHorizontalOverflow(page)
+      expect(selectedWatchedPresentation.backgroundColor).not.toBe(unselectedWatchedPresentation.backgroundColor)
+      expect(selectedWatchedPresentation.borderColor).not.toBe(unselectedWatchedPresentation.borderColor)
+      expect(selectedFollowPresentation.iconMarkup).not.toBe(selectedWatchedPresentation.iconMarkup)
     })
   }
 }
+
+test('keeps selected catalog actions distinct in forced colors', async ({ context, page }) => {
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }, {
+    name: 'tv_followed_item',
+    value: dune.id,
+    url: appBaseUrl
+  }])
+
+  await page.emulateMedia({ forcedColors: 'active' })
+  await page.goto(dunePath)
+
+  const follow = page.getByRole('button', {
+    name: 'Follow',
+    exact: true
+  })
+
+  const watched = watchedButton(page)
+
+  await expect(follow).toHaveAttribute('aria-pressed', 'true')
+  await expect(watched).toHaveAttribute('aria-pressed', 'false')
+
+  const [selectedFollowPresentation, unselectedWatchedPresentation] = await Promise.all([
+    readActionPresentation(follow),
+    readActionPresentation(watched)
+  ])
+
+  expect(selectedFollowPresentation.borderColor).not.toBe(unselectedWatchedPresentation.borderColor)
+  expect(selectedFollowPresentation.iconMarkup).not.toBe(unselectedWatchedPresentation.iconMarkup)
+})
 
 for (const colorScheme of ['light', 'dark'] as const) {
   for (const viewport of viewports) {
@@ -426,15 +507,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(follow).toBeFocused()
     expect(await follow.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)).not.toBe('none')
     await page.keyboard.press('Enter')
-
-    const following = page.getByRole('button', {
-      name: 'Following',
-      exact: true
-    })
-
-    await expect(following).toBeVisible()
-    await expect(following).toBeFocused()
-    await expect(following).not.toHaveAttribute('aria-busy')
+    await expect(follow).toBeVisible()
+    await expect(follow).toBeFocused()
+    await expect(follow).not.toHaveAttribute('aria-busy')
 
     const watched = watchedButton(page)
 
