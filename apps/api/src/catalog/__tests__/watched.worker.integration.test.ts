@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
-const TEST_SESSION_TOKEN = 'w'.repeat(43)
+const TEST_SESSION_TOKEN = 'v'.repeat(43)
 const TEST_USER_ID = '60000000-0000-4000-8000-000000000001'
 const TEST_COOKIE = `__Host-tv_session=${TEST_SESSION_TOKEN}`
 
