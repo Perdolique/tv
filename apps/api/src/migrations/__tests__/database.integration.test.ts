@@ -266,7 +266,7 @@ describe('persisted UUIDv7 and title metadata migration', () => {
         WHERE contype = 'f' AND connamespace = 'public'::regnamespace
       `)
 
-      expect(constraints.rows).toHaveLength(6)
+      expect(constraints.rows).toHaveLength(8)
 
       for (const constraint of constraints.rows) {
         expect(constraint).toStrictEqual({
