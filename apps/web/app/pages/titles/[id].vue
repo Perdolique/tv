@@ -39,10 +39,11 @@
                   :variant="followed ? 'secondary' : 'primary'"
                   @click="toggleFollow"
                 >
-                  <span aria-hidden="true" :class="$style.actionIndicator">
+                  <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="follow">
+                    <Icon :class="$style.actionStateIcon" mode="svg" name="hugeicons:bookmark-02" />
                     <span :class="$style.actionProgress" data-loading-indicator />
                   </span>
-                  {{ followed ? 'Following' : 'Follow' }}
+                  Follow
                 </AppButton>
                 <AppMessage v-if="saveError !== ''" role="alert" tone="danger">{{ saveError }}</AppMessage>
               </template>
@@ -65,8 +66,8 @@
                   variant="secondary"
                   @click="toggleWatched"
                 >
-                  <span aria-hidden="true" :class="$style.actionIndicator">
-                    <Icon v-if="watched" :class="$style.actionStateIcon" mode="svg" name="hugeicons:checkmark-circle-02" />
+                  <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="watched">
+                    <Icon :class="$style.actionStateIcon" mode="svg" :name="watchedIconName" />
                     <span :class="$style.actionProgress" data-loading-indicator />
                   </span>
                   Watched
@@ -152,6 +153,7 @@
   const followRetryButton = useTemplateRef('followRetryButton')
   const watchedButton = useTemplateRef('watchedButton')
   const watchedRetryButton = useTemplateRef('watchedRetryButton')
+  const watchedIconName = computed(() => watched.value ? 'hugeicons:checkmark-circle-02' : 'hugeicons:circle')
   const overviewId = useId()
   const posterKey = computed(() => item.value?.posterUrl ?? 'missing-poster')
   const searchQuery = computed(() => normalizeSearchQuery(route.query.query))
@@ -408,6 +410,16 @@
       inline-size: 100%;
       block-size: 100%;
     }
+    .actionButton[aria-pressed='true'],
+    .actionButton[aria-pressed='true']:disabled {
+      border-color: var(--color-accent);
+      background: var(--color-surface-selected);
+      color: var(--color-text-primary);
+    }
+    .actionButton[aria-pressed='true'] .actionStateIcon { color: var(--color-accent); }
+    .actionButton[aria-pressed='true'] .actionIndicator[data-action-icon='follow'] .actionStateIcon :global(path) {
+      fill: currentcolor;
+    }
     .actionProgress {
       box-sizing: border-box;
       visibility: hidden;
@@ -480,6 +492,12 @@
       }
       .actionButton[aria-busy='true'] .actionProgress {
         animation: action-progress-reveal 0s linear var(--action-progress-delay) forwards;
+      }
+    }
+    @media (forced-colors: active) {
+      .actionButton[aria-pressed='true'],
+      .actionButton[aria-pressed='true']:disabled {
+        border-color: SelectedItem;
       }
     }
     @media (width >= 40rem) {

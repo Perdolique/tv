@@ -66,6 +66,10 @@ function loadingIndicator(button: Locator): Locator {
   return button.locator('[data-loading-indicator]')
 }
 
+function actionStateIcon(button: Locator): Locator {
+  return button.locator('[data-action-icon] svg')
+}
+
 function observeFollowMutationCount(page: Page): () => number {
   let count = 0
 
@@ -300,14 +304,14 @@ test('follows from the public title, persists across reload and sign-in, then un
     }).click()
 
     await expect(page.getByRole('button', {
-      name: 'Following',
+      name: 'Follow',
       exact: true
     })).toHaveAttribute('aria-pressed', 'true')
 
     await page.reload()
 
     await expect(page.getByRole('button', {
-      name: 'Following',
+      name: 'Follow',
       exact: true
     })).toBeVisible()
   })
@@ -334,14 +338,14 @@ test('follows from the public title, persists across reload and sign-in, then un
     await expect(page).toHaveURL(`${appBaseUrl}${dunePath}`)
 
     await expect(page.getByRole('button', {
-      name: 'Following',
+      name: 'Follow',
       exact: true
     })).toBeVisible()
   })
 
   await test.step('unfollow and keep the saved state after reload', async () => {
     await page.getByRole('button', {
-      name: 'Following',
+      name: 'Follow',
       exact: true
     }).click()
 
@@ -357,6 +361,50 @@ test('follows from the public title, persists across reload and sign-in, then un
       exact: true
     })).toBeVisible()
   })
+})
+
+test('keeps catalog action labels stable and distinguishes their selected icons', async ({ context, page }) => {
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  await page.goto(dunePath)
+  await waitForHydration(page)
+
+  const follow = page.getByRole('button', {
+    name: 'Follow',
+    exact: true
+  })
+
+  const watched = watchedButton(page)
+  const followIcon = actionStateIcon(follow)
+  const watchedIcon = actionStateIcon(watched)
+
+  await expect(follow).toHaveAttribute('aria-pressed', 'false')
+  await expect(follow).toHaveAccessibleName('Follow')
+  await expect(followIcon).toBeVisible()
+  await expect(followIcon.locator('path')).toHaveCSS('fill', 'none')
+  await expect(watched).toHaveAttribute('aria-pressed', 'false')
+  await expect(watched).toHaveAccessibleName('Watched')
+  await expect(watchedIcon).toBeVisible()
+  await expect(watchedIcon.locator('circle')).toHaveCount(1)
+  await follow.click()
+  await expect(follow).toHaveAttribute('aria-pressed', 'true')
+  await expect(follow).toHaveAccessibleName('Follow')
+  await expect(followIcon.locator('path')).not.toHaveCSS('fill', 'none')
+  await watched.click()
+  await expect(watched).toHaveAttribute('aria-pressed', 'true')
+  await expect(watched).toHaveAccessibleName('Watched')
+  await expect(watchedIcon.locator('circle')).toHaveCount(0)
+  await expect(watchedIcon.locator('path')).toHaveCount(2)
+  await follow.click()
+  await expect(follow).toHaveAttribute('aria-pressed', 'false')
+  await expect(followIcon.locator('path')).toHaveCSS('fill', 'none')
+  await watched.click()
+  await expect(watched).toHaveAttribute('aria-pressed', 'false')
+  await expect(watchedIcon.locator('circle')).toHaveCount(1)
 })
 
 test('marks a movie after sign-in, preserves the full return URL and restores the state across sessions', async ({ page }) => {
@@ -457,25 +505,19 @@ test('keeps Follow and Watched independent in both directions', async ({ context
   })
 
   await follow.click()
-
-  const following = page.getByRole('button', {
-    name: 'Following',
-    exact: true
-  })
-
-  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await watchedButton(page).click()
   await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
-  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await watchedButton(page).click()
   await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
-  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await watchedButton(page).click()
-  await following.click()
+  await follow.click()
   await expect(follow).toHaveAttribute('aria-pressed', 'false')
   await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
   await follow.click()
-  await expect(following).toHaveAttribute('aria-pressed', 'true')
+  await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
 })
 
@@ -622,16 +664,11 @@ test('delays in-button progress without changing personal action names', async (
 
     await follow.click()
 
-    const following = page.getByRole('button', {
-      name: 'Following',
-      exact: true
-    })
+    const followProgress = loadingIndicator(follow)
 
-    const followProgress = loadingIndicator(following)
-
-    await expect(following).toHaveAttribute('aria-busy', 'true')
-    await expect(following).toBeDisabled()
-    await expect(following).toHaveAccessibleName('Following')
+    await expect(follow).toHaveAttribute('aria-busy', 'true')
+    await expect(follow).toBeDisabled()
+    await expect(follow).toHaveAccessibleName('Follow')
     await expect(followProgress).toHaveCSS('visibility', 'hidden')
 
     const followProgressDelays = await followProgress.evaluate(element => element.getAnimations().map(
@@ -642,10 +679,10 @@ test('delays in-button progress without changing personal action names', async (
     expect(followProgressDelays.every(delay => delay === 1000)).toBe(true)
     await expect(followProgress).toHaveCSS('opacity', '1', { timeout: 2000 })
     followResponse.resolve(true)
-    await expect(following).not.toHaveAttribute('aria-busy')
+    await expect(follow).not.toHaveAttribute('aria-busy')
     await expect(followProgress).toHaveCSS('visibility', 'hidden')
-    await expect(following).toBeEnabled()
-    await expect(following).toBeFocused()
+    await expect(follow).toBeEnabled()
+    await expect(follow).toBeFocused()
 
     const watched = watchedButton(page)
 
@@ -1013,35 +1050,17 @@ test.describe('follow service recovery', () => {
     const mutationRequestCount = observeFollowMutationCount(page)
 
     await follow.click()
-
-    const optimistic = page.getByRole('button', {
-      name: 'Following',
-      exact: true
-    })
-
-    await expect(optimistic).toBeVisible()
-    await expect(optimistic).toHaveAttribute('aria-busy', 'true')
-    await expect(optimistic).toBeDisabled()
+    await expect(follow).toBeVisible()
+    await expect(follow).toHaveAttribute('aria-busy', 'true')
+    await expect(follow).toBeDisabled()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('alert')).toContainText('couldn’t save this change')
-
-    const rolledBackFollow = page.getByRole('button', {
-      name: 'Follow',
-      exact: true
-    })
-
-    await expect(rolledBackFollow).toBeEnabled()
-    await expect(rolledBackFollow).toBeFocused()
+    await expect(follow).toBeEnabled()
+    await expect(follow).toBeFocused()
     expect(mutationRequestCount()).toBe(1)
-    await rolledBackFollow.click()
-
-    const following = page.getByRole('button', {
-      name: 'Following',
-      exact: true
-    })
-
-    await expect(following).toBeEnabled()
-    await expect(following).toBeFocused()
+    await follow.click()
+    await expect(follow).toBeEnabled()
+    await expect(follow).toBeFocused()
     expect(mutationRequestCount()).toBe(2)
 
     await context.addCookies([{
@@ -1050,21 +1069,15 @@ test.describe('follow service recovery', () => {
       url: appBaseUrl
     }])
 
-    await following.click()
-
-    const optimisticUnfollow = page.getByRole('button', {
-      name: 'Follow',
-      exact: true
-    })
-
-    await expect(optimisticUnfollow).toHaveAttribute('aria-busy', 'true')
-    await expect(optimisticUnfollow).toBeDisabled()
+    await follow.click()
+    await expect(follow).toHaveAttribute('aria-busy', 'true')
+    await expect(follow).toBeDisabled()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('alert')).toContainText('couldn’t save this change')
-    await expect(following).toBeEnabled()
-    await expect(following).toBeFocused()
+    await expect(follow).toBeEnabled()
+    await expect(follow).toBeFocused()
     expect(mutationRequestCount()).toBe(3)
-    await following.click()
+    await follow.click()
     await expect(follow).toBeEnabled()
     await expect(follow).toBeFocused()
     expect(mutationRequestCount()).toBe(4)

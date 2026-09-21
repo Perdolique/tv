@@ -9,6 +9,7 @@
     --color-canvas: light-dark(#f7f7f4, #0b0d12);
     --color-surface: light-dark(#ffffff, #151922);
     --color-surface-muted: light-dark(#eff1ec, #222833);
+    --color-surface-selected: light-dark(#e7ebd6, #343e2a);
     --color-text-primary: light-dark(#15171a, #f7f8f4);
     --color-text-secondary: light-dark(#62676e, #a8adb6);
     --color-text-tertiary: light-dark(#858b92, #747b86);
