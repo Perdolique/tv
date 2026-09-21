@@ -38,7 +38,12 @@
                   :disabled="isSaving"
                   :variant="followed ? 'secondary' : 'primary'"
                   @click="toggleFollow"
-                >{{ followed ? 'Following' : 'Follow' }}</AppButton>
+                >
+                  <span aria-hidden="true" :class="$style.actionIndicator">
+                    <span :class="$style.actionProgress" data-loading-indicator />
+                  </span>
+                  {{ followed ? 'Following' : 'Follow' }}
+                </AppButton>
                 <AppMessage v-if="saveError !== ''" role="alert" tone="danger">{{ saveError }}</AppMessage>
               </template>
               <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking follow status…</AppButton>
@@ -60,10 +65,12 @@
                   variant="secondary"
                   @click="toggleWatched"
                 >
-                  <Icon v-if="watched" aria-hidden="true" mode="svg" name="hugeicons:checkmark-circle-02" />
+                  <span aria-hidden="true" :class="$style.actionIndicator">
+                    <Icon v-if="watched" :class="$style.actionStateIcon" mode="svg" name="hugeicons:checkmark-circle-02" />
+                    <span :class="$style.actionProgress" data-loading-indicator />
+                  </span>
                   Watched
                 </AppButton>
-                <span v-if="isSavingWatched" aria-hidden="true" :class="$style.savingStatus">Saving…</span>
                 <AppMessage v-if="watchedSaveError !== ''" role="alert" tone="danger">{{ watchedSaveError }}</AppMessage>
               </template>
               <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking watched status…</AppButton>
@@ -380,7 +387,43 @@
       max-inline-size: 24rem;
     }
     .actionButton, .actionLink { min-inline-size: min(100%, 13rem); }
-    .savingStatus { color: var(--color-text-secondary); font-size: 0.875rem; }
+    .actionButton {
+      --action-progress-delay: 1s;
+
+      position: relative;
+    }
+    .actionIndicator {
+      position: absolute;
+      inset-block-start: 50%;
+      inset-inline-start: var(--space-6);
+      inline-size: 1.25rem;
+      block-size: 1.25rem;
+      color: currentcolor;
+      pointer-events: none;
+      transform: translateY(-50%);
+    }
+    .actionStateIcon, .actionProgress {
+      position: absolute;
+      inset: 0;
+      inline-size: 100%;
+      block-size: 100%;
+    }
+    .actionProgress {
+      box-sizing: border-box;
+      visibility: hidden;
+      border: 0.125rem solid currentcolor;
+      border-inline-end-color: transparent;
+      border-radius: var(--radius-round);
+      opacity: 0;
+    }
+    .actionButton[aria-busy='true'] .actionStateIcon {
+      animation: action-state-hide var(--duration-fast) var(--ease-standard) var(--action-progress-delay) forwards;
+    }
+    .actionButton[aria-busy='true'] .actionProgress {
+      animation:
+        action-progress-reveal var(--duration-fast) var(--ease-standard) var(--action-progress-delay) forwards,
+        action-progress-spin 0.8s linear var(--action-progress-delay) infinite;
+    }
     .actionLink {
       display: inline-flex;
       align-items: center;
@@ -419,8 +462,25 @@
     .message { display: grid; justify-items: start; gap: var(--space-4); }
     .posterSkeleton { inline-size: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--color-surface-muted); }
     .loadingCopy { color: var(--color-text-secondary); }
+    @keyframes action-state-hide {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+    @keyframes action-progress-reveal {
+      from { visibility: visible; opacity: 0; }
+      to { visibility: visible; opacity: 1; }
+    }
+    @keyframes action-progress-spin {
+      to { transform: rotate(1turn); }
+    }
     @media (prefers-reduced-motion: reduce) {
       .actionLink { transition: none; }
+      .actionButton[aria-busy='true'] .actionStateIcon {
+        animation: action-state-hide 0s linear var(--action-progress-delay) forwards;
+      }
+      .actionButton[aria-busy='true'] .actionProgress {
+        animation: action-progress-reveal 0s linear var(--action-progress-delay) forwards;
+      }
     }
     @media (width >= 40rem) {
       .component { padding-inline: var(--layout-page-compact); }

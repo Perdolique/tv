@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/prefer-each -- Playwright uses loops for parameterized browser scenarios. */
+/* oxlint-disable eslint/max-lines, vitest/prefer-each -- Title layout variants share one responsive browser contract. */
 import type { Locator, Page } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
@@ -10,11 +10,67 @@ import { waitForHydration } from './helpers.ts'
 const dunePath = `/titles/${dune.id}`
 const posterPath = '/posters/dune-2021.webp'
 
+interface ElementGeometry {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+}
+
+interface PersonalActionGeometry {
+  follow: ElementGeometry;
+  group: ElementGeometry;
+  overview: ElementGeometry;
+  watched: ElementGeometry;
+}
+
 function watchedButton(page: Page): Locator {
   return page.getByRole('button', {
     name: 'Watched',
     exact: true
   })
+}
+
+function loadingIndicator(button: Locator): Locator {
+  return button.locator('[data-loading-indicator]')
+}
+
+async function readGeometry(locator: Locator): Promise<ElementGeometry> {
+  return locator.evaluate((element) => {
+    const { height, left, top, width } = element.getBoundingClientRect()
+
+    return {
+      height,
+      left: left + globalThis.scrollX,
+      top: top + globalThis.scrollY,
+      width
+    }
+  })
+}
+
+async function readPersonalActionGeometry(page: Page): Promise<PersonalActionGeometry> {
+  const follow = page.getByRole('button', {
+    name: 'Follow',
+    exact: true
+  })
+
+  const watched = watchedButton(page)
+  const group = page.getByRole('region', { name: 'Follow action' }).locator('..')
+  const overview = page.getByRole('region', { name: 'Overview' })
+
+  const [followGeometry, groupGeometry, overviewGeometry, watchedGeometry] = await Promise.all([
+    readGeometry(follow),
+    readGeometry(group),
+    readGeometry(overview),
+    readGeometry(watched)
+  ])
+
+  return {
+    follow: followGeometry,
+    group: groupGeometry,
+    overview: overviewGeometry,
+    watched: watchedGeometry
+  }
 }
 
 async function expectInsideViewport(page: Page, locator: Locator): Promise<void> {
@@ -144,6 +200,67 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expectInsideViewport(page, watchedButton(page))
       await expectNoOverlap(following, watchedButton(page))
       await expectNoHorizontalOverflow(page)
+    })
+  }
+}
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  for (const viewport of viewports) {
+    test(`keeps personal action geometry stable during slow progress at ${viewport.name} in ${colorScheme}`, async ({ context, page }) => {
+      const response = Promise.withResolvers<boolean>()
+      const watchedUrl = `${appBaseUrl}/api/catalog/items/${dune.id}/watched`
+
+      await context.addCookies([{
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      }])
+
+      await page.setViewportSize(viewport)
+      await page.emulateMedia({ colorScheme })
+      await page.goto(dunePath)
+      await waitForHydration(page)
+
+      await page.route(watchedUrl, async (route) => {
+        await response.promise
+
+        await route.fulfill({ json: { watched: true } })
+      })
+
+      try {
+        const follow = page.getByRole('button', {
+          name: 'Follow',
+          exact: true
+        })
+
+        const watched = watchedButton(page)
+        const progress = loadingIndicator(watched)
+        const before = await readPersonalActionGeometry(page)
+
+        await watched.click()
+        await expect(watched).toHaveAttribute('aria-busy', 'true')
+        await expect(watched).toHaveAttribute('aria-pressed', 'true')
+        await expect(progress).toHaveCSS('visibility', 'hidden')
+        await expect(progress).toHaveCSS('opacity', '1', { timeout: 2000 })
+
+        const during = await readPersonalActionGeometry(page)
+
+        expect(during).toEqual(before)
+        await expectNoOverlap(follow, watched)
+        await expectNoHorizontalOverflow(page)
+        response.resolve(true)
+        await expect(watched).not.toHaveAttribute('aria-busy')
+        await expect(progress).toHaveCSS('visibility', 'hidden')
+
+        const after = await readPersonalActionGeometry(page)
+
+        expect(after).toEqual(before)
+        await expectNoOverlap(follow, watched)
+        await expectNoHorizontalOverflow(page)
+      } finally {
+        response.resolve(true)
+        await page.unroute(watchedUrl)
+      }
     })
   }
 }
@@ -283,6 +400,9 @@ test.describe('unavailable artwork', () => {
 
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`keeps visible keyboard focus with reduced motion in ${colorScheme}`, async ({ context, page }) => {
+    const response = Promise.withResolvers<boolean>()
+    const watchedUrl = `${appBaseUrl}/api/catalog/items/${dune.id}/watched`
+
     await context.addCookies([{
       name: 'tv_session',
       value: 'e2e-session',
@@ -318,13 +438,37 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     const watched = watchedButton(page)
 
-    await watched.focus()
-    await expect(watched).toBeFocused()
-    expect(await watched.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)).not.toBe('none')
-    await page.keyboard.press('Enter')
-    await expect(watched).toHaveAttribute('aria-pressed', 'true')
-    await expect(watched).toBeFocused()
-    await expect(watched).not.toHaveAttribute('aria-busy')
+    await page.route(watchedUrl, async (route) => {
+      await response.promise
+
+      await route.fulfill({ json: { watched: true } })
+    })
+
+    try {
+      await watched.focus()
+      await expect(watched).toBeFocused()
+      expect(await watched.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)).not.toBe('none')
+      await page.keyboard.press('Enter')
+      await expect(watched).toHaveAttribute('aria-pressed', 'true')
+      await expect(watched).toHaveAttribute('aria-busy', 'true')
+
+      const progress = loadingIndicator(watched)
+
+      await expect(progress).toHaveCSS('opacity', '1', { timeout: 2000 })
+
+      const progressIterations = await progress.evaluate(element => element.getAnimations().map(
+        animation => animation.effect?.getTiming().iterations
+      ))
+
+      expect(progressIterations).toEqual([1])
+      response.resolve(true)
+      await expect(watched).toBeFocused()
+      await expect(watched).not.toHaveAttribute('aria-busy')
+      await expect(progress).toHaveCSS('visibility', 'hidden')
+    } finally {
+      response.resolve(true)
+      await page.unroute(watchedUrl)
+    }
 
     const back = page.getByRole('link', {
       name: 'Back to catalog',

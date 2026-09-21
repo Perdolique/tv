@@ -62,6 +62,10 @@ function watchedButton(page: Page): Locator {
   })
 }
 
+function loadingIndicator(button: Locator): Locator {
+  return button.locator('[data-loading-indicator]')
+}
+
 function observeFollowMutationCount(page: Page): () => number {
   let count = 0
 
@@ -585,6 +589,95 @@ test('keeps public title details visible while the initial watched status loads'
   }
 })
 
+test('delays in-button progress without changing personal action names', async ({ context, page }) => {
+  const followResponse = Promise.withResolvers<boolean>()
+  const watchedResponse = Promise.withResolvers<boolean>()
+
+  await context.addCookies([{
+    name: 'tv_session',
+    value: 'e2e-session',
+    url: appBaseUrl
+  }])
+
+  await page.goto(dunePath)
+  await waitForHydration(page)
+
+  await page.route(`${appBaseUrl}/api/catalog/items/${dune.id}/follow`, async (route) => {
+    await followResponse.promise
+
+    await route.fulfill({ json: { followed: true } })
+  })
+
+  await page.route(`${appBaseUrl}/api/catalog/items/${dune.id}/watched`, async (route) => {
+    await watchedResponse.promise
+
+    await route.fulfill({ json: { watched: true } })
+  })
+
+  try {
+    const follow = page.getByRole('button', {
+      name: 'Follow',
+      exact: true
+    })
+
+    await follow.click()
+
+    const following = page.getByRole('button', {
+      name: 'Following',
+      exact: true
+    })
+
+    const followProgress = loadingIndicator(following)
+
+    await expect(following).toHaveAttribute('aria-busy', 'true')
+    await expect(following).toBeDisabled()
+    await expect(following).toHaveAccessibleName('Following')
+    await expect(followProgress).toHaveCSS('visibility', 'hidden')
+
+    const followProgressDelays = await followProgress.evaluate(element => element.getAnimations().map(
+      animation => animation.effect?.getTiming().delay
+    ))
+
+    expect(followProgressDelays).toHaveLength(2)
+    expect(followProgressDelays.every(delay => delay === 1000)).toBe(true)
+    await expect(followProgress).toHaveCSS('opacity', '1', { timeout: 2000 })
+    followResponse.resolve(true)
+    await expect(following).not.toHaveAttribute('aria-busy')
+    await expect(followProgress).toHaveCSS('visibility', 'hidden')
+    await expect(following).toBeEnabled()
+    await expect(following).toBeFocused()
+
+    const watched = watchedButton(page)
+
+    await watched.click()
+
+    const watchedProgress = loadingIndicator(watched)
+
+    await expect(watched).toHaveAttribute('aria-busy', 'true')
+    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toBeDisabled()
+    await expect(watched).toHaveAccessibleName('Watched')
+    await expect(watchedProgress).toHaveCSS('visibility', 'hidden')
+
+    const watchedProgressDelays = await watchedProgress.evaluate(element => element.getAnimations().map(
+      animation => animation.effect?.getTiming().delay
+    ))
+
+    expect(watchedProgressDelays).toHaveLength(2)
+    expect(watchedProgressDelays.every(delay => delay === 1000)).toBe(true)
+    await expect(watchedProgress).toHaveCSS('opacity', '1', { timeout: 2000 })
+    watchedResponse.resolve(true)
+    await expect(watched).not.toHaveAttribute('aria-busy')
+    await expect(watchedProgress).toHaveCSS('visibility', 'hidden')
+    await expect(watched).toBeEnabled()
+    await expect(watched).toBeFocused()
+  } finally {
+    followResponse.resolve(true)
+    watchedResponse.resolve(true)
+    await page.unrouteAll({ behavior: 'wait' })
+  }
+})
+
 test.describe('personal action read failures', () => {
   test.use({ expectedHttpErrors: { values: [
     {
@@ -693,13 +786,15 @@ test.describe('watched service recovery', () => {
     await expect(watched).toHaveAttribute('aria-pressed', 'true')
     await expect(watched).toHaveAttribute('aria-busy', 'true')
     await expect(watched).toBeDisabled()
-    await expect(page.getByText('Saving…', { exact: true })).toBeVisible()
+    await expect(loadingIndicator(watched)).toHaveCSS('visibility', 'hidden')
+    await expect(page.getByText('Saving…', { exact: true })).toHaveCount(0)
     await page.keyboard.press('Enter')
     await expect(page.getByRole('alert')).toContainText('couldn’t update your watched status')
     await expect(page.getByText('private database connection details')).toHaveCount(0)
     await expect(watched).toHaveAttribute('aria-pressed', 'false')
     await expect(watched).toBeEnabled()
     await expect(watched).toBeFocused()
+    await expect(loadingIndicator(watched)).toHaveCSS('visibility', 'hidden')
     expect(mutationRequestCount()).toBe(1)
     await watched.click()
     await expect(watched).toHaveAttribute('aria-pressed', 'true')
