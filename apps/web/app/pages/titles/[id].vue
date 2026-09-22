@@ -77,12 +77,86 @@
               <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking watched status…</AppButton>
             </section>
           </div>
-          <section :class="$style.overview" :aria-labelledby="overviewId">
+          <section v-if="isMovie" :class="$style.overview" :aria-labelledby="overviewId">
             <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
             <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
             <p v-else :class="$style.supportingText">No description available yet.</p>
           </section>
         </div>
+        <section v-if="isSeries" :class="$style.seriesContent" aria-label="Series details">
+          <div :class="$style.tabs" role="tablist" aria-label="Series information">
+            <button
+              :id="overviewTabId"
+              ref="overviewTab"
+              :aria-controls="overviewPanelId"
+              :aria-selected="isOverviewTabActive"
+              :class="$style.tab"
+              role="tab"
+              :tabindex="overviewTabIndex"
+              type="button"
+              @click="activateTab('overview')"
+              @keydown="handleTabKeydown"
+            >
+              Overview
+            </button>
+            <button
+              :id="episodesTabId"
+              ref="episodesTab"
+              :aria-controls="episodesPanelId"
+              :aria-selected="isEpisodesTabActive"
+              :class="$style.tab"
+              role="tab"
+              :tabindex="episodesTabIndex"
+              type="button"
+              @click="activateTab('episodes')"
+              @keydown="handleTabKeydown"
+            >
+              Episodes
+            </button>
+          </div>
+
+          <div
+            v-show="isEpisodesTabActive"
+            :id="episodesPanelId"
+            :aria-labelledby="episodesTabId"
+            :class="$style.tabPanel"
+            role="tabpanel"
+            tabindex="0"
+          >
+            <CatalogEpisodeList
+              :episodes="episodes"
+              :has-episodes-error="hasEpisodesError"
+              :has-session-error="hasSessionError"
+              :is-anonymous="isAnonymous"
+              :is-episodes-empty="isEpisodesEmpty"
+              :is-episodes-loading="isEpisodesLoading"
+              :is-saving="isSavingEpisode"
+              :save-error-for="episodeSaveErrorFor"
+              :saving-episode-id="savingEpisodeId"
+              :sign-in-location="signInLocation"
+              :watched-count="watchedEpisodeCount"
+              :watched-episode-ids="watchedEpisodeIds"
+              :watched-status="episodeWatchesStatus"
+              @retry-episodes="retryEpisodes"
+              @retry-watched="retryEpisodeWatches"
+              @toggle-watched="toggleEpisodeWatched"
+            />
+          </div>
+          <div
+            v-show="isOverviewTabActive"
+            :id="overviewPanelId"
+            :aria-labelledby="overviewTabId"
+            :class="$style.tabPanel"
+            role="tabpanel"
+            tabindex="0"
+          >
+            <section :class="$style.overview" :aria-labelledby="seriesOverviewId">
+              <h2 :id="seriesOverviewId" :class="$style.subheading">Overview</h2>
+              <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
+              <p v-else :class="$style.supportingText">No description available yet.</p>
+            </section>
+          </div>
+        </section>
       </article>
     </main>
   </AppShell>
@@ -93,13 +167,16 @@
   import { navigateTo, useHead, useNuxtApp, useRequestEvent, useResponseHeader, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { setResponseStatus } from 'h3'
-  import { computed, nextTick, useId, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import AppShell from '~/components/app/AppShell.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
+  import CatalogEpisodeList from '~/components/catalog/CatalogEpisodeList.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCatalogDetails } from '~/composables/use-catalog-details.ts'
+  import { useCatalogEpisodes } from '~/composables/use-catalog-episodes.ts'
+  import { useCatalogEpisodeWatches } from '~/composables/use-catalog-episode-watches.ts'
   import { useCatalogFollow } from '~/composables/use-catalog-follow.ts'
   import { useCatalogWatched } from '~/composables/use-catalog-watched.ts'
   import { normalizeSearchQuery } from '~/utils/catalog-response.ts'
@@ -153,8 +230,20 @@
   const followRetryButton = useTemplateRef('followRetryButton')
   const watchedButton = useTemplateRef('watchedButton')
   const watchedRetryButton = useTemplateRef('watchedRetryButton')
+  const episodesTab = useTemplateRef('episodesTab')
+  const overviewTab = useTemplateRef('overviewTab')
   const watchedIconName = computed(() => watched.value ? 'hugeicons:checkmark-circle-02' : 'hugeicons:circle')
   const overviewId = useId()
+  const seriesOverviewId = useId()
+  const episodesTabId = useId()
+  const episodesPanelId = useId()
+  const overviewTabId = useId()
+  const overviewPanelId = useId()
+  const activeTab = ref<'episodes' | 'overview'>('episodes')
+  const isEpisodesTabActive = computed(() => activeTab.value === 'episodes')
+  const isOverviewTabActive = computed(() => activeTab.value === 'overview')
+  const episodesTabIndex = computed(() => isEpisodesTabActive.value ? 0 : -1)
+  const overviewTabIndex = computed(() => isOverviewTabActive.value ? 0 : -1)
   const posterKey = computed(() => item.value?.posterUrl ?? 'missing-poster')
   const searchQuery = computed(() => normalizeSearchQuery(route.query.query))
   const backLabel = computed(() => searchQuery.value === '' ? 'Back to catalog' : 'Back to results')
@@ -162,6 +251,7 @@
   const isAuthenticated = computed(() => sessionState.value.status === 'authenticated')
   const hasSessionError = computed(() => sessionState.value.status === 'error')
   const isMovie = computed(() => item.value?.type === 'movie')
+  const isSeries = computed(() => item.value?.type === 'series')
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
 
   const signInLocation = computed(() => redirectTo.value === '/'
@@ -231,6 +321,47 @@
   })
 
   await ready
+
+  const episodeCatalogItemId = computed(() => item.value?.type === 'series' ? item.value.id : null)
+
+  const {
+    hasError: hasEpisodesError,
+    isEmpty: isEpisodesEmpty,
+    isLoading: isEpisodesLoading,
+    items: episodes,
+    ready: episodesReady,
+    reload: reloadEpisodes
+  } = useCatalogEpisodes(episodeCatalogItemId, id)
+
+  const {
+    clearUnauthorized: clearEpisodeWatchesUnauthorized,
+    isSaving: isSavingEpisode,
+    load: loadEpisodeWatches,
+    saveErrorFor: episodeSaveErrorFor,
+    savingEpisodeId,
+    status: episodeWatchesStatus,
+    toggle: toggleEpisodeWatched,
+    unauthorized: episodeWatchesUnauthorized,
+    watchedCount: watchedEpisodeCount,
+    watchedEpisodeIds
+  } = useCatalogEpisodeWatches(episodeCatalogItemId, accountId)
+
+  watch(episodeWatchesUnauthorized, async (reason) => {
+    if (reason === null) {
+      return
+    }
+
+    clearEpisodeWatchesUnauthorized()
+    setAnonymous()
+
+    if (reason === 'mutation') {
+      await navigateTo(signInLocation.value, { replace: true })
+    }
+  }, {
+    flush: 'sync'
+  })
+
+  await episodesReady
 
   // Lazy title requests start on mount, so only SSR waits for account restoration.
   if (import.meta.server) {
@@ -337,6 +468,68 @@
 
     if (isAuthenticated.value && watchedStatus.value === 'loaded') {
       watchedButton.value?.focus()
+    }
+  }
+
+  function activateTab(tab: 'episodes' | 'overview', focus = false): void {
+    activeTab.value = tab
+
+    if (!focus) {
+      return
+    }
+
+    if (tab === 'episodes') {
+      episodesTab.value?.focus()
+    } else {
+      overviewTab.value?.focus()
+    }
+  }
+
+  function handleTabKeydown(keyboardEvent: KeyboardEvent): void {
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+
+    if (!keys.includes(keyboardEvent.key)) {
+      return
+    }
+
+    keyboardEvent.preventDefault()
+
+    if (keyboardEvent.key === 'Home') {
+      activateTab('overview', true)
+
+      return
+    }
+
+    if (keyboardEvent.key === 'End') {
+      activateTab('episodes', true)
+
+      return
+    }
+
+    const nextTab = activeTab.value === 'episodes' ? 'overview' : 'episodes'
+
+    activateTab(nextTab, true)
+  }
+
+  async function retryEpisodeWatches(): Promise<void> {
+    const focusOwner = globalThis.document.activeElement
+
+    await loadEpisodeWatches()
+    await nextTick()
+
+    if (canRestoreActionFocus(focusOwner)) {
+      episodesTab.value?.focus()
+    }
+  }
+
+  async function retryEpisodes(): Promise<void> {
+    const focusOwner = globalThis.document.activeElement
+
+    await reloadEpisodes()
+    await nextTick()
+
+    if (canRestoreActionFocus(focusOwner)) {
+      episodesTab.value?.focus()
     }
   }
 
@@ -464,6 +657,44 @@
       margin-block-start: var(--space-8);
       padding-block-start: var(--space-6);
       border-block-start: 1px solid var(--color-border);
+    }
+    .seriesContent {
+      display: grid;
+      grid-column: 1 / -1;
+      gap: var(--space-6);
+      margin-block-start: var(--space-2);
+    }
+    .tabs {
+      display: flex;
+      gap: var(--space-6);
+      border-block-end: 1px solid var(--color-border);
+    }
+    .tab {
+      position: relative;
+      min-block-size: 2.75rem;
+      padding-inline: var(--space-1);
+      border: 0;
+      background: transparent;
+      color: var(--color-text-secondary);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab[aria-selected='true'] {
+      color: var(--color-text-primary);
+    }
+    .tab[aria-selected='true']::after {
+      position: absolute;
+      inset-block-end: -1px;
+      inset-inline: 0;
+      block-size: 3px;
+      background: var(--color-accent);
+      content: '';
+    }
+    .tabPanel { min-inline-size: 0; }
+    .tabPanel .overview {
+      margin-block-start: 0;
+      padding-block-start: 0;
+      border-block-start: 0;
     }
     .subheading {
       margin-block-end: var(--space-4);

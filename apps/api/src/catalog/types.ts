@@ -25,6 +25,24 @@ interface CatalogReleaseRow extends CatalogWatchlistRow {
   seasonNumber: number | null;
 }
 
+interface CatalogEpisodeRow {
+  airDate: string | null;
+  episodeNumber: number;
+  id: string;
+  seasonNumber: number;
+  sourceTitle: string | null;
+}
+
+interface CatalogEpisodeListing {
+  items: CatalogEpisodeRow[];
+  type: CatalogItemType;
+}
+
+interface CatalogEpisodeWatchListing {
+  type: CatalogItemType;
+  watchedEpisodeIds: string[];
+}
+
 interface CatalogReleaseRange {
   from: string;
   to: string;
@@ -45,6 +63,9 @@ interface CatalogUpcomingReleaseQuery {
 
 export type {
   CatalogDetailsRow,
+  CatalogEpisodeListing,
+  CatalogEpisodeRow,
+  CatalogEpisodeWatchListing,
   CatalogReleaseRange,
   CatalogReleaseCursor,
   CatalogReleaseRow,

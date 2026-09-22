@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-lines -- Migration checks share legacy fixtures and schema preservation assertions. */
 import { randomUUID } from 'node:crypto'
 import { appendFile, cp, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -261,15 +262,29 @@ describe('persisted UUIDv7 and title metadata migration', () => {
       await expect(verifyPassword(password, credential.passwordHash)).resolves.toBe(true)
       await expect(verifyPassword('Wrong account password', credential.passwordHash)).resolves.toBe(false)
 
-      const constraints = await fixture.client.query<{ condeferrable: boolean; condeferred: boolean; convalidated: boolean }>(`
-        SELECT condeferrable, condeferred, convalidated FROM pg_constraint
+      const constraints = await fixture.client.query<{ condeferrable: boolean; condeferred: boolean; conname: string; convalidated: boolean }>(`
+        SELECT conname, condeferrable, condeferred, convalidated FROM pg_constraint
         WHERE contype = 'f' AND connamespace = 'public'::regnamespace
       `)
 
-      expect(constraints.rows).toHaveLength(8)
+      const constraintNames = constraints.rows.map(constraint => constraint.conname)
+
+      expect(constraintNames).toStrictEqual(expect.arrayContaining([
+        'password_credentials_user_id_users_id_fkey',
+        'sessions_user_id_users_id_fkey',
+        'catalog_item_titles_catalog_item_id_catalog_items_id_fkey',
+        'catalog_item_follows_user_id_users_id_fkey',
+        'catalog_item_follows_catalog_item_id_catalog_items_id_fkey',
+        'catalog_releases_catalog_item_id_catalog_items_id_fkey',
+        'catalog_movie_watches_user_id_users_id_fkey',
+        'catalog_movie_watches_catalog_item_id_catalog_items_id_fkey',
+        'catalog_episode_watches_user_id_users_id_fkey',
+        'catalog_episode_watches_ynhUEcsHjZFY_fkey',
+        'catalog_episodes_catalog_item_id_catalog_items_id_fkey'
+      ]))
 
       for (const constraint of constraints.rows) {
-        expect(constraint).toStrictEqual({
+        expect(constraint).toMatchObject({
           condeferrable: false,
           condeferred: false,
           convalidated: true

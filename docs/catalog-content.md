@@ -28,3 +28,9 @@ The migration fills metadata using the historical seed IDs before converting per
 The migration takes exclusive locks on the five related tables, changes IDs and dependent references in a single Drizzle transaction, validates foreign keys immediately, and restores their original non-deferrable definitions. Passwords, token hashes, timestamps, and row counts remain intact. A failed migration rolls back and prevents deployment through the existing workflow.
 
 Verify the migrated catalog and an existing session in staging before merging. Reverting application code does not require reverting the migration: IDs remain UUID values, and the added metadata columns are nullable. Previously returned UUIDv4 catalog IDs are replaced; public title URLs are introduced only after this migration.
+
+## Chernobyl episode snapshot
+
+The five regular episodes of the 2019 series *Chernobyl* are a static snapshot checked on 2026-09-21. The source is the [TVMaze Chernobyl page](https://www.tvmaze.com/shows/30770/chernobyl) and its [official episode-list API endpoint](https://api.tvmaze.com/shows/30770/episodes). The application does not call TVMaze during deployment, at request time, or in the browser.
+
+TVMaze API data is available under [CC BY-SA](https://www.tvmaze.com/api#licensing). TVMaze requires credit with a link back to TVMaze and compliance with the ShareAlike provision. The series page provides the required linked credit next to the episode list.

@@ -1,5 +1,7 @@
 import type {
   CatalogDetailsResponse,
+  CatalogEpisodeWatchesResponse,
+  CatalogEpisodesResponse,
   CatalogFollowResponse,
   CatalogReleasesResponse,
   CatalogSearchResponse,
@@ -61,6 +63,20 @@ const calendarDateSchema = v.pipe(
   v.check(value => parseCalendarDate(value) !== null)
 )
 
+const catalogEpisodesResponseSchema = v.strictObject({
+  items: v.array(v.strictObject({
+    airDate: v.nullable(calendarDateSchema),
+    episodeNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    id: catalogItemIdSchema,
+    seasonNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    sourceTitle: v.nullable(v.string())
+  }))
+}) satisfies v.GenericSchema<CatalogEpisodesResponse>
+
+const catalogEpisodeWatchesResponseSchema = v.strictObject({
+  watchedEpisodeIds: v.array(catalogItemIdSchema)
+}) satisfies v.GenericSchema<CatalogEpisodeWatchesResponse>
+
 const catalogReleasesResponseSchema = v.object({
   items: v.array(v.object({
     ...catalogSearchItemSchema.entries,
@@ -84,6 +100,8 @@ function normalizeSearchQuery(value: unknown): string {
 
 export {
   catalogDetailsResponseSchema,
+  catalogEpisodesResponseSchema,
+  catalogEpisodeWatchesResponseSchema,
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,

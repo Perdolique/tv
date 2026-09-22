@@ -3,9 +3,12 @@ import * as v from 'valibot'
 
 import {
   catalogDetailsResponseSchema,
+  catalogEpisodesResponseSchema,
+  catalogEpisodeWatchesResponseSchema,
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
+  catalogWatchedResponseSchema,
   catalogWatchlistResponseSchema
 } from '../catalog-response.ts'
 
@@ -80,6 +83,79 @@ describe('catalog follow response contract', () => {
     }
   ])('rejects malformed state %#', (response) => {
     expect(v.safeParse(catalogFollowResponseSchema, response).success).toBe(false)
+  })
+})
+
+describe('catalog episode response contracts', () => {
+  const episode = {
+    airDate: '2019-05-06',
+    episodeNumber: 1,
+    id: '30000000-0000-7000-8000-000000000001',
+    seasonNumber: 1,
+    sourceTitle: '1:23:45'
+  }
+
+  it('accepts public episodes with nullable source metadata', () => {
+    const response = {
+      items: [
+        episode,
+        {
+          ...episode,
+          airDate: null,
+          id: '30000000-0000-7000-8000-000000000002',
+          sourceTitle: null
+        }
+      ]
+    }
+
+    expect(v.parse(catalogEpisodesResponseSchema, response)).toStrictEqual(response)
+  })
+
+  it.each([
+    {
+      ...episode,
+      airDate: '2019-02-30'
+    },
+    {
+      ...episode,
+      episodeNumber: 0
+    },
+    {
+      ...episode,
+      episodeNumber: 1.5
+    },
+    {
+      ...episode,
+      id: 'not-a-uuid'
+    },
+    {
+      ...episode,
+      seasonNumber: 0
+    },
+    {
+      ...episode,
+      seasonNumber: 1.5
+    }
+  ])('rejects malformed public episode data %#', (invalidEpisode) => {
+    expect(v.safeParse(catalogEpisodesResponseSchema, {
+      items: [invalidEpisode]
+    }).success).toBe(false)
+  })
+
+  it('accepts watched episode IDs and rejects malformed or extra data', () => {
+    const response = { watchedEpisodeIds: [episode.id] }
+
+    expect(v.parse(catalogEpisodeWatchesResponseSchema, response)).toStrictEqual(response)
+    expect(v.safeParse(catalogEpisodeWatchesResponseSchema, { watchedEpisodeIds: ['bad-id'] }).success).toBe(false)
+
+    expect(v.safeParse(catalogEpisodeWatchesResponseSchema, {
+      extra: true,
+      watchedEpisodeIds: []
+    }).success).toBe(false)
+  })
+
+  it.each([true, false])('accepts the shared watched mutation response watched=%s', (watched) => {
+    expect(v.parse(catalogWatchedResponseSchema, { watched })).toStrictEqual({ watched })
   })
 })
 
