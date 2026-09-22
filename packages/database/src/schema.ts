@@ -192,7 +192,9 @@ const catalogMovieWatches = pgTable('catalog_movie_watches', {
 }, (table) => [
   primaryKey({ columns: [table.userId, table.catalogItemId] }),
   index('catalog_movie_watches_catalog_item_id_index')
-    .on(table.catalogItemId)
+    .on(table.catalogItemId),
+  index('catalog_movie_watches_user_marked_at_item_index')
+    .on(table.userId, table.markedAt.desc(), table.catalogItemId.desc())
 ])
 
 const catalogEpisodeWatches = pgTable('catalog_episode_watches', {
@@ -216,7 +218,9 @@ const catalogEpisodeWatches = pgTable('catalog_episode_watches', {
 }, (table) => [
   primaryKey({ columns: [table.userId, table.catalogEpisodeId] }),
   index('catalog_episode_watches_catalog_episode_id_index')
-    .on(table.catalogEpisodeId)
+    .on(table.catalogEpisodeId),
+  index('catalog_episode_watches_user_marked_at_episode_index')
+    .on(table.userId, table.markedAt.desc(), table.catalogEpisodeId.desc())
 ])
 
 const passwordCredentials = pgTable('password_credentials', {

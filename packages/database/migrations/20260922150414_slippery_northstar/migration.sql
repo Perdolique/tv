@@ -1,0 +1,2 @@
+CREATE INDEX "catalog_episode_watches_user_marked_at_episode_index" ON "catalog_episode_watches" ("user_id","marked_at" DESC NULLS LAST,"catalog_episode_id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "catalog_movie_watches_user_marked_at_item_index" ON "catalog_movie_watches" ("user_id","marked_at" DESC NULLS LAST,"catalog_item_id" DESC NULLS LAST);

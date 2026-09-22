@@ -146,6 +146,13 @@ test('supports keyboard search and clear with visible focus and reduced motion',
   await page.keyboard.press('Tab')
   await expect(watchlistLink).toBeFocused()
   await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('link', {
+    name: 'Dashboard',
+    exact: true
+  })).toBeFocused()
+
+  await page.keyboard.press('Tab')
   await expect(signOutButton).toBeFocused()
   await page.keyboard.press('Tab')
 
@@ -209,6 +216,13 @@ test('keeps mobile keyboard order aligned with the bottom navigation', async ({ 
 
   await expect(page.getByRole('link', {
     name: 'Watchlist',
+    exact: true
+  })).toBeFocused()
+
+  await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('link', {
+    name: 'Dashboard',
     exact: true
   })).toBeFocused()
 })

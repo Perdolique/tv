@@ -51,6 +51,7 @@ test('redirects a guest through sign in and returns to the watchlist', async ({ 
   expect(location.searchParams.get('redirectTo')).toBe('/watchlist')
   await page.goto('/watchlist')
   await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/watchlist`)
+  await waitForHydration(page)
   await page.getByLabel('Email').fill('viewer@example.com')
   await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -225,6 +226,13 @@ test('marks one current destination and keeps keyboard navigation usable', async
   const outline = await watchlistLink.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)
 
   expect(outline).not.toBe('none')
+  await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('link', {
+    name: 'Dashboard',
+    exact: true
+  })).toBeFocused()
+
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeFocused()
   await page.keyboard.press('Tab')
