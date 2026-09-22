@@ -29,8 +29,47 @@ The migration takes exclusive locks on the five related tables, changes IDs and 
 
 Verify the migrated catalog and an existing session in staging before merging. Reverting application code does not require reverting the migration: IDs remain UUID values, and the added metadata columns are nullable. Previously returned UUIDv4 catalog IDs are replaced; public title URLs are introduced only after this migration.
 
-## Chernobyl episode snapshot
+## Catalog episode snapshot
 
-The five regular episodes of the 2019 series *Chernobyl* are a static snapshot checked on 2026-09-21. The source is the [TVMaze Chernobyl page](https://www.tvmaze.com/shows/30770/chernobyl) and its [official episode-list API endpoint](https://api.tvmaze.com/shows/30770/episodes). The application does not call TVMaze during deployment, at request time, or in the browser.
+The current snapshot was checked on **2026-09-22**. It contains **783 regular episodes across all 15 current catalog series**. The reviewed mapping is in `apps/api/scripts/catalog-episode-sources.ts`; the normalized data is in `packages/database/data/catalog-episodes.json`. The mapping uses fixed TVMaze show IDs, English catalog titles and release years. The generator checks the source name, premiere date and language to catch a changed or incorrect show identity. It never selects shows through title search.
 
-TVMaze API data is available under [CC BY-SA](https://www.tvmaze.com/api#licensing). TVMaze requires credit with a link back to TVMaze and compliance with the ShareAlike provision. The series page provides the required linked credit next to the episode list.
+| Catalog series | TVMaze show | Regular episodes | Seasons in this snapshot |
+| --- | --- | ---: | --- |
+| Spartacus (2010) | [716](https://www.tvmaze.com/shows/716) | 33 | 1, 2, 3 |
+| 1923 (2022) | [60550](https://www.tvmaze.com/shows/60550) | 15 | 1, 2 |
+| The Wire (2002) | [179](https://www.tvmaze.com/shows/179) | 60 | 1, 2, 3, 4, 5 |
+| Chernobyl (2019) | [30770](https://www.tvmaze.com/shows/30770) | 5 | 1 |
+| Stargate Atlantis (2004) | [206](https://www.tvmaze.com/shows/206) | 100 | 1, 2, 3, 4, 5 |
+| Kingdom (2019) | [26153](https://www.tvmaze.com/shows/26153) | 12 | 1, 2 |
+| American Horror Story (2011) | [30](https://www.tvmaze.com/shows/30) | 145 | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 |
+| Percy Jackson and the Olympians (2023) | [48108](https://www.tvmaze.com/shows/48108) | 24 | 1, 2, 3 |
+| The Forsytes (2025) | [83209](https://www.tvmaze.com/shows/83209) | 6 | 1 |
+| South Park (1997) | [112](https://www.tvmaze.com/shows/112) | 335 | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29 |
+| A Different World (2026) | [91916](https://www.tvmaze.com/shows/91916) | 10 | 1 |
+| Cyberpunk: Edgerunners (2022) | [48945](https://www.tvmaze.com/shows/48945) | 10 | 1 |
+| Cyberpunk: Edgerunners 2 (2026) | [88337](https://www.tvmaze.com/shows/88337) | 10 | 1 |
+| Pride and Prejudice (2026) | [84008](https://www.tvmaze.com/shows/84008) | 6 | 1 |
+| The Gold (2023) | [57137](https://www.tvmaze.com/shows/57137) | 12 | 1, 2 |
+
+The mapping selects the Korean 2019 *Kingdom*, the 2025 *The Forsytes*, and the 2026 versions of *A Different World* and *Pride and Prejudice*. Original *Cyberpunk: Edgerunners* uses only season 1 of show 48945. Its standalone sequel uses show 88337. The extra season listed under the original source is excluded. Specials are excluded for every show, including the South Park specials that TVMaze lists outside its regular episodes.
+
+Episode lists are a snapshot of what the source knows, not a claim that a series is complete. They may include future episodes, missing air dates and names such as TBA. The interface shows season and episode numbers and uses `Episode N` for a missing or TBA name. It does not show a completion percentage. Source air dates do not replace the separately curated `catalog_releases` calendar data.
+
+### Source and license
+
+Data comes from [TVMaze](https://www.tvmaze.com/) through its [show API with embedded episodes](https://www.tvmaze.com/api#embedding). Each source show is linked in the coverage table. The application shows linked TVMaze credit next to episode lists.
+
+TVMaze provides API data under [CC BY-SA](https://www.tvmaze.com/api#licensing). Attribution and ShareAlike apply to the episode data and its adapted snapshots. Retain the TVMaze credit, source links and these terms when distributing a snapshot. Our changes select regular episodes, restrict the original Edgerunners to season 1, keep only the fields used by TV, sort by season and episode, and convert empty air dates to null. We do not import descriptions or artwork.
+
+The five Chernobyl episodes were first added on 2026-09-21. Later snapshots retain those UUIDs and all existing episode UUIDs by updating metadata on conflict with the same TVMaze episode ID. No episode or watched mark is deleted when it is absent from a later snapshot. A source ID that changes series or episode coordinates, or a different source ID at an existing coordinate, stops the migration for manual review.
+
+### Manual refresh
+
+1. Review `apps/api/scripts/catalog-episode-sources.ts` against each linked show, including same-name adaptations, premiere dates, languages and the Edgerunners `seasonRestriction`. A null restriction includes all seasons; a number includes only that season. Update this mapping only after reviewing any source identity change.
+2. From the repository root, run `vp run catalog:episodes:generate /tmp/tv-episodes-YYYY-MM-DD` with a new absolute output directory. The generator creates this directory before contacting TVMaze, so an existing or unavailable path fails without network requests. This is the only step that contacts TVMaze. The generator validates each response, excludes specials and rejects duplicate coordinates or source IDs. HTTP, validation or write failures stop generation and report the original cause. The new directory remains for inspection and may contain incomplete files; do not use this output for a migration. Discard the failed output and retry with a new directory after resolving the cause.
+3. Review the generated `snapshot.json` against `packages/database/data/catalog-episodes.json`. Check every series, episode counts, changed names and air dates, new episodes, and removed or renumbered source entries. Do not automatically delete absent entries or move existing watched marks. A changed identity needs a separate reviewed correction.
+4. Run `vp run db:generate --custom --name=refresh_catalog_episodes` to create a new migration directory. Replace its `migration.sql` with `/tmp/tv-episodes-YYYY-MM-DD/migration.sql` from the episode generator. Copy `/tmp/tv-episodes-YYYY-MM-DD/snapshot.json` to `packages/database/data/catalog-episodes.json`. Do not overwrite an applied migration. The SQL resolves each catalog series by English title, release year and series type and fails unless exactly one row matches; this also works with catalog UUIDs generated separately in each environment.
+5. Update this snapshot date and coverage table. Point the snapshot reproducibility and database tests at the new migration and update their reviewed expected counts. Run the focused snapshot unit tests, episode database and Worker tests, and the affected episode browser tests. Check that existing UUIDs and marks survive and that the calendar stays unchanged.
+6. Commit the reviewed JSON, new migration, mapping changes and documentation together. Use the normal staging migration and smoke-check process before production.
+
+Deployment and page loads use only the committed SQL and database rows. They never call TVMaze. There is no automatic refresh job.

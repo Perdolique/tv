@@ -51,7 +51,7 @@ test('guest sees the five SSR episodes, returns from one row and confirms the wa
   await expect(page.getByRole('link', {
     name: 'Episode data from TVMaze',
     exact: true
-  })).toHaveAttribute('href', 'https://www.tvmaze.com/shows/30770/chernobyl')
+  })).toHaveAttribute('href', 'https://www.tvmaze.com/')
 
   const targetCard = episodeCard(page, 'Please Remain Calm')
   const signInLink = targetCard.getByRole('link', { name: 'Sign in to mark watched' })
@@ -171,6 +171,8 @@ test('renders empty data and missing title, date and future-season variants', as
   await expect(page.getByText('No episode data is available yet.', { exact: true })).toBeVisible()
   await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(edgeCasesPath)
+  await expect(page.getByRole('link', { name: 'Episode data from TVMaze' })).toHaveAttribute('href', 'https://www.tvmaze.com/')
+  await expect(page.getByText('S2 · E1', { exact: true })).toBeVisible()
 
   const selector = page.getByRole('combobox', {
     name: 'Season',
@@ -196,6 +198,8 @@ test('renders empty data and missing title, date and future-season variants', as
 
   await expect(watchedButton(episodeCard(page, 'A future title'))).toBeEnabled()
   await selector.selectOption('1')
+  await expect(page.getByText('S1 · E1', { exact: true })).toBeVisible()
+  await expect(page.getByText('S1 · E2', { exact: true })).toBeVisible()
 
   await expect(page.getByRole('heading', {
     name: 'Season 1',

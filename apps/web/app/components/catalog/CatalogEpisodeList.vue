@@ -74,7 +74,7 @@
       </ul>
 
       <p :class="$style.credit">
-        <a href="https://www.tvmaze.com/shows/30770/chernobyl">Episode data from TVMaze</a>
+        <a href="https://www.tvmaze.com/">Episode data from TVMaze</a>
       </p>
     </template>
   </section>
