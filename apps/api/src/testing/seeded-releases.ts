@@ -11,7 +11,7 @@ const seededIds = {
   aDifferentWorld: '10000000-0000-7000-8000-000000000019',
   americanHorrorStory: '10000000-0000-7000-8000-000000000013',
   avengersDoomsday: '10000000-0000-7000-8000-000000000016',
-  cyberpunkEdgerunners: '10000000-0000-7000-8000-000000000020',
+  cyberpunkEdgerunners2: '10000000-0000-7000-8000-000000000025',
   forsytes: '10000000-0000-7000-8000-000000000017',
   heartland: '10000000-0000-7000-8000-000000000023',
   percyJackson: '10000000-0000-7000-8000-000000000014',
@@ -114,13 +114,6 @@ const seededCatalogItems = [
     type: 'series'
   },
   {
-    id: seededIds.cyberpunkEdgerunners,
-    releases: createEpisodeReleaseDates('2026-10-20', 2, 10),
-    releaseYear: 2022,
-    title: 'Cyberpunk: Edgerunners',
-    type: 'series'
-  },
-  {
     id: seededIds.prideAndPrejudice,
     releases: createEpisodeReleaseDates('2026-12-03', 1, 6),
     releaseYear: 2026,
@@ -147,6 +140,13 @@ const seededCatalogItems = [
     releaseYear: 2026,
     title: 'Steps',
     type: 'movie'
+  },
+  {
+    id: seededIds.cyberpunkEdgerunners2,
+    releases: createEpisodeReleaseDates('2026-10-20', 1, 10),
+    releaseYear: 2026,
+    title: 'Cyberpunk: Edgerunners 2',
+    type: 'series'
   }
 ] as const satisfies readonly SeededCatalogItem[]
 

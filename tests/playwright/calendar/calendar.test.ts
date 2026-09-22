@@ -247,6 +247,15 @@ test('auto-loads every cursor page without bursts and merges split date groups',
 
   expect(new Set(releaseIds).size).toBe(60)
 
+  const sequelReleases = page.getByRole('list', { name: 'Releases for Tuesday, October 20, 2026' })
+
+  await expect(sequelReleases.getByRole('heading', {
+    name: 'Cyberpunk: Edgerunners 2',
+    exact: true
+  })).toHaveCount(10)
+
+  await expect(sequelReleases.getByRole('listitem').first()).toContainText('Series · S1 · E1')
+
   const firstSplitDateHeading = page.getByRole('heading', { name: 'Thursday, October 1, 2026' })
   const secondSplitDateHeading = page.getByRole('heading', { name: 'Thursday, October 22, 2026' })
 
