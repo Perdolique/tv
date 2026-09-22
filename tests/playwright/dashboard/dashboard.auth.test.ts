@@ -66,4 +66,3 @@ for (const target of ['history', 'summary'] as const) {
     await expect(page.locator('dd')).toHaveCount(0)
   })
 }
-
