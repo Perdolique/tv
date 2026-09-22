@@ -143,19 +143,36 @@ describe('catalog episodes Worker contract', () => {
 
   it('returns empty public lists for a movie and a series without episode data', async () => {
     const movieId = await findCatalogItemId('Dead Man')
-    const emptySeriesId = await findCatalogItemId('Spartacus')
+    const emptySeriesId = '71000000-0000-7000-8000-000000000003'
 
-    const responses = await Promise.all([
-      request(`/api/catalog/items/${movieId}/episodes`, 'GET', null),
-      request(`/api/catalog/items/${emptySeriesId}/episodes`, 'GET', null)
-    ])
+    await withClient(async (client) => {
+      await client.query(`
+        INSERT INTO catalog_items (id, type, release_year) VALUES ($1, 'series', 2099)
+      `, [emptySeriesId])
 
-    const bodies = await Promise.all(responses.map(async response => response.json()))
+      await client.query(`
+        INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
+        VALUES ($1, 'en', 'Series without an episode snapshot', true)
+      `, [emptySeriesId])
+    })
 
-    for (const [index, response] of responses.entries()) {
-      expect(response.status).toBe(200)
-      expect(bodies[index]).toStrictEqual({ items: [] })
-      expectNoStore(response)
+    try {
+      const responses = await Promise.all([
+        request(`/api/catalog/items/${movieId}/episodes`, 'GET', null),
+        request(`/api/catalog/items/${emptySeriesId}/episodes`, 'GET', null)
+      ])
+
+      const bodies = await Promise.all(responses.map(async response => response.json()))
+
+      for (const [index, response] of responses.entries()) {
+        expect(response.status).toBe(200)
+        expect(bodies[index]).toStrictEqual({ items: [] })
+        expectNoStore(response)
+      }
+    } finally {
+      await withClient(async (client) => {
+        await client.query('DELETE FROM catalog_items WHERE id = $1', [emptySeriesId])
+      })
     }
   })
 

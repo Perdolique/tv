@@ -1,0 +1,5666 @@
+{
+  "checkedOn": "2026-09-22",
+  "series": [
+    {
+      "source": {
+        "title": "Spartacus",
+        "year": 2010,
+        "showId": 716,
+        "premiered": "2010-01-22",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 63357,
+          "season": 1,
+          "number": 1,
+          "title": "The Red Serpent",
+          "airDate": "2010-01-22"
+        },
+        {
+          "tvmazeId": 63358,
+          "season": 1,
+          "number": 2,
+          "title": "Sacramentum Gladiatorum",
+          "airDate": "2010-01-29"
+        },
+        {
+          "tvmazeId": 63359,
+          "season": 1,
+          "number": 3,
+          "title": "Legends",
+          "airDate": "2010-02-05"
+        },
+        {
+          "tvmazeId": 63360,
+          "season": 1,
+          "number": 4,
+          "title": "The Thing In the Pit",
+          "airDate": "2010-02-12"
+        },
+        {
+          "tvmazeId": 63361,
+          "season": 1,
+          "number": 5,
+          "title": "Shadow Games",
+          "airDate": "2010-02-19"
+        },
+        {
+          "tvmazeId": 63362,
+          "season": 1,
+          "number": 6,
+          "title": "Delicate Things",
+          "airDate": "2010-02-26"
+        },
+        {
+          "tvmazeId": 63363,
+          "season": 1,
+          "number": 7,
+          "title": "Great and Unfortunate Things",
+          "airDate": "2010-03-05"
+        },
+        {
+          "tvmazeId": 63364,
+          "season": 1,
+          "number": 8,
+          "title": "Mark of the Brotherhood",
+          "airDate": "2010-03-12"
+        },
+        {
+          "tvmazeId": 63365,
+          "season": 1,
+          "number": 9,
+          "title": "Whore",
+          "airDate": "2010-03-19"
+        },
+        {
+          "tvmazeId": 63366,
+          "season": 1,
+          "number": 10,
+          "title": "Party Favors",
+          "airDate": "2010-03-26"
+        },
+        {
+          "tvmazeId": 63367,
+          "season": 1,
+          "number": 11,
+          "title": "Old Wounds",
+          "airDate": "2010-04-02"
+        },
+        {
+          "tvmazeId": 63368,
+          "season": 1,
+          "number": 12,
+          "title": "Revelations",
+          "airDate": "2010-04-09"
+        },
+        {
+          "tvmazeId": 63369,
+          "season": 1,
+          "number": 13,
+          "title": "Kill Them All",
+          "airDate": "2010-04-16"
+        },
+        {
+          "tvmazeId": 63370,
+          "season": 2,
+          "number": 1,
+          "title": "Fugitivus",
+          "airDate": "2012-01-27"
+        },
+        {
+          "tvmazeId": 63371,
+          "season": 2,
+          "number": 2,
+          "title": "A Place in This World",
+          "airDate": "2012-02-03"
+        },
+        {
+          "tvmazeId": 63372,
+          "season": 2,
+          "number": 3,
+          "title": "The Greater Good",
+          "airDate": "2012-02-10"
+        },
+        {
+          "tvmazeId": 63373,
+          "season": 2,
+          "number": 4,
+          "title": "Empty Hands",
+          "airDate": "2012-02-17"
+        },
+        {
+          "tvmazeId": 63374,
+          "season": 2,
+          "number": 5,
+          "title": "Libertus",
+          "airDate": "2012-02-24"
+        },
+        {
+          "tvmazeId": 63375,
+          "season": 2,
+          "number": 6,
+          "title": "Chosen Path",
+          "airDate": "2012-03-02"
+        },
+        {
+          "tvmazeId": 63376,
+          "season": 2,
+          "number": 7,
+          "title": "Sacramentum",
+          "airDate": "2012-03-09"
+        },
+        {
+          "tvmazeId": 63377,
+          "season": 2,
+          "number": 8,
+          "title": "Balance",
+          "airDate": "2012-03-16"
+        },
+        {
+          "tvmazeId": 63378,
+          "season": 2,
+          "number": 9,
+          "title": "Monsters",
+          "airDate": "2012-03-23"
+        },
+        {
+          "tvmazeId": 63379,
+          "season": 2,
+          "number": 10,
+          "title": "Wrath of the Gods",
+          "airDate": "2012-03-30"
+        },
+        {
+          "tvmazeId": 63380,
+          "season": 3,
+          "number": 1,
+          "title": "Enemies of Rome",
+          "airDate": "2013-01-25"
+        },
+        {
+          "tvmazeId": 63381,
+          "season": 3,
+          "number": 2,
+          "title": "Wolves at the Gate",
+          "airDate": "2013-02-01"
+        },
+        {
+          "tvmazeId": 63382,
+          "season": 3,
+          "number": 3,
+          "title": "Men of Honor",
+          "airDate": "2013-02-08"
+        },
+        {
+          "tvmazeId": 63383,
+          "season": 3,
+          "number": 4,
+          "title": "Decimation",
+          "airDate": "2013-02-22"
+        },
+        {
+          "tvmazeId": 63384,
+          "season": 3,
+          "number": 5,
+          "title": "Blood Brothers",
+          "airDate": "2013-03-01"
+        },
+        {
+          "tvmazeId": 63385,
+          "season": 3,
+          "number": 6,
+          "title": "Spoils of War",
+          "airDate": "2013-03-08"
+        },
+        {
+          "tvmazeId": 63386,
+          "season": 3,
+          "number": 7,
+          "title": "Mors Indecepta",
+          "airDate": "2013-03-15"
+        },
+        {
+          "tvmazeId": 63387,
+          "season": 3,
+          "number": 8,
+          "title": "Separate Paths",
+          "airDate": "2013-03-22"
+        },
+        {
+          "tvmazeId": 63388,
+          "season": 3,
+          "number": 9,
+          "title": "The Dead and the Dying",
+          "airDate": "2013-04-05"
+        },
+        {
+          "tvmazeId": 63389,
+          "season": 3,
+          "number": 10,
+          "title": "Victory",
+          "airDate": "2013-04-12"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "1923",
+        "year": 2022,
+        "showId": 60550,
+        "premiered": "2022-12-18",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 2421332,
+          "season": 1,
+          "number": 1,
+          "title": "1923",
+          "airDate": "2022-12-18"
+        },
+        {
+          "tvmazeId": 2446964,
+          "season": 1,
+          "number": 2,
+          "title": "Nature's Empty Throne",
+          "airDate": "2022-12-25"
+        },
+        {
+          "tvmazeId": 2446965,
+          "season": 1,
+          "number": 3,
+          "title": "The War Has Come Home",
+          "airDate": "2023-01-01"
+        },
+        {
+          "tvmazeId": 2446966,
+          "season": 1,
+          "number": 4,
+          "title": "War and the Turquoise Tide",
+          "airDate": "2023-01-08"
+        },
+        {
+          "tvmazeId": 2446967,
+          "season": 1,
+          "number": 5,
+          "title": "Ghost of Zebrina",
+          "airDate": "2023-02-05"
+        },
+        {
+          "tvmazeId": 2446968,
+          "season": 1,
+          "number": 6,
+          "title": "One Ocean Closer to Destiny",
+          "airDate": "2023-02-12"
+        },
+        {
+          "tvmazeId": 2446969,
+          "season": 1,
+          "number": 7,
+          "title": "The Rule of Five Hundred",
+          "airDate": "2023-02-19"
+        },
+        {
+          "tvmazeId": 2446970,
+          "season": 1,
+          "number": 8,
+          "title": "Nothing Left to Lose",
+          "airDate": "2023-02-26"
+        },
+        {
+          "tvmazeId": 3077096,
+          "season": 2,
+          "number": 1,
+          "title": "The Killing Season",
+          "airDate": "2025-02-23"
+        },
+        {
+          "tvmazeId": 3156282,
+          "season": 2,
+          "number": 2,
+          "title": "The Rapist is Winter",
+          "airDate": "2025-03-02"
+        },
+        {
+          "tvmazeId": 3156283,
+          "season": 2,
+          "number": 3,
+          "title": "Wrap Thee in Terror",
+          "airDate": "2025-03-09"
+        },
+        {
+          "tvmazeId": 3156284,
+          "season": 2,
+          "number": 4,
+          "title": "Journey the Rivers of Iron",
+          "airDate": "2025-03-16"
+        },
+        {
+          "tvmazeId": 3156285,
+          "season": 2,
+          "number": 5,
+          "title": "Only Gunshots to Guide Us",
+          "airDate": "2025-03-23"
+        },
+        {
+          "tvmazeId": 3156286,
+          "season": 2,
+          "number": 6,
+          "title": "The Mountain Teeth of Monsters",
+          "airDate": "2025-03-30"
+        },
+        {
+          "tvmazeId": 3156287,
+          "season": 2,
+          "number": 7,
+          "title": "A Dream and a Memory",
+          "airDate": "2025-04-06"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "The Wire",
+        "year": 2002,
+        "showId": 179,
+        "premiered": "2002-06-02",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 12907,
+          "season": 1,
+          "number": 1,
+          "title": "The Target",
+          "airDate": "2002-06-02"
+        },
+        {
+          "tvmazeId": 12908,
+          "season": 1,
+          "number": 2,
+          "title": "The Detail",
+          "airDate": "2002-06-09"
+        },
+        {
+          "tvmazeId": 12909,
+          "season": 1,
+          "number": 3,
+          "title": "The Buys",
+          "airDate": "2002-06-16"
+        },
+        {
+          "tvmazeId": 12910,
+          "season": 1,
+          "number": 4,
+          "title": "Old Cases",
+          "airDate": "2002-06-23"
+        },
+        {
+          "tvmazeId": 12911,
+          "season": 1,
+          "number": 5,
+          "title": "The Pager",
+          "airDate": "2002-06-30"
+        },
+        {
+          "tvmazeId": 12912,
+          "season": 1,
+          "number": 6,
+          "title": "The Wire",
+          "airDate": "2002-07-07"
+        },
+        {
+          "tvmazeId": 12913,
+          "season": 1,
+          "number": 7,
+          "title": "One Arrest",
+          "airDate": "2002-07-21"
+        },
+        {
+          "tvmazeId": 12914,
+          "season": 1,
+          "number": 8,
+          "title": "Lessons",
+          "airDate": "2002-07-28"
+        },
+        {
+          "tvmazeId": 12915,
+          "season": 1,
+          "number": 9,
+          "title": "Game Day",
+          "airDate": "2002-08-04"
+        },
+        {
+          "tvmazeId": 12917,
+          "season": 1,
+          "number": 10,
+          "title": "The Cost",
+          "airDate": "2002-08-11"
+        },
+        {
+          "tvmazeId": 12918,
+          "season": 1,
+          "number": 11,
+          "title": "The Hunt",
+          "airDate": "2002-08-18"
+        },
+        {
+          "tvmazeId": 12919,
+          "season": 1,
+          "number": 12,
+          "title": "Cleaning Up",
+          "airDate": "2002-09-01"
+        },
+        {
+          "tvmazeId": 12920,
+          "season": 1,
+          "number": 13,
+          "title": "Sentencing",
+          "airDate": "2002-09-08"
+        },
+        {
+          "tvmazeId": 12921,
+          "season": 2,
+          "number": 1,
+          "title": "Ebb Tide",
+          "airDate": "2003-06-01"
+        },
+        {
+          "tvmazeId": 12922,
+          "season": 2,
+          "number": 2,
+          "title": "Collateral Damage",
+          "airDate": "2003-06-08"
+        },
+        {
+          "tvmazeId": 12923,
+          "season": 2,
+          "number": 3,
+          "title": "Hot Shots",
+          "airDate": "2003-06-15"
+        },
+        {
+          "tvmazeId": 12924,
+          "season": 2,
+          "number": 4,
+          "title": "Hard Cases",
+          "airDate": "2003-06-22"
+        },
+        {
+          "tvmazeId": 12925,
+          "season": 2,
+          "number": 5,
+          "title": "Undertow",
+          "airDate": "2003-06-29"
+        },
+        {
+          "tvmazeId": 12926,
+          "season": 2,
+          "number": 6,
+          "title": "All Prologue",
+          "airDate": "2003-07-06"
+        },
+        {
+          "tvmazeId": 12927,
+          "season": 2,
+          "number": 7,
+          "title": "Backwash",
+          "airDate": "2003-07-13"
+        },
+        {
+          "tvmazeId": 12928,
+          "season": 2,
+          "number": 8,
+          "title": "Duck and Cover",
+          "airDate": "2003-07-27"
+        },
+        {
+          "tvmazeId": 12929,
+          "season": 2,
+          "number": 9,
+          "title": "Stray Rounds",
+          "airDate": "2003-08-03"
+        },
+        {
+          "tvmazeId": 12930,
+          "season": 2,
+          "number": 10,
+          "title": "Storm Warnings",
+          "airDate": "2003-08-10"
+        },
+        {
+          "tvmazeId": 12931,
+          "season": 2,
+          "number": 11,
+          "title": "Bad Dreams",
+          "airDate": "2003-08-17"
+        },
+        {
+          "tvmazeId": 12932,
+          "season": 2,
+          "number": 12,
+          "title": "Port in a Storm",
+          "airDate": "2003-08-24"
+        },
+        {
+          "tvmazeId": 12933,
+          "season": 3,
+          "number": 1,
+          "title": "Time After Time",
+          "airDate": "2004-09-19"
+        },
+        {
+          "tvmazeId": 12934,
+          "season": 3,
+          "number": 2,
+          "title": "All Due Respect",
+          "airDate": "2004-09-26"
+        },
+        {
+          "tvmazeId": 12935,
+          "season": 3,
+          "number": 3,
+          "title": "Dead Soldiers",
+          "airDate": "2004-10-03"
+        },
+        {
+          "tvmazeId": 12936,
+          "season": 3,
+          "number": 4,
+          "title": "Hamsterdam",
+          "airDate": "2004-10-10"
+        },
+        {
+          "tvmazeId": 12937,
+          "season": 3,
+          "number": 5,
+          "title": "Straight and True",
+          "airDate": "2004-10-17"
+        },
+        {
+          "tvmazeId": 12938,
+          "season": 3,
+          "number": 6,
+          "title": "Homecoming",
+          "airDate": "2004-10-31"
+        },
+        {
+          "tvmazeId": 12939,
+          "season": 3,
+          "number": 7,
+          "title": "Back Burners",
+          "airDate": "2004-11-07"
+        },
+        {
+          "tvmazeId": 12940,
+          "season": 3,
+          "number": 8,
+          "title": "Moral Midgetry",
+          "airDate": "2004-11-14"
+        },
+        {
+          "tvmazeId": 12941,
+          "season": 3,
+          "number": 9,
+          "title": "Slapstick",
+          "airDate": "2004-11-21"
+        },
+        {
+          "tvmazeId": 12942,
+          "season": 3,
+          "number": 10,
+          "title": "Reformation",
+          "airDate": "2004-11-28"
+        },
+        {
+          "tvmazeId": 12943,
+          "season": 3,
+          "number": 11,
+          "title": "Middle Ground",
+          "airDate": "2004-12-12"
+        },
+        {
+          "tvmazeId": 12944,
+          "season": 3,
+          "number": 12,
+          "title": "Mission Accomplished",
+          "airDate": "2004-12-19"
+        },
+        {
+          "tvmazeId": 12945,
+          "season": 4,
+          "number": 1,
+          "title": "Boys of Summer",
+          "airDate": "2006-09-10"
+        },
+        {
+          "tvmazeId": 12946,
+          "season": 4,
+          "number": 2,
+          "title": "Soft Eyes",
+          "airDate": "2006-09-17"
+        },
+        {
+          "tvmazeId": 12947,
+          "season": 4,
+          "number": 3,
+          "title": "Home Rooms",
+          "airDate": "2006-09-24"
+        },
+        {
+          "tvmazeId": 12948,
+          "season": 4,
+          "number": 4,
+          "title": "Refugees",
+          "airDate": "2006-10-01"
+        },
+        {
+          "tvmazeId": 12949,
+          "season": 4,
+          "number": 5,
+          "title": "Alliances",
+          "airDate": "2006-10-08"
+        },
+        {
+          "tvmazeId": 12951,
+          "season": 4,
+          "number": 6,
+          "title": "Margin of Error",
+          "airDate": "2006-10-15"
+        },
+        {
+          "tvmazeId": 12952,
+          "season": 4,
+          "number": 7,
+          "title": "Unto Others",
+          "airDate": "2006-10-29"
+        },
+        {
+          "tvmazeId": 12953,
+          "season": 4,
+          "number": 8,
+          "title": "Corner Boys",
+          "airDate": "2006-11-05"
+        },
+        {
+          "tvmazeId": 12954,
+          "season": 4,
+          "number": 9,
+          "title": "Know Your Place",
+          "airDate": "2006-11-12"
+        },
+        {
+          "tvmazeId": 12955,
+          "season": 4,
+          "number": 10,
+          "title": "Misgivings",
+          "airDate": "2006-11-19"
+        },
+        {
+          "tvmazeId": 12956,
+          "season": 4,
+          "number": 11,
+          "title": "A New Day",
+          "airDate": "2006-11-26"
+        },
+        {
+          "tvmazeId": 12957,
+          "season": 4,
+          "number": 12,
+          "title": "That's Got His Own",
+          "airDate": "2006-12-03"
+        },
+        {
+          "tvmazeId": 12958,
+          "season": 4,
+          "number": 13,
+          "title": "Final Grades",
+          "airDate": "2006-12-10"
+        },
+        {
+          "tvmazeId": 12959,
+          "season": 5,
+          "number": 1,
+          "title": "More with Less",
+          "airDate": "2008-01-06"
+        },
+        {
+          "tvmazeId": 12960,
+          "season": 5,
+          "number": 2,
+          "title": "Unconfirmed Reports",
+          "airDate": "2008-01-13"
+        },
+        {
+          "tvmazeId": 12961,
+          "season": 5,
+          "number": 3,
+          "title": "Not for Attribution",
+          "airDate": "2008-01-20"
+        },
+        {
+          "tvmazeId": 12962,
+          "season": 5,
+          "number": 4,
+          "title": "Transitions",
+          "airDate": "2008-01-27"
+        },
+        {
+          "tvmazeId": 12963,
+          "season": 5,
+          "number": 5,
+          "title": "React Quotes",
+          "airDate": "2008-02-03"
+        },
+        {
+          "tvmazeId": 12965,
+          "season": 5,
+          "number": 6,
+          "title": "The Dickensian Aspect",
+          "airDate": "2008-02-10"
+        },
+        {
+          "tvmazeId": 12966,
+          "season": 5,
+          "number": 7,
+          "title": "Took",
+          "airDate": "2008-02-17"
+        },
+        {
+          "tvmazeId": 12967,
+          "season": 5,
+          "number": 8,
+          "title": "Clarifications",
+          "airDate": "2008-02-24"
+        },
+        {
+          "tvmazeId": 12968,
+          "season": 5,
+          "number": 9,
+          "title": "Late Editions",
+          "airDate": "2008-03-02"
+        },
+        {
+          "tvmazeId": 12969,
+          "season": 5,
+          "number": 10,
+          "title": "-30-",
+          "airDate": "2008-03-09"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "Chernobyl",
+        "year": 2019,
+        "showId": 30770,
+        "premiered": "2019-05-06",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 1594417,
+          "season": 1,
+          "number": 1,
+          "title": "1:23:45",
+          "airDate": "2019-05-06"
+        },
+        {
+          "tvmazeId": 1634381,
+          "season": 1,
+          "number": 2,
+          "title": "Please Remain Calm",
+          "airDate": "2019-05-13"
+        },
+        {
+          "tvmazeId": 1634382,
+          "season": 1,
+          "number": 3,
+          "title": "Open Wide, O Earth",
+          "airDate": "2019-05-20"
+        },
+        {
+          "tvmazeId": 1634383,
+          "season": 1,
+          "number": 4,
+          "title": "The Happiness of All Mankind",
+          "airDate": "2019-05-27"
+        },
+        {
+          "tvmazeId": 1634384,
+          "season": 1,
+          "number": 5,
+          "title": "Vichnaya Pamyat",
+          "airDate": "2019-06-03"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "Stargate Atlantis",
+        "year": 2004,
+        "showId": 206,
+        "premiered": "2004-07-16",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 13683,
+          "season": 1,
+          "number": 1,
+          "title": "Rising, Part 1",
+          "airDate": "2004-07-16"
+        },
+        {
+          "tvmazeId": 13684,
+          "season": 1,
+          "number": 2,
+          "title": "Rising, Part 2",
+          "airDate": "2004-07-16"
+        },
+        {
+          "tvmazeId": 13685,
+          "season": 1,
+          "number": 3,
+          "title": "Hide and Seek",
+          "airDate": "2004-07-23"
+        },
+        {
+          "tvmazeId": 13686,
+          "season": 1,
+          "number": 4,
+          "title": "Thirty-Eight Minutes",
+          "airDate": "2004-07-30"
+        },
+        {
+          "tvmazeId": 13687,
+          "season": 1,
+          "number": 5,
+          "title": "Suspicion",
+          "airDate": "2004-08-06"
+        },
+        {
+          "tvmazeId": 13688,
+          "season": 1,
+          "number": 6,
+          "title": "Childhood's End",
+          "airDate": "2004-08-13"
+        },
+        {
+          "tvmazeId": 13689,
+          "season": 1,
+          "number": 7,
+          "title": "Poisoning the Well",
+          "airDate": "2004-08-20"
+        },
+        {
+          "tvmazeId": 13690,
+          "season": 1,
+          "number": 8,
+          "title": "Underground",
+          "airDate": "2004-08-27"
+        },
+        {
+          "tvmazeId": 13691,
+          "season": 1,
+          "number": 9,
+          "title": "Home",
+          "airDate": "2004-09-10"
+        },
+        {
+          "tvmazeId": 13692,
+          "season": 1,
+          "number": 10,
+          "title": "The Storm",
+          "airDate": "2004-09-17"
+        },
+        {
+          "tvmazeId": 13693,
+          "season": 1,
+          "number": 11,
+          "title": "The Eye",
+          "airDate": "2005-01-21"
+        },
+        {
+          "tvmazeId": 13694,
+          "season": 1,
+          "number": 12,
+          "title": "The Defiant One",
+          "airDate": "2005-01-28"
+        },
+        {
+          "tvmazeId": 13695,
+          "season": 1,
+          "number": 13,
+          "title": "Hot Zone",
+          "airDate": "2005-02-04"
+        },
+        {
+          "tvmazeId": 13696,
+          "season": 1,
+          "number": 14,
+          "title": "Sanctuary",
+          "airDate": "2005-02-11"
+        },
+        {
+          "tvmazeId": 13697,
+          "season": 1,
+          "number": 15,
+          "title": "Before I Sleep",
+          "airDate": "2005-02-18"
+        },
+        {
+          "tvmazeId": 13698,
+          "season": 1,
+          "number": 16,
+          "title": "The Brotherhood",
+          "airDate": "2005-02-25"
+        },
+        {
+          "tvmazeId": 13699,
+          "season": 1,
+          "number": 17,
+          "title": "Letters from Pegasus",
+          "airDate": "2005-03-04"
+        },
+        {
+          "tvmazeId": 13700,
+          "season": 1,
+          "number": 18,
+          "title": "The Gift",
+          "airDate": "2005-03-11"
+        },
+        {
+          "tvmazeId": 13701,
+          "season": 1,
+          "number": 19,
+          "title": "The Siege, Part 1",
+          "airDate": "2005-03-18"
+        },
+        {
+          "tvmazeId": 13702,
+          "season": 1,
+          "number": 20,
+          "title": "The Siege, Part 2",
+          "airDate": "2005-03-25"
+        },
+        {
+          "tvmazeId": 13703,
+          "season": 2,
+          "number": 1,
+          "title": "The Siege, Part 3",
+          "airDate": "2005-07-15"
+        },
+        {
+          "tvmazeId": 13704,
+          "season": 2,
+          "number": 2,
+          "title": "The Intruder",
+          "airDate": "2005-07-22"
+        },
+        {
+          "tvmazeId": 13705,
+          "season": 2,
+          "number": 3,
+          "title": "Runner",
+          "airDate": "2005-07-29"
+        },
+        {
+          "tvmazeId": 13706,
+          "season": 2,
+          "number": 4,
+          "title": "Duet",
+          "airDate": "2005-08-05"
+        },
+        {
+          "tvmazeId": 13707,
+          "season": 2,
+          "number": 5,
+          "title": "Condemned",
+          "airDate": "2005-08-12"
+        },
+        {
+          "tvmazeId": 13708,
+          "season": 2,
+          "number": 6,
+          "title": "Trinity",
+          "airDate": "2005-08-19"
+        },
+        {
+          "tvmazeId": 13709,
+          "season": 2,
+          "number": 7,
+          "title": "Instinct",
+          "airDate": "2005-08-26"
+        },
+        {
+          "tvmazeId": 13710,
+          "season": 2,
+          "number": 8,
+          "title": "Conversion",
+          "airDate": "2005-09-09"
+        },
+        {
+          "tvmazeId": 13711,
+          "season": 2,
+          "number": 9,
+          "title": "Aurora",
+          "airDate": "2005-09-23"
+        },
+        {
+          "tvmazeId": 13712,
+          "season": 2,
+          "number": 10,
+          "title": "The Lost Boys",
+          "airDate": "2005-09-23"
+        },
+        {
+          "tvmazeId": 13713,
+          "season": 2,
+          "number": 11,
+          "title": "The Hive",
+          "airDate": "2006-01-06"
+        },
+        {
+          "tvmazeId": 13714,
+          "season": 2,
+          "number": 12,
+          "title": "Epiphany",
+          "airDate": "2006-01-13"
+        },
+        {
+          "tvmazeId": 13715,
+          "season": 2,
+          "number": 13,
+          "title": "Critical Mass",
+          "airDate": "2006-01-20"
+        },
+        {
+          "tvmazeId": 13716,
+          "season": 2,
+          "number": 14,
+          "title": "Grace Under Pressure",
+          "airDate": "2006-01-27"
+        },
+        {
+          "tvmazeId": 13717,
+          "season": 2,
+          "number": 15,
+          "title": "The Tower",
+          "airDate": "2006-02-03"
+        },
+        {
+          "tvmazeId": 13718,
+          "season": 2,
+          "number": 16,
+          "title": "The Long Goodbye",
+          "airDate": "2006-02-10"
+        },
+        {
+          "tvmazeId": 13719,
+          "season": 2,
+          "number": 17,
+          "title": "Coup d'Etat",
+          "airDate": "2006-02-17"
+        },
+        {
+          "tvmazeId": 13720,
+          "season": 2,
+          "number": 18,
+          "title": "Michael",
+          "airDate": "2006-02-24"
+        },
+        {
+          "tvmazeId": 13721,
+          "season": 2,
+          "number": 19,
+          "title": "Inferno",
+          "airDate": "2006-03-03"
+        },
+        {
+          "tvmazeId": 13722,
+          "season": 2,
+          "number": 20,
+          "title": "Allies",
+          "airDate": "2006-03-10"
+        },
+        {
+          "tvmazeId": 13723,
+          "season": 3,
+          "number": 1,
+          "title": "No Man's Land",
+          "airDate": "2006-07-14"
+        },
+        {
+          "tvmazeId": 13724,
+          "season": 3,
+          "number": 2,
+          "title": "Misbegotten",
+          "airDate": "2006-07-21"
+        },
+        {
+          "tvmazeId": 13725,
+          "season": 3,
+          "number": 3,
+          "title": "Irresistible",
+          "airDate": "2006-07-28"
+        },
+        {
+          "tvmazeId": 13726,
+          "season": 3,
+          "number": 4,
+          "title": "Sateda",
+          "airDate": "2006-08-04"
+        },
+        {
+          "tvmazeId": 13727,
+          "season": 3,
+          "number": 5,
+          "title": "Progeny",
+          "airDate": "2006-08-11"
+        },
+        {
+          "tvmazeId": 13728,
+          "season": 3,
+          "number": 6,
+          "title": "The Real World",
+          "airDate": "2006-08-18"
+        },
+        {
+          "tvmazeId": 13729,
+          "season": 3,
+          "number": 7,
+          "title": "Common Ground",
+          "airDate": "2006-08-25"
+        },
+        {
+          "tvmazeId": 13730,
+          "season": 3,
+          "number": 8,
+          "title": "McKay and Mrs. Miller",
+          "airDate": "2006-09-08"
+        },
+        {
+          "tvmazeId": 13731,
+          "season": 3,
+          "number": 9,
+          "title": "Phantoms",
+          "airDate": "2006-09-15"
+        },
+        {
+          "tvmazeId": 13732,
+          "season": 3,
+          "number": 10,
+          "title": "The Return, Part 1",
+          "airDate": "2006-09-22"
+        },
+        {
+          "tvmazeId": 13733,
+          "season": 3,
+          "number": 11,
+          "title": "The Return, Part 2",
+          "airDate": "2007-04-13"
+        },
+        {
+          "tvmazeId": 13734,
+          "season": 3,
+          "number": 12,
+          "title": "Echoes",
+          "airDate": "2007-04-20"
+        },
+        {
+          "tvmazeId": 13735,
+          "season": 3,
+          "number": 13,
+          "title": "Irresponsible",
+          "airDate": "2007-04-27"
+        },
+        {
+          "tvmazeId": 13736,
+          "season": 3,
+          "number": 14,
+          "title": "Tao of Rodney",
+          "airDate": "2007-05-04"
+        },
+        {
+          "tvmazeId": 13737,
+          "season": 3,
+          "number": 15,
+          "title": "The Game",
+          "airDate": "2007-05-11"
+        },
+        {
+          "tvmazeId": 13738,
+          "season": 3,
+          "number": 16,
+          "title": "The Ark",
+          "airDate": "2007-05-18"
+        },
+        {
+          "tvmazeId": 13739,
+          "season": 3,
+          "number": 17,
+          "title": "Sunday",
+          "airDate": "2007-06-01"
+        },
+        {
+          "tvmazeId": 13740,
+          "season": 3,
+          "number": 18,
+          "title": "Submersion",
+          "airDate": "2007-06-08"
+        },
+        {
+          "tvmazeId": 13741,
+          "season": 3,
+          "number": 19,
+          "title": "Vengeance",
+          "airDate": "2007-06-15"
+        },
+        {
+          "tvmazeId": 13742,
+          "season": 3,
+          "number": 20,
+          "title": "First Strike",
+          "airDate": "2007-06-22"
+        },
+        {
+          "tvmazeId": 13743,
+          "season": 4,
+          "number": 1,
+          "title": "Adrift",
+          "airDate": "2007-09-28"
+        },
+        {
+          "tvmazeId": 13744,
+          "season": 4,
+          "number": 2,
+          "title": "Lifeline",
+          "airDate": "2007-10-05"
+        },
+        {
+          "tvmazeId": 13745,
+          "season": 4,
+          "number": 3,
+          "title": "Reunion",
+          "airDate": "2007-10-12"
+        },
+        {
+          "tvmazeId": 13746,
+          "season": 4,
+          "number": 4,
+          "title": "Doppelganger",
+          "airDate": "2007-10-19"
+        },
+        {
+          "tvmazeId": 13747,
+          "season": 4,
+          "number": 5,
+          "title": "Travelers",
+          "airDate": "2007-10-26"
+        },
+        {
+          "tvmazeId": 13748,
+          "season": 4,
+          "number": 6,
+          "title": "Tabula Rasa",
+          "airDate": "2007-11-02"
+        },
+        {
+          "tvmazeId": 13749,
+          "season": 4,
+          "number": 7,
+          "title": "Missing",
+          "airDate": "2007-11-09"
+        },
+        {
+          "tvmazeId": 13750,
+          "season": 4,
+          "number": 8,
+          "title": "The Seer",
+          "airDate": "2007-11-16"
+        },
+        {
+          "tvmazeId": 13751,
+          "season": 4,
+          "number": 9,
+          "title": "Miller's Crossing",
+          "airDate": "2007-11-30"
+        },
+        {
+          "tvmazeId": 13752,
+          "season": 4,
+          "number": 10,
+          "title": "This Mortal Coil",
+          "airDate": "2007-12-07"
+        },
+        {
+          "tvmazeId": 13753,
+          "season": 4,
+          "number": 11,
+          "title": "Be All My Sins Remember'd",
+          "airDate": "2008-01-04"
+        },
+        {
+          "tvmazeId": 13754,
+          "season": 4,
+          "number": 12,
+          "title": "Spoils of War",
+          "airDate": "2008-01-11"
+        },
+        {
+          "tvmazeId": 13755,
+          "season": 4,
+          "number": 13,
+          "title": "Quarantine",
+          "airDate": "2008-01-18"
+        },
+        {
+          "tvmazeId": 13756,
+          "season": 4,
+          "number": 14,
+          "title": "Harmony",
+          "airDate": "2008-01-25"
+        },
+        {
+          "tvmazeId": 13757,
+          "season": 4,
+          "number": 15,
+          "title": "Outcast",
+          "airDate": "2008-02-01"
+        },
+        {
+          "tvmazeId": 13758,
+          "season": 4,
+          "number": 16,
+          "title": "Trio",
+          "airDate": "2008-02-08"
+        },
+        {
+          "tvmazeId": 13759,
+          "season": 4,
+          "number": 17,
+          "title": "Midway",
+          "airDate": "2008-02-15"
+        },
+        {
+          "tvmazeId": 13760,
+          "season": 4,
+          "number": 18,
+          "title": "The Kindred, Part 1",
+          "airDate": "2008-02-22"
+        },
+        {
+          "tvmazeId": 13761,
+          "season": 4,
+          "number": 19,
+          "title": "The Kindred, Part 2",
+          "airDate": "2008-02-29"
+        },
+        {
+          "tvmazeId": 13762,
+          "season": 4,
+          "number": 20,
+          "title": "The Last Man",
+          "airDate": "2008-03-07"
+        },
+        {
+          "tvmazeId": 13763,
+          "season": 5,
+          "number": 1,
+          "title": "Search and Rescue",
+          "airDate": "2008-07-11"
+        },
+        {
+          "tvmazeId": 13764,
+          "season": 5,
+          "number": 2,
+          "title": "The Seed",
+          "airDate": "2008-07-18"
+        },
+        {
+          "tvmazeId": 13765,
+          "season": 5,
+          "number": 3,
+          "title": "Broken Ties",
+          "airDate": "2008-07-25"
+        },
+        {
+          "tvmazeId": 13766,
+          "season": 5,
+          "number": 4,
+          "title": "The Daedalus Variations",
+          "airDate": "2008-08-01"
+        },
+        {
+          "tvmazeId": 13767,
+          "season": 5,
+          "number": 5,
+          "title": "Ghost in the Machine",
+          "airDate": "2008-08-15"
+        },
+        {
+          "tvmazeId": 13768,
+          "season": 5,
+          "number": 6,
+          "title": "The Shrine",
+          "airDate": "2008-08-22"
+        },
+        {
+          "tvmazeId": 13769,
+          "season": 5,
+          "number": 7,
+          "title": "Whispers",
+          "airDate": "2008-09-05"
+        },
+        {
+          "tvmazeId": 13770,
+          "season": 5,
+          "number": 8,
+          "title": "The Queen",
+          "airDate": "2008-09-12"
+        },
+        {
+          "tvmazeId": 13771,
+          "season": 5,
+          "number": 9,
+          "title": "Tracker",
+          "airDate": "2008-09-19"
+        },
+        {
+          "tvmazeId": 13772,
+          "season": 5,
+          "number": 10,
+          "title": "First Contact",
+          "airDate": "2008-09-26"
+        },
+        {
+          "tvmazeId": 13773,
+          "season": 5,
+          "number": 11,
+          "title": "The Lost Tribe",
+          "airDate": "2008-10-10"
+        },
+        {
+          "tvmazeId": 13774,
+          "season": 5,
+          "number": 12,
+          "title": "Outsiders",
+          "airDate": "2008-10-17"
+        },
+        {
+          "tvmazeId": 13775,
+          "season": 5,
+          "number": 13,
+          "title": "Inquisition",
+          "airDate": "2008-10-24"
+        },
+        {
+          "tvmazeId": 13776,
+          "season": 5,
+          "number": 14,
+          "title": "The Prodigal",
+          "airDate": "2008-11-07"
+        },
+        {
+          "tvmazeId": 13777,
+          "season": 5,
+          "number": 15,
+          "title": "Remnants",
+          "airDate": "2008-11-14"
+        },
+        {
+          "tvmazeId": 13778,
+          "season": 5,
+          "number": 16,
+          "title": "Brain Storm",
+          "airDate": "2008-11-21"
+        },
+        {
+          "tvmazeId": 13779,
+          "season": 5,
+          "number": 17,
+          "title": "Infection",
+          "airDate": "2008-12-05"
+        },
+        {
+          "tvmazeId": 13780,
+          "season": 5,
+          "number": 18,
+          "title": "Identity",
+          "airDate": "2008-12-12"
+        },
+        {
+          "tvmazeId": 13781,
+          "season": 5,
+          "number": 19,
+          "title": "Vegas",
+          "airDate": "2009-01-02"
+        },
+        {
+          "tvmazeId": 13782,
+          "season": 5,
+          "number": 20,
+          "title": "Enemy at the Gate",
+          "airDate": "2009-01-09"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "Kingdom",
+        "year": 2019,
+        "showId": 26153,
+        "premiered": "2019-01-25",
+        "language": "Korean",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 1561845,
+          "season": 1,
+          "number": 1,
+          "title": "Episode 1",
+          "airDate": "2019-01-25"
+        },
+        {
+          "tvmazeId": 1585306,
+          "season": 1,
+          "number": 2,
+          "title": "Episode 2",
+          "airDate": "2019-01-25"
+        },
+        {
+          "tvmazeId": 1585307,
+          "season": 1,
+          "number": 3,
+          "title": "Episode 3",
+          "airDate": "2019-01-25"
+        },
+        {
+          "tvmazeId": 1585308,
+          "season": 1,
+          "number": 4,
+          "title": "Episode 4",
+          "airDate": "2019-01-25"
+        },
+        {
+          "tvmazeId": 1585309,
+          "season": 1,
+          "number": 5,
+          "title": "Episode 5",
+          "airDate": "2019-01-25"
+        },
+        {
+          "tvmazeId": 1585310,
+          "season": 1,
+          "number": 6,
+          "title": "Episode 6",
+          "airDate": "2019-01-25"
+        },
+        {
+          "tvmazeId": 1798772,
+          "season": 2,
+          "number": 1,
+          "title": "Episode 1",
+          "airDate": "2020-03-13"
+        },
+        {
+          "tvmazeId": 1816382,
+          "season": 2,
+          "number": 2,
+          "title": "Episode 2",
+          "airDate": "2020-03-13"
+        },
+        {
+          "tvmazeId": 1816383,
+          "season": 2,
+          "number": 3,
+          "title": "Episode 3",
+          "airDate": "2020-03-13"
+        },
+        {
+          "tvmazeId": 1816384,
+          "season": 2,
+          "number": 4,
+          "title": "Episode 4",
+          "airDate": "2020-03-13"
+        },
+        {
+          "tvmazeId": 1816385,
+          "season": 2,
+          "number": 5,
+          "title": "Episode 5",
+          "airDate": "2020-03-13"
+        },
+        {
+          "tvmazeId": 1816386,
+          "season": 2,
+          "number": 6,
+          "title": "Episode 6",
+          "airDate": "2020-03-13"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "American Horror Story",
+        "year": 2011,
+        "showId": 30,
+        "premiered": "2011-10-05",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 1567,
+          "season": 1,
+          "number": 1,
+          "title": "Pilot",
+          "airDate": "2011-10-05"
+        },
+        {
+          "tvmazeId": 1568,
+          "season": 1,
+          "number": 2,
+          "title": "Home Invasion",
+          "airDate": "2011-10-12"
+        },
+        {
+          "tvmazeId": 1569,
+          "season": 1,
+          "number": 3,
+          "title": "Murder House",
+          "airDate": "2011-10-19"
+        },
+        {
+          "tvmazeId": 1570,
+          "season": 1,
+          "number": 4,
+          "title": "Halloween Part 1",
+          "airDate": "2011-10-26"
+        },
+        {
+          "tvmazeId": 1571,
+          "season": 1,
+          "number": 5,
+          "title": "Halloween Part 2",
+          "airDate": "2011-11-02"
+        },
+        {
+          "tvmazeId": 1572,
+          "season": 1,
+          "number": 6,
+          "title": "Piggy, Piggy",
+          "airDate": "2011-11-09"
+        },
+        {
+          "tvmazeId": 1573,
+          "season": 1,
+          "number": 7,
+          "title": "Open House",
+          "airDate": "2011-11-16"
+        },
+        {
+          "tvmazeId": 1574,
+          "season": 1,
+          "number": 8,
+          "title": "Rubber Man",
+          "airDate": "2011-11-23"
+        },
+        {
+          "tvmazeId": 1575,
+          "season": 1,
+          "number": 9,
+          "title": "Spooky Little Girl",
+          "airDate": "2011-11-30"
+        },
+        {
+          "tvmazeId": 1576,
+          "season": 1,
+          "number": 10,
+          "title": "Smoldering Children",
+          "airDate": "2011-12-07"
+        },
+        {
+          "tvmazeId": 1577,
+          "season": 1,
+          "number": 11,
+          "title": "Birth",
+          "airDate": "2011-12-14"
+        },
+        {
+          "tvmazeId": 1578,
+          "season": 1,
+          "number": 12,
+          "title": "Afterbirth",
+          "airDate": "2011-12-21"
+        },
+        {
+          "tvmazeId": 1579,
+          "season": 2,
+          "number": 1,
+          "title": "Welcome to Briarcliff",
+          "airDate": "2012-10-17"
+        },
+        {
+          "tvmazeId": 1580,
+          "season": 2,
+          "number": 2,
+          "title": "Tricks and Treats",
+          "airDate": "2012-10-24"
+        },
+        {
+          "tvmazeId": 1581,
+          "season": 2,
+          "number": 3,
+          "title": "Nor'easter",
+          "airDate": "2012-10-31"
+        },
+        {
+          "tvmazeId": 1582,
+          "season": 2,
+          "number": 4,
+          "title": "I Am Anne Frank Part 1",
+          "airDate": "2012-11-07"
+        },
+        {
+          "tvmazeId": 1583,
+          "season": 2,
+          "number": 5,
+          "title": "I Am Anne Frank Part 2",
+          "airDate": "2012-11-14"
+        },
+        {
+          "tvmazeId": 1584,
+          "season": 2,
+          "number": 6,
+          "title": "The Origins of Monstrosity",
+          "airDate": "2012-11-21"
+        },
+        {
+          "tvmazeId": 1585,
+          "season": 2,
+          "number": 7,
+          "title": "Dark Cousin",
+          "airDate": "2012-11-28"
+        },
+        {
+          "tvmazeId": 1586,
+          "season": 2,
+          "number": 8,
+          "title": "Unholy Night",
+          "airDate": "2012-12-05"
+        },
+        {
+          "tvmazeId": 1587,
+          "season": 2,
+          "number": 9,
+          "title": "The Coat Hanger",
+          "airDate": "2012-12-12"
+        },
+        {
+          "tvmazeId": 1588,
+          "season": 2,
+          "number": 10,
+          "title": "The Name Game",
+          "airDate": "2013-01-02"
+        },
+        {
+          "tvmazeId": 1589,
+          "season": 2,
+          "number": 11,
+          "title": "Spilt Milk",
+          "airDate": "2013-01-09"
+        },
+        {
+          "tvmazeId": 1590,
+          "season": 2,
+          "number": 12,
+          "title": "Continuum",
+          "airDate": "2013-01-16"
+        },
+        {
+          "tvmazeId": 1591,
+          "season": 2,
+          "number": 13,
+          "title": "Madness Ends",
+          "airDate": "2013-01-23"
+        },
+        {
+          "tvmazeId": 1592,
+          "season": 3,
+          "number": 1,
+          "title": "Bitchcraft",
+          "airDate": "2013-10-09"
+        },
+        {
+          "tvmazeId": 1593,
+          "season": 3,
+          "number": 2,
+          "title": "Boy Parts",
+          "airDate": "2013-10-16"
+        },
+        {
+          "tvmazeId": 1594,
+          "season": 3,
+          "number": 3,
+          "title": "The Replacements",
+          "airDate": "2013-10-23"
+        },
+        {
+          "tvmazeId": 1595,
+          "season": 3,
+          "number": 4,
+          "title": "Fearful Pranks Ensue",
+          "airDate": "2013-10-30"
+        },
+        {
+          "tvmazeId": 1596,
+          "season": 3,
+          "number": 5,
+          "title": "Burn, Witch. Burn!",
+          "airDate": "2013-11-06"
+        },
+        {
+          "tvmazeId": 1597,
+          "season": 3,
+          "number": 6,
+          "title": "The Axeman Cometh",
+          "airDate": "2013-11-13"
+        },
+        {
+          "tvmazeId": 1598,
+          "season": 3,
+          "number": 7,
+          "title": "The Dead",
+          "airDate": "2013-11-20"
+        },
+        {
+          "tvmazeId": 1599,
+          "season": 3,
+          "number": 8,
+          "title": "The Sacred Taking",
+          "airDate": "2013-12-04"
+        },
+        {
+          "tvmazeId": 1600,
+          "season": 3,
+          "number": 9,
+          "title": "Head",
+          "airDate": "2013-12-11"
+        },
+        {
+          "tvmazeId": 1601,
+          "season": 3,
+          "number": 10,
+          "title": "The Magical Delights of Stevie Nicks",
+          "airDate": "2014-01-08"
+        },
+        {
+          "tvmazeId": 1602,
+          "season": 3,
+          "number": 11,
+          "title": "Protect the Coven",
+          "airDate": "2014-01-15"
+        },
+        {
+          "tvmazeId": 1603,
+          "season": 3,
+          "number": 12,
+          "title": "Go to Hell",
+          "airDate": "2014-01-22"
+        },
+        {
+          "tvmazeId": 1604,
+          "season": 3,
+          "number": 13,
+          "title": "The Seven Wonders",
+          "airDate": "2014-01-29"
+        },
+        {
+          "tvmazeId": 1605,
+          "season": 4,
+          "number": 1,
+          "title": "Monsters Among Us",
+          "airDate": "2014-10-08"
+        },
+        {
+          "tvmazeId": 1606,
+          "season": 4,
+          "number": 2,
+          "title": "Massacres and Matinees",
+          "airDate": "2014-10-15"
+        },
+        {
+          "tvmazeId": 1607,
+          "season": 4,
+          "number": 3,
+          "title": "Edward Mordrake: Part 1",
+          "airDate": "2014-10-22"
+        },
+        {
+          "tvmazeId": 1608,
+          "season": 4,
+          "number": 4,
+          "title": "Edward Mordrake: Part 2",
+          "airDate": "2014-10-29"
+        },
+        {
+          "tvmazeId": 1609,
+          "season": 4,
+          "number": 5,
+          "title": "Pink Cupcakes",
+          "airDate": "2014-11-05"
+        },
+        {
+          "tvmazeId": 11226,
+          "season": 4,
+          "number": 6,
+          "title": "Bullseye",
+          "airDate": "2014-11-12"
+        },
+        {
+          "tvmazeId": 14881,
+          "season": 4,
+          "number": 7,
+          "title": "Test of Strength",
+          "airDate": "2014-11-19"
+        },
+        {
+          "tvmazeId": 14882,
+          "season": 4,
+          "number": 8,
+          "title": "Blood Bath",
+          "airDate": "2014-12-03"
+        },
+        {
+          "tvmazeId": 45257,
+          "season": 4,
+          "number": 9,
+          "title": "Tupperware Party Massacre",
+          "airDate": "2014-12-10"
+        },
+        {
+          "tvmazeId": 14883,
+          "season": 4,
+          "number": 10,
+          "title": "Orphans",
+          "airDate": "2014-12-17"
+        },
+        {
+          "tvmazeId": 14885,
+          "season": 4,
+          "number": 11,
+          "title": "Magical Thinking",
+          "airDate": "2015-01-07"
+        },
+        {
+          "tvmazeId": 14886,
+          "season": 4,
+          "number": 12,
+          "title": "Show Stoppers",
+          "airDate": "2015-01-14"
+        },
+        {
+          "tvmazeId": 14887,
+          "season": 4,
+          "number": 13,
+          "title": "Curtain Call",
+          "airDate": "2015-01-21"
+        },
+        {
+          "tvmazeId": 202975,
+          "season": 5,
+          "number": 1,
+          "title": "Checking In",
+          "airDate": "2015-10-07"
+        },
+        {
+          "tvmazeId": 202976,
+          "season": 5,
+          "number": 2,
+          "title": "Chutes and Ladders",
+          "airDate": "2015-10-14"
+        },
+        {
+          "tvmazeId": 202977,
+          "season": 5,
+          "number": 3,
+          "title": "Mommy",
+          "airDate": "2015-10-21"
+        },
+        {
+          "tvmazeId": 203248,
+          "season": 5,
+          "number": 4,
+          "title": "Devil's Night",
+          "airDate": "2015-10-28"
+        },
+        {
+          "tvmazeId": 203249,
+          "season": 5,
+          "number": 5,
+          "title": "Room Service",
+          "airDate": "2015-11-04"
+        },
+        {
+          "tvmazeId": 203250,
+          "season": 5,
+          "number": 6,
+          "title": "Room 33",
+          "airDate": "2015-11-11"
+        },
+        {
+          "tvmazeId": 203251,
+          "season": 5,
+          "number": 7,
+          "title": "Flicker",
+          "airDate": "2015-11-18"
+        },
+        {
+          "tvmazeId": 203252,
+          "season": 5,
+          "number": 8,
+          "title": "The Ten Commandments Killer",
+          "airDate": "2015-12-02"
+        },
+        {
+          "tvmazeId": 203253,
+          "season": 5,
+          "number": 9,
+          "title": "She Wants Revenge",
+          "airDate": "2015-12-09"
+        },
+        {
+          "tvmazeId": 203254,
+          "season": 5,
+          "number": 10,
+          "title": "She Gets Revenge",
+          "airDate": "2015-12-16"
+        },
+        {
+          "tvmazeId": 203255,
+          "season": 5,
+          "number": 11,
+          "title": "Battle Royale",
+          "airDate": "2016-01-06"
+        },
+        {
+          "tvmazeId": 203256,
+          "season": 5,
+          "number": 12,
+          "title": "Be Our Guest",
+          "airDate": "2016-01-13"
+        },
+        {
+          "tvmazeId": 858583,
+          "season": 6,
+          "number": 1,
+          "title": "Chapter 1",
+          "airDate": "2016-09-14"
+        },
+        {
+          "tvmazeId": 878021,
+          "season": 6,
+          "number": 2,
+          "title": "Chapter 2",
+          "airDate": "2016-09-21"
+        },
+        {
+          "tvmazeId": 878022,
+          "season": 6,
+          "number": 3,
+          "title": "Chapter 3",
+          "airDate": "2016-09-28"
+        },
+        {
+          "tvmazeId": 878023,
+          "season": 6,
+          "number": 4,
+          "title": "Chapter 4",
+          "airDate": "2016-10-05"
+        },
+        {
+          "tvmazeId": 878024,
+          "season": 6,
+          "number": 5,
+          "title": "Chapter 5",
+          "airDate": "2016-10-12"
+        },
+        {
+          "tvmazeId": 878025,
+          "season": 6,
+          "number": 6,
+          "title": "Chapter 6",
+          "airDate": "2016-10-19"
+        },
+        {
+          "tvmazeId": 878026,
+          "season": 6,
+          "number": 7,
+          "title": "Chapter 7",
+          "airDate": "2016-10-26"
+        },
+        {
+          "tvmazeId": 878027,
+          "season": 6,
+          "number": 8,
+          "title": "Chapter 8",
+          "airDate": "2016-11-02"
+        },
+        {
+          "tvmazeId": 878028,
+          "season": 6,
+          "number": 9,
+          "title": "Chapter 9",
+          "airDate": "2016-11-09"
+        },
+        {
+          "tvmazeId": 878029,
+          "season": 6,
+          "number": 10,
+          "title": "Chapter 10",
+          "airDate": "2016-11-16"
+        },
+        {
+          "tvmazeId": 1255009,
+          "season": 7,
+          "number": 1,
+          "title": "Election Night",
+          "airDate": "2017-09-05"
+        },
+        {
+          "tvmazeId": 1260245,
+          "season": 7,
+          "number": 2,
+          "title": "Don't Be Afraid of the Dark",
+          "airDate": "2017-09-12"
+        },
+        {
+          "tvmazeId": 1260246,
+          "season": 7,
+          "number": 3,
+          "title": "Neighbors from Hell",
+          "airDate": "2017-09-19"
+        },
+        {
+          "tvmazeId": 1260247,
+          "season": 7,
+          "number": 4,
+          "title": "11/9",
+          "airDate": "2017-09-26"
+        },
+        {
+          "tvmazeId": 1272037,
+          "season": 7,
+          "number": 5,
+          "title": "Holes",
+          "airDate": "2017-10-03"
+        },
+        {
+          "tvmazeId": 1272038,
+          "season": 7,
+          "number": 6,
+          "title": "Mid-Western Assassin",
+          "airDate": "2017-10-10"
+        },
+        {
+          "tvmazeId": 1272039,
+          "season": 7,
+          "number": 7,
+          "title": "Valerie Solanas Died for Your Sins: Scumbag",
+          "airDate": "2017-10-17"
+        },
+        {
+          "tvmazeId": 1272040,
+          "season": 7,
+          "number": 8,
+          "title": "Winter of Our Discontent",
+          "airDate": "2017-10-24"
+        },
+        {
+          "tvmazeId": 1272041,
+          "season": 7,
+          "number": 9,
+          "title": "Drink the Kool-Aid",
+          "airDate": "2017-10-31"
+        },
+        {
+          "tvmazeId": 1272042,
+          "season": 7,
+          "number": 10,
+          "title": "Charles (Manson) in Charge",
+          "airDate": "2017-11-07"
+        },
+        {
+          "tvmazeId": 1277290,
+          "season": 7,
+          "number": 11,
+          "title": "Great Again",
+          "airDate": "2017-11-14"
+        },
+        {
+          "tvmazeId": 1486732,
+          "season": 8,
+          "number": 1,
+          "title": "The End",
+          "airDate": "2018-09-12"
+        },
+        {
+          "tvmazeId": 1516010,
+          "season": 8,
+          "number": 2,
+          "title": "The Morning After",
+          "airDate": "2018-09-19"
+        },
+        {
+          "tvmazeId": 1519873,
+          "season": 8,
+          "number": 3,
+          "title": "Forbidden Fruit",
+          "airDate": "2018-09-26"
+        },
+        {
+          "tvmazeId": 1523713,
+          "season": 8,
+          "number": 4,
+          "title": "Could It Be ... Satan?",
+          "airDate": "2018-10-03"
+        },
+        {
+          "tvmazeId": 1528933,
+          "season": 8,
+          "number": 5,
+          "title": "Boy Wonder",
+          "airDate": "2018-10-10"
+        },
+        {
+          "tvmazeId": 1540373,
+          "season": 8,
+          "number": 6,
+          "title": "Return to Murder House",
+          "airDate": "2018-10-17"
+        },
+        {
+          "tvmazeId": 1540374,
+          "season": 8,
+          "number": 7,
+          "title": "Traitor",
+          "airDate": "2018-10-24"
+        },
+        {
+          "tvmazeId": 1540375,
+          "season": 8,
+          "number": 8,
+          "title": "Sojourn",
+          "airDate": "2018-10-31"
+        },
+        {
+          "tvmazeId": 1548305,
+          "season": 8,
+          "number": 9,
+          "title": "Fire and Reign",
+          "airDate": "2018-11-07"
+        },
+        {
+          "tvmazeId": 1548306,
+          "season": 8,
+          "number": 10,
+          "title": "Apocalypse Then",
+          "airDate": "2018-11-14"
+        },
+        {
+          "tvmazeId": 1674506,
+          "season": 9,
+          "number": 1,
+          "title": "Camp Redwood",
+          "airDate": "2019-09-18"
+        },
+        {
+          "tvmazeId": 1692737,
+          "season": 9,
+          "number": 2,
+          "title": "Mr. Jingles",
+          "airDate": "2019-09-25"
+        },
+        {
+          "tvmazeId": 1692738,
+          "season": 9,
+          "number": 3,
+          "title": "Slashdance",
+          "airDate": "2019-10-02"
+        },
+        {
+          "tvmazeId": 1696370,
+          "season": 9,
+          "number": 4,
+          "title": "True Killers",
+          "airDate": "2019-10-09"
+        },
+        {
+          "tvmazeId": 1696371,
+          "season": 9,
+          "number": 5,
+          "title": "Red Dawn",
+          "airDate": "2019-10-16"
+        },
+        {
+          "tvmazeId": 1696372,
+          "season": 9,
+          "number": 6,
+          "title": "Episode 100",
+          "airDate": "2019-10-23"
+        },
+        {
+          "tvmazeId": 1696373,
+          "season": 9,
+          "number": 7,
+          "title": "The Lady in White",
+          "airDate": "2019-10-30"
+        },
+        {
+          "tvmazeId": 1696374,
+          "season": 9,
+          "number": 8,
+          "title": "Rest in Pieces",
+          "airDate": "2019-11-06"
+        },
+        {
+          "tvmazeId": 1696375,
+          "season": 9,
+          "number": 9,
+          "title": "Final Girl",
+          "airDate": "2019-11-13"
+        },
+        {
+          "tvmazeId": 2105714,
+          "season": 10,
+          "number": 1,
+          "title": "Cape Fear",
+          "airDate": "2021-08-25"
+        },
+        {
+          "tvmazeId": 2144969,
+          "season": 10,
+          "number": 2,
+          "title": "Pale",
+          "airDate": "2021-08-25"
+        },
+        {
+          "tvmazeId": 2137516,
+          "season": 10,
+          "number": 3,
+          "title": "Thirst",
+          "airDate": "2021-09-01"
+        },
+        {
+          "tvmazeId": 2137520,
+          "season": 10,
+          "number": 4,
+          "title": "Blood Buffet",
+          "airDate": "2021-09-08"
+        },
+        {
+          "tvmazeId": 2137523,
+          "season": 10,
+          "number": 5,
+          "title": "Gaslight",
+          "airDate": "2021-09-15"
+        },
+        {
+          "tvmazeId": 2149195,
+          "season": 10,
+          "number": 6,
+          "title": "Winter Kills",
+          "airDate": "2021-09-22"
+        },
+        {
+          "tvmazeId": 2149198,
+          "season": 10,
+          "number": 7,
+          "title": "Take Me to Your Leader",
+          "airDate": "2021-09-29"
+        },
+        {
+          "tvmazeId": 2149199,
+          "season": 10,
+          "number": 8,
+          "title": "Inside",
+          "airDate": "2021-10-06"
+        },
+        {
+          "tvmazeId": 2182798,
+          "season": 10,
+          "number": 9,
+          "title": "Blue Moon",
+          "airDate": "2021-10-13"
+        },
+        {
+          "tvmazeId": 2182799,
+          "season": 10,
+          "number": 10,
+          "title": "The Future Perfect",
+          "airDate": "2021-10-20"
+        },
+        {
+          "tvmazeId": 2351159,
+          "season": 11,
+          "number": 1,
+          "title": "Something's Coming",
+          "airDate": "2022-10-19"
+        },
+        {
+          "tvmazeId": 2351160,
+          "season": 11,
+          "number": 2,
+          "title": "Thank You for Your Service",
+          "airDate": "2022-10-19"
+        },
+        {
+          "tvmazeId": 2351161,
+          "season": 11,
+          "number": 3,
+          "title": "Smoke Signals",
+          "airDate": "2022-10-26"
+        },
+        {
+          "tvmazeId": 2402169,
+          "season": 11,
+          "number": 4,
+          "title": "Black Out",
+          "airDate": "2022-10-26"
+        },
+        {
+          "tvmazeId": 2402170,
+          "season": 11,
+          "number": 5,
+          "title": "Bad Fortune",
+          "airDate": "2022-11-02"
+        },
+        {
+          "tvmazeId": 2402171,
+          "season": 11,
+          "number": 6,
+          "title": "The Body",
+          "airDate": "2022-11-02"
+        },
+        {
+          "tvmazeId": 2402172,
+          "season": 11,
+          "number": 7,
+          "title": "The Sentinel",
+          "airDate": "2022-11-09"
+        },
+        {
+          "tvmazeId": 2402173,
+          "season": 11,
+          "number": 8,
+          "title": "Fire Island",
+          "airDate": "2022-11-09"
+        },
+        {
+          "tvmazeId": 2402174,
+          "season": 11,
+          "number": 9,
+          "title": "Requiem 1981/1987 Part One",
+          "airDate": "2022-11-16"
+        },
+        {
+          "tvmazeId": 2402175,
+          "season": 11,
+          "number": 10,
+          "title": "Requiem 1981/1987 Part Two",
+          "airDate": "2022-11-16"
+        },
+        {
+          "tvmazeId": 2623683,
+          "season": 12,
+          "number": 1,
+          "title": "Multiply Thy Pain",
+          "airDate": "2023-09-20"
+        },
+        {
+          "tvmazeId": 2625177,
+          "season": 12,
+          "number": 2,
+          "title": "Rockabye",
+          "airDate": "2023-09-27"
+        },
+        {
+          "tvmazeId": 2643427,
+          "season": 12,
+          "number": 3,
+          "title": "When the Bough Breaks",
+          "airDate": "2023-10-04"
+        },
+        {
+          "tvmazeId": 2648254,
+          "season": 12,
+          "number": 4,
+          "title": "Vanishing Twin",
+          "airDate": "2023-10-11"
+        },
+        {
+          "tvmazeId": 2653472,
+          "season": 12,
+          "number": 5,
+          "title": "Preech",
+          "airDate": "2023-10-18"
+        },
+        {
+          "tvmazeId": 2662187,
+          "season": 12,
+          "number": 6,
+          "title": "Opening Night",
+          "airDate": "2024-04-03"
+        },
+        {
+          "tvmazeId": 2662189,
+          "season": 12,
+          "number": 7,
+          "title": "Ave Hestia",
+          "airDate": "2024-04-10"
+        },
+        {
+          "tvmazeId": 2766866,
+          "season": 12,
+          "number": 8,
+          "title": "Little Gold Man",
+          "airDate": "2024-04-17"
+        },
+        {
+          "tvmazeId": 2766867,
+          "season": 12,
+          "number": 9,
+          "title": "The Auteur",
+          "airDate": "2024-04-24"
+        },
+        {
+          "tvmazeId": 3667317,
+          "season": 13,
+          "number": 1,
+          "title": "13",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3667318,
+          "season": 13,
+          "number": 2,
+          "title": "1:13 AM",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3667319,
+          "season": 13,
+          "number": 3,
+          "title": "Rauhnacht",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3667320,
+          "season": 13,
+          "number": 4,
+          "title": "Is That All There Is?",
+          "airDate": "2026-10-01"
+        },
+        {
+          "tvmazeId": 3667321,
+          "season": 13,
+          "number": 5,
+          "title": "Date Night",
+          "airDate": "2026-10-01"
+        },
+        {
+          "tvmazeId": 3667322,
+          "season": 13,
+          "number": 6,
+          "title": "The Return of Devil's Night",
+          "airDate": "2026-10-01"
+        },
+        {
+          "tvmazeId": 3667323,
+          "season": 13,
+          "number": 7,
+          "title": "The Baddest Witch of Them All",
+          "airDate": "2026-10-08"
+        },
+        {
+          "tvmazeId": 3667324,
+          "season": 13,
+          "number": 8,
+          "title": "Hell No",
+          "airDate": "2026-10-08"
+        },
+        {
+          "tvmazeId": 3667325,
+          "season": 13,
+          "number": 9,
+          "title": "The Devil Is in the Details",
+          "airDate": "2026-10-15"
+        },
+        {
+          "tvmazeId": 3667326,
+          "season": 13,
+          "number": 10,
+          "title": "The Prodigal Son",
+          "airDate": "2026-10-15"
+        },
+        {
+          "tvmazeId": 3686782,
+          "season": 13,
+          "number": 11,
+          "title": "Madison's Happy Ending",
+          "airDate": "2026-10-22"
+        },
+        {
+          "tvmazeId": 3686783,
+          "season": 13,
+          "number": 12,
+          "title": "Sisters in Arms",
+          "airDate": "2026-10-22"
+        },
+        {
+          "tvmazeId": 3686784,
+          "season": 13,
+          "number": 13,
+          "title": "Devil of a Good Time",
+          "airDate": "2026-10-29"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "Percy Jackson and the Olympians",
+        "year": 2023,
+        "showId": 48108,
+        "premiered": "2023-12-19",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 2625342,
+          "season": 1,
+          "number": 1,
+          "title": "I Accidentally Vaporize My Pre-Algebra Teacher",
+          "airDate": "2023-12-19"
+        },
+        {
+          "tvmazeId": 2625343,
+          "season": 1,
+          "number": 2,
+          "title": "I Become Supreme Lord of the Bathroom",
+          "airDate": "2023-12-19"
+        },
+        {
+          "tvmazeId": 2662828,
+          "season": 1,
+          "number": 3,
+          "title": "We Visit the Garden Gnome Emporium",
+          "airDate": "2023-12-26"
+        },
+        {
+          "tvmazeId": 2662829,
+          "season": 1,
+          "number": 4,
+          "title": "I Plunge to My Death",
+          "airDate": "2024-01-02"
+        },
+        {
+          "tvmazeId": 2662830,
+          "season": 1,
+          "number": 5,
+          "title": "A God Buys Us Cheeseburgers",
+          "airDate": "2024-01-09"
+        },
+        {
+          "tvmazeId": 2662831,
+          "season": 1,
+          "number": 6,
+          "title": "We Take a Zebra to Vegas",
+          "airDate": "2024-01-16"
+        },
+        {
+          "tvmazeId": 2662832,
+          "season": 1,
+          "number": 7,
+          "title": "We Find Out the Truth, Sort Of",
+          "airDate": "2024-01-23"
+        },
+        {
+          "tvmazeId": 2662833,
+          "season": 1,
+          "number": 8,
+          "title": "The Prophecy Comes True",
+          "airDate": "2024-01-30"
+        },
+        {
+          "tvmazeId": 3313174,
+          "season": 2,
+          "number": 1,
+          "title": "I Play Dodgeball with Cannibals",
+          "airDate": "2025-12-10"
+        },
+        {
+          "tvmazeId": 3433313,
+          "season": 2,
+          "number": 2,
+          "title": "Demon Pigeons Attack",
+          "airDate": "2025-12-10"
+        },
+        {
+          "tvmazeId": 3433314,
+          "season": 2,
+          "number": 3,
+          "title": "We Board the Princess Andromeda",
+          "airDate": "2025-12-17"
+        },
+        {
+          "tvmazeId": 3433315,
+          "season": 2,
+          "number": 4,
+          "title": "Clarisse Blows Up Everything",
+          "airDate": "2025-12-24"
+        },
+        {
+          "tvmazeId": 3433316,
+          "season": 2,
+          "number": 5,
+          "title": "We Check In to C.C.'s Spa & Resort",
+          "airDate": "2025-12-31"
+        },
+        {
+          "tvmazeId": 3433317,
+          "season": 2,
+          "number": 6,
+          "title": "Nobody Gets the Fleece",
+          "airDate": "2026-01-07"
+        },
+        {
+          "tvmazeId": 3433318,
+          "season": 2,
+          "number": 7,
+          "title": "I Go Down with the Ship",
+          "airDate": "2026-01-14"
+        },
+        {
+          "tvmazeId": 3433319,
+          "season": 2,
+          "number": 8,
+          "title": "The Fleece Works Its Magic Too Well",
+          "airDate": "2026-01-21"
+        },
+        {
+          "tvmazeId": 3681437,
+          "season": 3,
+          "number": 1,
+          "title": "TBA",
+          "airDate": "2026-11-20"
+        },
+        {
+          "tvmazeId": 3681441,
+          "season": 3,
+          "number": 2,
+          "title": "TBA",
+          "airDate": "2026-11-20"
+        },
+        {
+          "tvmazeId": 3681443,
+          "season": 3,
+          "number": 3,
+          "title": "TBA",
+          "airDate": "2026-11-27"
+        },
+        {
+          "tvmazeId": 3681444,
+          "season": 3,
+          "number": 4,
+          "title": "TBA",
+          "airDate": "2026-12-04"
+        },
+        {
+          "tvmazeId": 3681445,
+          "season": 3,
+          "number": 5,
+          "title": "TBA",
+          "airDate": "2026-12-11"
+        },
+        {
+          "tvmazeId": 3681446,
+          "season": 3,
+          "number": 6,
+          "title": "TBA",
+          "airDate": "2026-12-18"
+        },
+        {
+          "tvmazeId": 3681447,
+          "season": 3,
+          "number": 7,
+          "title": "TBA",
+          "airDate": "2026-12-25"
+        },
+        {
+          "tvmazeId": 3681448,
+          "season": 3,
+          "number": 8,
+          "title": "TBA",
+          "airDate": "2027-01-01"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "The Forsytes",
+        "year": 2025,
+        "showId": 83209,
+        "premiered": "2025-10-20",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 3349954,
+          "season": 1,
+          "number": 1,
+          "title": "Episode 1",
+          "airDate": "2025-10-20"
+        },
+        {
+          "tvmazeId": 3349958,
+          "season": 1,
+          "number": 2,
+          "title": "Episode 2",
+          "airDate": "2025-10-27"
+        },
+        {
+          "tvmazeId": 3349962,
+          "season": 1,
+          "number": 3,
+          "title": "Episode 3",
+          "airDate": "2025-11-03"
+        },
+        {
+          "tvmazeId": 3349963,
+          "season": 1,
+          "number": 4,
+          "title": "Episode 4",
+          "airDate": "2025-11-10"
+        },
+        {
+          "tvmazeId": 3349964,
+          "season": 1,
+          "number": 5,
+          "title": "Episode 5",
+          "airDate": "2025-11-17"
+        },
+        {
+          "tvmazeId": 3349965,
+          "season": 1,
+          "number": 6,
+          "title": "Episode 6",
+          "airDate": "2025-11-24"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "South Park",
+        "year": 1997,
+        "showId": 112,
+        "premiered": "1997-08-13",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 7919,
+          "season": 1,
+          "number": 1,
+          "title": "Cartman Gets an Anal Probe",
+          "airDate": "1997-08-13"
+        },
+        {
+          "tvmazeId": 7920,
+          "season": 1,
+          "number": 2,
+          "title": "Weight Gain 4000",
+          "airDate": "1997-08-20"
+        },
+        {
+          "tvmazeId": 7921,
+          "season": 1,
+          "number": 3,
+          "title": "Volcano",
+          "airDate": "1997-08-27"
+        },
+        {
+          "tvmazeId": 7922,
+          "season": 1,
+          "number": 4,
+          "title": "Big Gay Al's Big Gay Boat Ride",
+          "airDate": "1997-09-03"
+        },
+        {
+          "tvmazeId": 7923,
+          "season": 1,
+          "number": 5,
+          "title": "An Elephant Makes Love to a Pig",
+          "airDate": "1997-09-10"
+        },
+        {
+          "tvmazeId": 7924,
+          "season": 1,
+          "number": 6,
+          "title": "Death",
+          "airDate": "1997-09-17"
+        },
+        {
+          "tvmazeId": 7925,
+          "season": 1,
+          "number": 7,
+          "title": "Pinkeye",
+          "airDate": "1997-10-29"
+        },
+        {
+          "tvmazeId": 7926,
+          "season": 1,
+          "number": 8,
+          "title": "Starvin' Marvin",
+          "airDate": "1997-11-19"
+        },
+        {
+          "tvmazeId": 7927,
+          "season": 1,
+          "number": 9,
+          "title": "Mr. Hankey, the Christmas Poo",
+          "airDate": "1997-12-17"
+        },
+        {
+          "tvmazeId": 7928,
+          "season": 1,
+          "number": 10,
+          "title": "Damien",
+          "airDate": "1998-02-04"
+        },
+        {
+          "tvmazeId": 7929,
+          "season": 1,
+          "number": 11,
+          "title": "Tom's Rhinoplasty",
+          "airDate": "1998-02-11"
+        },
+        {
+          "tvmazeId": 7930,
+          "season": 1,
+          "number": 12,
+          "title": "Mecha-Streisand",
+          "airDate": "1998-02-18"
+        },
+        {
+          "tvmazeId": 7931,
+          "season": 1,
+          "number": 13,
+          "title": "Cartman's Mom is a Dirty Slut",
+          "airDate": "1998-02-25"
+        },
+        {
+          "tvmazeId": 7932,
+          "season": 2,
+          "number": 1,
+          "title": "Terrance & Phillip in \"Not Without My Anus\"",
+          "airDate": "1998-04-01"
+        },
+        {
+          "tvmazeId": 7933,
+          "season": 2,
+          "number": 2,
+          "title": "Cartman's Mom Is Still a Dirty Slut",
+          "airDate": "1998-04-22"
+        },
+        {
+          "tvmazeId": 7934,
+          "season": 2,
+          "number": 3,
+          "title": "Chickenlover",
+          "airDate": "1998-05-20"
+        },
+        {
+          "tvmazeId": 7935,
+          "season": 2,
+          "number": 4,
+          "title": "Ike's Wee Wee",
+          "airDate": "1998-05-27"
+        },
+        {
+          "tvmazeId": 7936,
+          "season": 2,
+          "number": 5,
+          "title": "Conjoined Fetus Lady",
+          "airDate": "1998-06-03"
+        },
+        {
+          "tvmazeId": 7937,
+          "season": 2,
+          "number": 6,
+          "title": "The Mexican Staring Frog of Southern Sri Lanka",
+          "airDate": "1998-06-10"
+        },
+        {
+          "tvmazeId": 7938,
+          "season": 2,
+          "number": 7,
+          "title": "City on the Edge of Forever",
+          "airDate": "1998-06-17"
+        },
+        {
+          "tvmazeId": 7939,
+          "season": 2,
+          "number": 8,
+          "title": "Summer Sucks",
+          "airDate": "1998-06-24"
+        },
+        {
+          "tvmazeId": 7940,
+          "season": 2,
+          "number": 9,
+          "title": "Chef's Chocolate Salty Balls",
+          "airDate": "1998-08-19"
+        },
+        {
+          "tvmazeId": 7941,
+          "season": 2,
+          "number": 10,
+          "title": "Chickenpox",
+          "airDate": "1998-08-26"
+        },
+        {
+          "tvmazeId": 7942,
+          "season": 2,
+          "number": 11,
+          "title": "Roger Ebert Should Lay Off the Fatty Foods",
+          "airDate": "1998-09-02"
+        },
+        {
+          "tvmazeId": 7943,
+          "season": 2,
+          "number": 12,
+          "title": "Clubhouses",
+          "airDate": "1998-09-23"
+        },
+        {
+          "tvmazeId": 7944,
+          "season": 2,
+          "number": 13,
+          "title": "Cow Days",
+          "airDate": "1998-09-30"
+        },
+        {
+          "tvmazeId": 7945,
+          "season": 2,
+          "number": 14,
+          "title": "Chef Aid",
+          "airDate": "1998-10-07"
+        },
+        {
+          "tvmazeId": 7946,
+          "season": 2,
+          "number": 15,
+          "title": "Spooky Fish",
+          "airDate": "1998-10-28"
+        },
+        {
+          "tvmazeId": 7947,
+          "season": 2,
+          "number": 16,
+          "title": "Merry Christmas Charlie Manson!",
+          "airDate": "1998-12-09"
+        },
+        {
+          "tvmazeId": 7948,
+          "season": 2,
+          "number": 17,
+          "title": "Gnomes (a.k.a. Underpants Gnomes)",
+          "airDate": "1998-12-16"
+        },
+        {
+          "tvmazeId": 7949,
+          "season": 2,
+          "number": 18,
+          "title": "Prehistoric Ice Man",
+          "airDate": "1999-01-20"
+        },
+        {
+          "tvmazeId": 7950,
+          "season": 3,
+          "number": 1,
+          "title": "Rainforest Schmainforest",
+          "airDate": "1999-04-07"
+        },
+        {
+          "tvmazeId": 7951,
+          "season": 3,
+          "number": 2,
+          "title": "Spontaneous Combustion",
+          "airDate": "1999-04-14"
+        },
+        {
+          "tvmazeId": 7952,
+          "season": 3,
+          "number": 3,
+          "title": "The Succubus (a.k.a. Chef's Mama)",
+          "airDate": "1999-04-21"
+        },
+        {
+          "tvmazeId": 7953,
+          "season": 3,
+          "number": 4,
+          "title": "Jakovasaurs",
+          "airDate": "1999-06-16"
+        },
+        {
+          "tvmazeId": 7954,
+          "season": 3,
+          "number": 5,
+          "title": "Tweek vs. Craig",
+          "airDate": "1999-06-23"
+        },
+        {
+          "tvmazeId": 7955,
+          "season": 3,
+          "number": 6,
+          "title": "Sexual Harassment Panda",
+          "airDate": "1999-07-07"
+        },
+        {
+          "tvmazeId": 7956,
+          "season": 3,
+          "number": 7,
+          "title": "Cat Orgy",
+          "airDate": "1999-07-14"
+        },
+        {
+          "tvmazeId": 7957,
+          "season": 3,
+          "number": 8,
+          "title": "Two Guys Naked in a Hot Tub",
+          "airDate": "1999-07-21"
+        },
+        {
+          "tvmazeId": 7958,
+          "season": 3,
+          "number": 9,
+          "title": "Jewbilee",
+          "airDate": "1999-07-28"
+        },
+        {
+          "tvmazeId": 7959,
+          "season": 3,
+          "number": 10,
+          "title": "Korn's Groovy Pirate Ghost Mystery",
+          "airDate": "1999-10-27"
+        },
+        {
+          "tvmazeId": 7960,
+          "season": 3,
+          "number": 11,
+          "title": "Chinpokomon",
+          "airDate": "1999-11-03"
+        },
+        {
+          "tvmazeId": 7961,
+          "season": 3,
+          "number": 12,
+          "title": "Hooked on Monkey Fonics",
+          "airDate": "1999-11-10"
+        },
+        {
+          "tvmazeId": 7962,
+          "season": 3,
+          "number": 13,
+          "title": "Starvin' Marvin in Space!",
+          "airDate": "1999-11-17"
+        },
+        {
+          "tvmazeId": 7963,
+          "season": 3,
+          "number": 14,
+          "title": "The Red Badge of Gayness (a.k.a. War)",
+          "airDate": "1999-11-24"
+        },
+        {
+          "tvmazeId": 7964,
+          "season": 3,
+          "number": 15,
+          "title": "Mr. Hankey's Christmas Classics",
+          "airDate": "1999-12-01"
+        },
+        {
+          "tvmazeId": 7965,
+          "season": 3,
+          "number": 16,
+          "title": "Are You There God, It's Me Jesus",
+          "airDate": "1999-12-29"
+        },
+        {
+          "tvmazeId": 7966,
+          "season": 3,
+          "number": 17,
+          "title": "Worldwide Recorder Concert (a.k.a. The Brown Noise)",
+          "airDate": "2000-01-12"
+        },
+        {
+          "tvmazeId": 7967,
+          "season": 4,
+          "number": 1,
+          "title": "The Tooth Fairy's TATS 2000",
+          "airDate": "2000-04-05"
+        },
+        {
+          "tvmazeId": 7968,
+          "season": 4,
+          "number": 2,
+          "title": "Cartman's Silly Hate Crime 2000",
+          "airDate": "2000-04-12"
+        },
+        {
+          "tvmazeId": 7969,
+          "season": 4,
+          "number": 3,
+          "title": "Timmy! 2000",
+          "airDate": "2000-04-19"
+        },
+        {
+          "tvmazeId": 7970,
+          "season": 4,
+          "number": 4,
+          "title": "Quintuplets 2000",
+          "airDate": "2000-04-26"
+        },
+        {
+          "tvmazeId": 7971,
+          "season": 4,
+          "number": 5,
+          "title": "Cartman Joins NAMBLA",
+          "airDate": "2000-06-21"
+        },
+        {
+          "tvmazeId": 7972,
+          "season": 4,
+          "number": 6,
+          "title": "Cherokee Hair Tampons",
+          "airDate": "2000-06-28"
+        },
+        {
+          "tvmazeId": 7973,
+          "season": 4,
+          "number": 7,
+          "title": "Chef Goes Nanners",
+          "airDate": "2000-07-05"
+        },
+        {
+          "tvmazeId": 7974,
+          "season": 4,
+          "number": 8,
+          "title": "Something You Can Do with Your Finger (a.k.a. Fingerbang)",
+          "airDate": "2000-07-12"
+        },
+        {
+          "tvmazeId": 7975,
+          "season": 4,
+          "number": 9,
+          "title": "Do the Handicapped Go to Hell? (1)",
+          "airDate": "2000-07-19"
+        },
+        {
+          "tvmazeId": 7976,
+          "season": 4,
+          "number": 10,
+          "title": "Probably (2)",
+          "airDate": "2000-07-26"
+        },
+        {
+          "tvmazeId": 7977,
+          "season": 4,
+          "number": 11,
+          "title": "Fourth Grade",
+          "airDate": "2000-11-08"
+        },
+        {
+          "tvmazeId": 7978,
+          "season": 4,
+          "number": 12,
+          "title": "Trapper Keeper",
+          "airDate": "2000-11-15"
+        },
+        {
+          "tvmazeId": 7979,
+          "season": 4,
+          "number": 13,
+          "title": "Helen Keller! The Musical",
+          "airDate": "2000-11-22"
+        },
+        {
+          "tvmazeId": 7980,
+          "season": 4,
+          "number": 14,
+          "title": "Pip (a.k.a. Great Expectations)",
+          "airDate": "2000-11-29"
+        },
+        {
+          "tvmazeId": 7981,
+          "season": 4,
+          "number": 15,
+          "title": "Fat Camp",
+          "airDate": "2000-12-06"
+        },
+        {
+          "tvmazeId": 7982,
+          "season": 4,
+          "number": 16,
+          "title": "The Wacky Molestation Adventure",
+          "airDate": "2000-12-13"
+        },
+        {
+          "tvmazeId": 7983,
+          "season": 4,
+          "number": 17,
+          "title": "A Very Crappy Christmas",
+          "airDate": "2000-12-20"
+        },
+        {
+          "tvmazeId": 7984,
+          "season": 5,
+          "number": 1,
+          "title": "It Hits the Fan",
+          "airDate": "2001-06-20"
+        },
+        {
+          "tvmazeId": 7985,
+          "season": 5,
+          "number": 2,
+          "title": "Cripple Fight",
+          "airDate": "2001-06-27"
+        },
+        {
+          "tvmazeId": 7986,
+          "season": 5,
+          "number": 3,
+          "title": "Super Best Friends",
+          "airDate": "2001-07-04"
+        },
+        {
+          "tvmazeId": 7987,
+          "season": 5,
+          "number": 4,
+          "title": "Scott Tenorman Must Die",
+          "airDate": "2001-07-11"
+        },
+        {
+          "tvmazeId": 7988,
+          "season": 5,
+          "number": 5,
+          "title": "Terrance and Phillip: Behind the Blow",
+          "airDate": "2001-07-18"
+        },
+        {
+          "tvmazeId": 7989,
+          "season": 5,
+          "number": 6,
+          "title": "Cartmanland",
+          "airDate": "2001-07-25"
+        },
+        {
+          "tvmazeId": 7990,
+          "season": 5,
+          "number": 7,
+          "title": "Proper Condom Use",
+          "airDate": "2001-08-01"
+        },
+        {
+          "tvmazeId": 7991,
+          "season": 5,
+          "number": 8,
+          "title": "Towelie",
+          "airDate": "2001-08-08"
+        },
+        {
+          "tvmazeId": 7992,
+          "season": 5,
+          "number": 9,
+          "title": "Osama Bin Laden Has Farty Pants",
+          "airDate": "2001-11-07"
+        },
+        {
+          "tvmazeId": 7993,
+          "season": 5,
+          "number": 10,
+          "title": "How to Eat with Your Butt",
+          "airDate": "2001-11-14"
+        },
+        {
+          "tvmazeId": 7994,
+          "season": 5,
+          "number": 11,
+          "title": "The Entity (a.k.a. The Ginger Device)",
+          "airDate": "2001-11-21"
+        },
+        {
+          "tvmazeId": 7995,
+          "season": 5,
+          "number": 12,
+          "title": "Here Comes the Neighborhood",
+          "airDate": "2001-11-28"
+        },
+        {
+          "tvmazeId": 7996,
+          "season": 5,
+          "number": 13,
+          "title": "Kenny Dies",
+          "airDate": "2001-12-05"
+        },
+        {
+          "tvmazeId": 7997,
+          "season": 5,
+          "number": 14,
+          "title": "Butters' Very Own Episode",
+          "airDate": "2001-12-12"
+        },
+        {
+          "tvmazeId": 7998,
+          "season": 6,
+          "number": 1,
+          "title": "Jared Has Aides",
+          "airDate": "2002-03-06"
+        },
+        {
+          "tvmazeId": 7999,
+          "season": 6,
+          "number": 2,
+          "title": "Asspen",
+          "airDate": "2002-03-13"
+        },
+        {
+          "tvmazeId": 8000,
+          "season": 6,
+          "number": 3,
+          "title": "Freak Strike",
+          "airDate": "2002-03-20"
+        },
+        {
+          "tvmazeId": 8001,
+          "season": 6,
+          "number": 4,
+          "title": "Fun with Veal",
+          "airDate": "2002-03-27"
+        },
+        {
+          "tvmazeId": 8002,
+          "season": 6,
+          "number": 5,
+          "title": "The New Terrance and Phillip Movie Trailer",
+          "airDate": "2002-04-03"
+        },
+        {
+          "tvmazeId": 8003,
+          "season": 6,
+          "number": 6,
+          "title": "Professor Chaos",
+          "airDate": "2002-04-10"
+        },
+        {
+          "tvmazeId": 8004,
+          "season": 6,
+          "number": 7,
+          "title": "The Simpsons Already Did It",
+          "airDate": "2002-06-26"
+        },
+        {
+          "tvmazeId": 8005,
+          "season": 6,
+          "number": 8,
+          "title": "Red Hot Catholic Love",
+          "airDate": "2002-07-03"
+        },
+        {
+          "tvmazeId": 8006,
+          "season": 6,
+          "number": 9,
+          "title": "Free Hat",
+          "airDate": "2002-07-10"
+        },
+        {
+          "tvmazeId": 8007,
+          "season": 6,
+          "number": 10,
+          "title": "Bebe's Boobs Destroy Society",
+          "airDate": "2002-07-17"
+        },
+        {
+          "tvmazeId": 8008,
+          "season": 6,
+          "number": 11,
+          "title": "Child Abduction is Not Funny",
+          "airDate": "2002-07-24"
+        },
+        {
+          "tvmazeId": 8009,
+          "season": 6,
+          "number": 12,
+          "title": "A Ladder to Heaven",
+          "airDate": "2002-11-06"
+        },
+        {
+          "tvmazeId": 8010,
+          "season": 6,
+          "number": 13,
+          "title": "The Return of the Fellowship of the Ring to the Two Towers",
+          "airDate": "2002-11-13"
+        },
+        {
+          "tvmazeId": 8011,
+          "season": 6,
+          "number": 14,
+          "title": "Death Camp of Tolerance",
+          "airDate": "2002-11-20"
+        },
+        {
+          "tvmazeId": 8012,
+          "season": 6,
+          "number": 15,
+          "title": "The Biggest Douche in the Universe",
+          "airDate": "2002-11-27"
+        },
+        {
+          "tvmazeId": 8013,
+          "season": 6,
+          "number": 16,
+          "title": "My Future Self 'n' Me",
+          "airDate": "2002-12-04"
+        },
+        {
+          "tvmazeId": 8014,
+          "season": 6,
+          "number": 17,
+          "title": "Red Sleigh Down",
+          "airDate": "2002-12-11"
+        },
+        {
+          "tvmazeId": 8015,
+          "season": 7,
+          "number": 1,
+          "title": "Cancelled",
+          "airDate": "2003-03-19"
+        },
+        {
+          "tvmazeId": 8016,
+          "season": 7,
+          "number": 2,
+          "title": "Krazy Kripples",
+          "airDate": "2003-03-26"
+        },
+        {
+          "tvmazeId": 8017,
+          "season": 7,
+          "number": 3,
+          "title": "Toilet Paper",
+          "airDate": "2003-04-02"
+        },
+        {
+          "tvmazeId": 8018,
+          "season": 7,
+          "number": 4,
+          "title": "I'm a Little Bit Country",
+          "airDate": "2003-04-09"
+        },
+        {
+          "tvmazeId": 8019,
+          "season": 7,
+          "number": 5,
+          "title": "Fat Butt and Pancake Head",
+          "airDate": "2003-04-16"
+        },
+        {
+          "tvmazeId": 8020,
+          "season": 7,
+          "number": 6,
+          "title": "Lil' Crime Stoppers",
+          "airDate": "2003-04-23"
+        },
+        {
+          "tvmazeId": 8021,
+          "season": 7,
+          "number": 7,
+          "title": "Red Man's Greed",
+          "airDate": "2003-04-30"
+        },
+        {
+          "tvmazeId": 8022,
+          "season": 7,
+          "number": 8,
+          "title": "South Park is Gay!",
+          "airDate": "2003-10-22"
+        },
+        {
+          "tvmazeId": 8023,
+          "season": 7,
+          "number": 9,
+          "title": "Christian Rock Hard",
+          "airDate": "2003-10-29"
+        },
+        {
+          "tvmazeId": 8024,
+          "season": 7,
+          "number": 10,
+          "title": "Grey Dawn",
+          "airDate": "2003-11-05"
+        },
+        {
+          "tvmazeId": 8025,
+          "season": 7,
+          "number": 11,
+          "title": "Casa Bonita",
+          "airDate": "2003-11-12"
+        },
+        {
+          "tvmazeId": 8026,
+          "season": 7,
+          "number": 12,
+          "title": "All About the Mormons?",
+          "airDate": "2003-11-19"
+        },
+        {
+          "tvmazeId": 8027,
+          "season": 7,
+          "number": 13,
+          "title": "Butt Out",
+          "airDate": "2003-12-03"
+        },
+        {
+          "tvmazeId": 8028,
+          "season": 7,
+          "number": 14,
+          "title": "Raisins",
+          "airDate": "2003-12-10"
+        },
+        {
+          "tvmazeId": 8029,
+          "season": 7,
+          "number": 15,
+          "title": "It's Christmas in Canada",
+          "airDate": "2003-12-17"
+        },
+        {
+          "tvmazeId": 8030,
+          "season": 8,
+          "number": 1,
+          "title": "Good Times with Weapons",
+          "airDate": "2004-03-17"
+        },
+        {
+          "tvmazeId": 8031,
+          "season": 8,
+          "number": 2,
+          "title": "Up the Down Steroid",
+          "airDate": "2004-03-24"
+        },
+        {
+          "tvmazeId": 8032,
+          "season": 8,
+          "number": 3,
+          "title": "The Passion of the Jew",
+          "airDate": "2004-03-31"
+        },
+        {
+          "tvmazeId": 8033,
+          "season": 8,
+          "number": 4,
+          "title": "You Got F**ked in the Ass",
+          "airDate": "2004-04-07"
+        },
+        {
+          "tvmazeId": 8034,
+          "season": 8,
+          "number": 5,
+          "title": "AWESOM-O",
+          "airDate": "2004-04-14"
+        },
+        {
+          "tvmazeId": 8035,
+          "season": 8,
+          "number": 6,
+          "title": "The Jeffersons",
+          "airDate": "2004-04-21"
+        },
+        {
+          "tvmazeId": 8036,
+          "season": 8,
+          "number": 7,
+          "title": "Goobacks",
+          "airDate": "2004-04-28"
+        },
+        {
+          "tvmazeId": 8037,
+          "season": 8,
+          "number": 8,
+          "title": "Douche and Turd",
+          "airDate": "2004-10-27"
+        },
+        {
+          "tvmazeId": 8038,
+          "season": 8,
+          "number": 9,
+          "title": "Something Wall-Mart This Way Comes",
+          "airDate": "2004-11-03"
+        },
+        {
+          "tvmazeId": 8039,
+          "season": 8,
+          "number": 10,
+          "title": "Pre-School",
+          "airDate": "2004-11-10"
+        },
+        {
+          "tvmazeId": 8040,
+          "season": 8,
+          "number": 11,
+          "title": "Quest for Ratings",
+          "airDate": "2004-11-17"
+        },
+        {
+          "tvmazeId": 8041,
+          "season": 8,
+          "number": 12,
+          "title": "Stupid Spoiled Whore Video Playset",
+          "airDate": "2004-12-01"
+        },
+        {
+          "tvmazeId": 8042,
+          "season": 8,
+          "number": 13,
+          "title": "Cartman's Incredible Gift",
+          "airDate": "2004-12-08"
+        },
+        {
+          "tvmazeId": 8043,
+          "season": 8,
+          "number": 14,
+          "title": "Woodland Critter Christmas",
+          "airDate": "2004-12-15"
+        },
+        {
+          "tvmazeId": 8044,
+          "season": 9,
+          "number": 1,
+          "title": "Mr. Garrison's Fancy New Vagina",
+          "airDate": "2005-03-09"
+        },
+        {
+          "tvmazeId": 8045,
+          "season": 9,
+          "number": 2,
+          "title": "Die Hippie, Die",
+          "airDate": "2005-03-16"
+        },
+        {
+          "tvmazeId": 8046,
+          "season": 9,
+          "number": 3,
+          "title": "Wing",
+          "airDate": "2005-03-23"
+        },
+        {
+          "tvmazeId": 8047,
+          "season": 9,
+          "number": 4,
+          "title": "Best Friends Forever",
+          "airDate": "2005-03-30"
+        },
+        {
+          "tvmazeId": 8048,
+          "season": 9,
+          "number": 5,
+          "title": "The Losing Edge",
+          "airDate": "2005-04-06"
+        },
+        {
+          "tvmazeId": 8049,
+          "season": 9,
+          "number": 6,
+          "title": "The Death of Eric Cartman",
+          "airDate": "2005-04-13"
+        },
+        {
+          "tvmazeId": 8050,
+          "season": 9,
+          "number": 7,
+          "title": "Erection Day",
+          "airDate": "2005-04-20"
+        },
+        {
+          "tvmazeId": 8051,
+          "season": 9,
+          "number": 8,
+          "title": "Two Days Before the Day After Tomorrow",
+          "airDate": "2005-10-19"
+        },
+        {
+          "tvmazeId": 8052,
+          "season": 9,
+          "number": 9,
+          "title": "Marjorine",
+          "airDate": "2005-10-26"
+        },
+        {
+          "tvmazeId": 8053,
+          "season": 9,
+          "number": 10,
+          "title": "Follow That Egg",
+          "airDate": "2005-11-02"
+        },
+        {
+          "tvmazeId": 8054,
+          "season": 9,
+          "number": 11,
+          "title": "Ginger Kids",
+          "airDate": "2005-11-09"
+        },
+        {
+          "tvmazeId": 8055,
+          "season": 9,
+          "number": 12,
+          "title": "Trapped in the Closet",
+          "airDate": "2005-11-16"
+        },
+        {
+          "tvmazeId": 8056,
+          "season": 9,
+          "number": 13,
+          "title": "Free Willzyx",
+          "airDate": "2005-11-30"
+        },
+        {
+          "tvmazeId": 8057,
+          "season": 9,
+          "number": 14,
+          "title": "Bloody Mary",
+          "airDate": "2005-12-07"
+        },
+        {
+          "tvmazeId": 8058,
+          "season": 10,
+          "number": 1,
+          "title": "The Return of Chef",
+          "airDate": "2006-03-22"
+        },
+        {
+          "tvmazeId": 8059,
+          "season": 10,
+          "number": 2,
+          "title": "Smug Alert!",
+          "airDate": "2006-03-29"
+        },
+        {
+          "tvmazeId": 8060,
+          "season": 10,
+          "number": 3,
+          "title": "Cartoon Wars, Part 1",
+          "airDate": "2006-04-05"
+        },
+        {
+          "tvmazeId": 8061,
+          "season": 10,
+          "number": 4,
+          "title": "Cartoon Wars, Part 2",
+          "airDate": "2006-04-12"
+        },
+        {
+          "tvmazeId": 8062,
+          "season": 10,
+          "number": 5,
+          "title": "A Million Little Fibers",
+          "airDate": "2006-04-19"
+        },
+        {
+          "tvmazeId": 8063,
+          "season": 10,
+          "number": 6,
+          "title": "ManBearPig",
+          "airDate": "2006-04-26"
+        },
+        {
+          "tvmazeId": 8064,
+          "season": 10,
+          "number": 7,
+          "title": "Tsst",
+          "airDate": "2006-05-03"
+        },
+        {
+          "tvmazeId": 8065,
+          "season": 10,
+          "number": 8,
+          "title": "Make Love, Not Warcraft",
+          "airDate": "2006-10-04"
+        },
+        {
+          "tvmazeId": 8066,
+          "season": 10,
+          "number": 9,
+          "title": "Mystery of the Urinal Deuce",
+          "airDate": "2006-10-11"
+        },
+        {
+          "tvmazeId": 8067,
+          "season": 10,
+          "number": 10,
+          "title": "Miss Teacher Bangs a Boy",
+          "airDate": "2006-10-18"
+        },
+        {
+          "tvmazeId": 8068,
+          "season": 10,
+          "number": 11,
+          "title": "Hell on Earth 2006",
+          "airDate": "2006-10-25"
+        },
+        {
+          "tvmazeId": 8069,
+          "season": 10,
+          "number": 12,
+          "title": "Go, God. Go! Part II",
+          "airDate": "2006-11-01"
+        },
+        {
+          "tvmazeId": 8070,
+          "season": 10,
+          "number": 13,
+          "title": "Go God Go XII",
+          "airDate": "2006-11-08"
+        },
+        {
+          "tvmazeId": 8071,
+          "season": 10,
+          "number": 14,
+          "title": "Stanley's Cup",
+          "airDate": "2006-11-15"
+        },
+        {
+          "tvmazeId": 8072,
+          "season": 11,
+          "number": 1,
+          "title": "With Apologies to Jesse Jackson",
+          "airDate": "2007-03-07"
+        },
+        {
+          "tvmazeId": 8073,
+          "season": 11,
+          "number": 2,
+          "title": "Cartman Sucks",
+          "airDate": "2007-03-14"
+        },
+        {
+          "tvmazeId": 8074,
+          "season": 11,
+          "number": 3,
+          "title": "Lice Capades",
+          "airDate": "2007-03-21"
+        },
+        {
+          "tvmazeId": 8075,
+          "season": 11,
+          "number": 4,
+          "title": "The Snuke",
+          "airDate": "2007-03-28"
+        },
+        {
+          "tvmazeId": 8076,
+          "season": 11,
+          "number": 5,
+          "title": "Fantastic Easter Special",
+          "airDate": "2007-04-04"
+        },
+        {
+          "tvmazeId": 8077,
+          "season": 11,
+          "number": 6,
+          "title": "D-Yikes",
+          "airDate": "2007-04-11"
+        },
+        {
+          "tvmazeId": 8078,
+          "season": 11,
+          "number": 7,
+          "title": "Night of the Living Homeless",
+          "airDate": "2007-04-18"
+        },
+        {
+          "tvmazeId": 8079,
+          "season": 11,
+          "number": 8,
+          "title": "Le Petit Tourette",
+          "airDate": "2007-10-03"
+        },
+        {
+          "tvmazeId": 8080,
+          "season": 11,
+          "number": 9,
+          "title": "More Crap",
+          "airDate": "2007-10-10"
+        },
+        {
+          "tvmazeId": 8081,
+          "season": 11,
+          "number": 10,
+          "title": "Imaginationland: Episode I",
+          "airDate": "2007-10-17"
+        },
+        {
+          "tvmazeId": 8082,
+          "season": 11,
+          "number": 11,
+          "title": "Imaginationland: Episode II",
+          "airDate": "2007-10-24"
+        },
+        {
+          "tvmazeId": 8083,
+          "season": 11,
+          "number": 12,
+          "title": "Imaginationland: Episode III",
+          "airDate": "2007-10-31"
+        },
+        {
+          "tvmazeId": 8084,
+          "season": 11,
+          "number": 13,
+          "title": "Guitar Queer-o",
+          "airDate": "2007-11-07"
+        },
+        {
+          "tvmazeId": 8085,
+          "season": 11,
+          "number": 14,
+          "title": "The List",
+          "airDate": "2007-11-14"
+        },
+        {
+          "tvmazeId": 8086,
+          "season": 12,
+          "number": 1,
+          "title": "Tonsil Trouble",
+          "airDate": "2008-03-12"
+        },
+        {
+          "tvmazeId": 8087,
+          "season": 12,
+          "number": 2,
+          "title": "Britney's New Look",
+          "airDate": "2008-03-19"
+        },
+        {
+          "tvmazeId": 8088,
+          "season": 12,
+          "number": 3,
+          "title": "Major Boobage",
+          "airDate": "2008-03-26"
+        },
+        {
+          "tvmazeId": 8089,
+          "season": 12,
+          "number": 4,
+          "title": "Canada on Strike",
+          "airDate": "2008-04-02"
+        },
+        {
+          "tvmazeId": 8090,
+          "season": 12,
+          "number": 5,
+          "title": "Eek, a Penis!",
+          "airDate": "2008-04-09"
+        },
+        {
+          "tvmazeId": 8091,
+          "season": 12,
+          "number": 6,
+          "title": "Over Logging",
+          "airDate": "2008-04-16"
+        },
+        {
+          "tvmazeId": 8092,
+          "season": 12,
+          "number": 7,
+          "title": "Super Fun Time",
+          "airDate": "2008-04-23"
+        },
+        {
+          "tvmazeId": 8093,
+          "season": 12,
+          "number": 8,
+          "title": "The China Problem",
+          "airDate": "2008-10-08"
+        },
+        {
+          "tvmazeId": 8094,
+          "season": 12,
+          "number": 9,
+          "title": "Breast Cancer Show Ever",
+          "airDate": "2008-10-15"
+        },
+        {
+          "tvmazeId": 8095,
+          "season": 12,
+          "number": 10,
+          "title": "Pandemic",
+          "airDate": "2008-10-22"
+        },
+        {
+          "tvmazeId": 8096,
+          "season": 12,
+          "number": 11,
+          "title": "Pandemic 2 - The Startling",
+          "airDate": "2008-10-29"
+        },
+        {
+          "tvmazeId": 8097,
+          "season": 12,
+          "number": 12,
+          "title": "About Last Night...",
+          "airDate": "2008-11-05"
+        },
+        {
+          "tvmazeId": 8098,
+          "season": 12,
+          "number": 13,
+          "title": "Elementary School Musical",
+          "airDate": "2008-11-12"
+        },
+        {
+          "tvmazeId": 8099,
+          "season": 12,
+          "number": 14,
+          "title": "The Ungroundable",
+          "airDate": "2008-11-19"
+        },
+        {
+          "tvmazeId": 8100,
+          "season": 13,
+          "number": 1,
+          "title": "The Ring",
+          "airDate": "2009-03-11"
+        },
+        {
+          "tvmazeId": 8101,
+          "season": 13,
+          "number": 2,
+          "title": "The Coon",
+          "airDate": "2009-03-18"
+        },
+        {
+          "tvmazeId": 8102,
+          "season": 13,
+          "number": 3,
+          "title": "Margaritaville",
+          "airDate": "2009-03-25"
+        },
+        {
+          "tvmazeId": 8103,
+          "season": 13,
+          "number": 4,
+          "title": "Eat, Pray, Queef",
+          "airDate": "2009-04-01"
+        },
+        {
+          "tvmazeId": 8104,
+          "season": 13,
+          "number": 5,
+          "title": "Fishsticks",
+          "airDate": "2009-04-08"
+        },
+        {
+          "tvmazeId": 8105,
+          "season": 13,
+          "number": 6,
+          "title": "Pinewood Derby",
+          "airDate": "2009-04-15"
+        },
+        {
+          "tvmazeId": 8106,
+          "season": 13,
+          "number": 7,
+          "title": "Fatbeard",
+          "airDate": "2009-04-22"
+        },
+        {
+          "tvmazeId": 8107,
+          "season": 13,
+          "number": 8,
+          "title": "Dead Celebrities",
+          "airDate": "2009-10-07"
+        },
+        {
+          "tvmazeId": 8108,
+          "season": 13,
+          "number": 9,
+          "title": "Butters' Bottom Bitch",
+          "airDate": "2009-10-14"
+        },
+        {
+          "tvmazeId": 8109,
+          "season": 13,
+          "number": 10,
+          "title": "W.T.F.",
+          "airDate": "2009-10-21"
+        },
+        {
+          "tvmazeId": 8110,
+          "season": 13,
+          "number": 11,
+          "title": "Whale Whores",
+          "airDate": "2009-10-28"
+        },
+        {
+          "tvmazeId": 8111,
+          "season": 13,
+          "number": 12,
+          "title": "The F Word",
+          "airDate": "2009-11-04"
+        },
+        {
+          "tvmazeId": 8112,
+          "season": 13,
+          "number": 13,
+          "title": "Dances with Smurfs",
+          "airDate": "2009-11-11"
+        },
+        {
+          "tvmazeId": 8113,
+          "season": 13,
+          "number": 14,
+          "title": "Pee",
+          "airDate": "2009-11-18"
+        },
+        {
+          "tvmazeId": 8114,
+          "season": 14,
+          "number": 1,
+          "title": "Sexual Healing",
+          "airDate": "2010-03-17"
+        },
+        {
+          "tvmazeId": 8115,
+          "season": 14,
+          "number": 2,
+          "title": "The Tale of Scrotie McBoogerballs",
+          "airDate": "2010-03-24"
+        },
+        {
+          "tvmazeId": 8116,
+          "season": 14,
+          "number": 3,
+          "title": "Medicinal Fried Chicken",
+          "airDate": "2010-03-31"
+        },
+        {
+          "tvmazeId": 8117,
+          "season": 14,
+          "number": 4,
+          "title": "You Have 0 Friends",
+          "airDate": "2010-04-07"
+        },
+        {
+          "tvmazeId": 8118,
+          "season": 14,
+          "number": 5,
+          "title": "200",
+          "airDate": "2010-04-14"
+        },
+        {
+          "tvmazeId": 8119,
+          "season": 14,
+          "number": 6,
+          "title": "201",
+          "airDate": "2010-04-21"
+        },
+        {
+          "tvmazeId": 8120,
+          "season": 14,
+          "number": 7,
+          "title": "Crippled Summer",
+          "airDate": "2010-04-28"
+        },
+        {
+          "tvmazeId": 8121,
+          "season": 14,
+          "number": 8,
+          "title": "Poor and Stupid",
+          "airDate": "2010-10-06"
+        },
+        {
+          "tvmazeId": 8122,
+          "season": 14,
+          "number": 9,
+          "title": "It's a Jersey Thing",
+          "airDate": "2010-10-13"
+        },
+        {
+          "tvmazeId": 8123,
+          "season": 14,
+          "number": 10,
+          "title": "Insheeption",
+          "airDate": "2010-10-20"
+        },
+        {
+          "tvmazeId": 8124,
+          "season": 14,
+          "number": 11,
+          "title": "Coon 2: Hindsight",
+          "airDate": "2010-10-27"
+        },
+        {
+          "tvmazeId": 8125,
+          "season": 14,
+          "number": 12,
+          "title": "Mysterion Rises",
+          "airDate": "2010-11-03"
+        },
+        {
+          "tvmazeId": 8126,
+          "season": 14,
+          "number": 13,
+          "title": "Coon vs. Coon & Friends",
+          "airDate": "2010-11-10"
+        },
+        {
+          "tvmazeId": 8127,
+          "season": 14,
+          "number": 14,
+          "title": "Crème Fraiche",
+          "airDate": "2010-11-17"
+        },
+        {
+          "tvmazeId": 8128,
+          "season": 15,
+          "number": 1,
+          "title": "HUMANCENTiPAD",
+          "airDate": "2011-04-27"
+        },
+        {
+          "tvmazeId": 8129,
+          "season": 15,
+          "number": 2,
+          "title": "Funnybot",
+          "airDate": "2011-05-04"
+        },
+        {
+          "tvmazeId": 8130,
+          "season": 15,
+          "number": 3,
+          "title": "Royal Pudding",
+          "airDate": "2011-05-11"
+        },
+        {
+          "tvmazeId": 8131,
+          "season": 15,
+          "number": 4,
+          "title": "T.M.I.",
+          "airDate": "2011-05-18"
+        },
+        {
+          "tvmazeId": 8132,
+          "season": 15,
+          "number": 5,
+          "title": "Crack Baby Athletic Association",
+          "airDate": "2011-05-25"
+        },
+        {
+          "tvmazeId": 8133,
+          "season": 15,
+          "number": 6,
+          "title": "City Sushi",
+          "airDate": "2011-06-01"
+        },
+        {
+          "tvmazeId": 8134,
+          "season": 15,
+          "number": 7,
+          "title": "You're Getting Old",
+          "airDate": "2011-06-08"
+        },
+        {
+          "tvmazeId": 8135,
+          "season": 15,
+          "number": 8,
+          "title": "Ass Burgers",
+          "airDate": "2011-10-05"
+        },
+        {
+          "tvmazeId": 8136,
+          "season": 15,
+          "number": 9,
+          "title": "The Last of the Meheecans",
+          "airDate": "2011-10-12"
+        },
+        {
+          "tvmazeId": 8137,
+          "season": 15,
+          "number": 10,
+          "title": "Bass to Mouth",
+          "airDate": "2011-10-19"
+        },
+        {
+          "tvmazeId": 8138,
+          "season": 15,
+          "number": 11,
+          "title": "Broadway Bro Down",
+          "airDate": "2011-10-26"
+        },
+        {
+          "tvmazeId": 8139,
+          "season": 15,
+          "number": 12,
+          "title": "1%",
+          "airDate": "2011-11-02"
+        },
+        {
+          "tvmazeId": 8140,
+          "season": 15,
+          "number": 13,
+          "title": "A History Channel Thanksgiving",
+          "airDate": "2011-11-09"
+        },
+        {
+          "tvmazeId": 8141,
+          "season": 15,
+          "number": 14,
+          "title": "The Poor Kid",
+          "airDate": "2011-11-16"
+        },
+        {
+          "tvmazeId": 8142,
+          "season": 16,
+          "number": 1,
+          "title": "Reverse Cowgirl",
+          "airDate": "2012-03-14"
+        },
+        {
+          "tvmazeId": 8143,
+          "season": 16,
+          "number": 2,
+          "title": "Cash for Gold",
+          "airDate": "2012-03-21"
+        },
+        {
+          "tvmazeId": 8144,
+          "season": 16,
+          "number": 3,
+          "title": "Faith Hilling",
+          "airDate": "2012-03-28"
+        },
+        {
+          "tvmazeId": 8145,
+          "season": 16,
+          "number": 4,
+          "title": "Jewpacabra",
+          "airDate": "2012-04-04"
+        },
+        {
+          "tvmazeId": 8146,
+          "season": 16,
+          "number": 5,
+          "title": "Butterballs",
+          "airDate": "2012-04-11"
+        },
+        {
+          "tvmazeId": 8147,
+          "season": 16,
+          "number": 6,
+          "title": "I Should Have Never Gone Ziplining",
+          "airDate": "2012-04-18"
+        },
+        {
+          "tvmazeId": 8148,
+          "season": 16,
+          "number": 7,
+          "title": "Cartman Finds Love",
+          "airDate": "2012-04-25"
+        },
+        {
+          "tvmazeId": 8149,
+          "season": 16,
+          "number": 8,
+          "title": "Sarcastaball",
+          "airDate": "2012-09-26"
+        },
+        {
+          "tvmazeId": 8150,
+          "season": 16,
+          "number": 9,
+          "title": "Raising the Bar",
+          "airDate": "2012-10-03"
+        },
+        {
+          "tvmazeId": 8151,
+          "season": 16,
+          "number": 10,
+          "title": "Insecurity",
+          "airDate": "2012-10-10"
+        },
+        {
+          "tvmazeId": 8152,
+          "season": 16,
+          "number": 11,
+          "title": "Going Native",
+          "airDate": "2012-10-17"
+        },
+        {
+          "tvmazeId": 8153,
+          "season": 16,
+          "number": 12,
+          "title": "A Nightmare on Face Time",
+          "airDate": "2012-10-24"
+        },
+        {
+          "tvmazeId": 8154,
+          "season": 16,
+          "number": 13,
+          "title": "A Scause for Applause",
+          "airDate": "2012-10-31"
+        },
+        {
+          "tvmazeId": 8155,
+          "season": 16,
+          "number": 14,
+          "title": "Obama Wins!",
+          "airDate": "2012-11-07"
+        },
+        {
+          "tvmazeId": 8156,
+          "season": 17,
+          "number": 1,
+          "title": "Let Go, Let Gov",
+          "airDate": "2013-09-25"
+        },
+        {
+          "tvmazeId": 8157,
+          "season": 17,
+          "number": 2,
+          "title": "Informative Murder Porn",
+          "airDate": "2013-10-02"
+        },
+        {
+          "tvmazeId": 8158,
+          "season": 17,
+          "number": 3,
+          "title": "World War Zimmerman",
+          "airDate": "2013-10-09"
+        },
+        {
+          "tvmazeId": 8159,
+          "season": 17,
+          "number": 4,
+          "title": "Goth Kids 3: Dawn of the Posers",
+          "airDate": "2013-10-23"
+        },
+        {
+          "tvmazeId": 8160,
+          "season": 17,
+          "number": 5,
+          "title": "Taming Strange",
+          "airDate": "2013-10-30"
+        },
+        {
+          "tvmazeId": 8161,
+          "season": 17,
+          "number": 6,
+          "title": "Ginger Cow",
+          "airDate": "2013-11-06"
+        },
+        {
+          "tvmazeId": 8162,
+          "season": 17,
+          "number": 7,
+          "title": "The Black Friday Trilogy",
+          "airDate": "2013-11-13"
+        },
+        {
+          "tvmazeId": 8163,
+          "season": 17,
+          "number": 8,
+          "title": "A Song of Ass and Fire",
+          "airDate": "2013-11-20"
+        },
+        {
+          "tvmazeId": 8164,
+          "season": 17,
+          "number": 9,
+          "title": "Titties and Dragons",
+          "airDate": "2013-12-04"
+        },
+        {
+          "tvmazeId": 8165,
+          "season": 17,
+          "number": 10,
+          "title": "The Hobbit",
+          "airDate": "2013-12-11"
+        },
+        {
+          "tvmazeId": 8166,
+          "season": 18,
+          "number": 1,
+          "title": "Go Fund Yourself",
+          "airDate": "2014-09-24"
+        },
+        {
+          "tvmazeId": 8167,
+          "season": 18,
+          "number": 2,
+          "title": "Gluten Free Ebola",
+          "airDate": "2014-10-01"
+        },
+        {
+          "tvmazeId": 8168,
+          "season": 18,
+          "number": 3,
+          "title": "The Cissy",
+          "airDate": "2014-10-08"
+        },
+        {
+          "tvmazeId": 13094,
+          "season": 18,
+          "number": 4,
+          "title": "Handicar",
+          "airDate": "2014-10-15"
+        },
+        {
+          "tvmazeId": 14874,
+          "season": 18,
+          "number": 5,
+          "title": "The Magic Bush",
+          "airDate": "2014-10-29"
+        },
+        {
+          "tvmazeId": 38926,
+          "season": 18,
+          "number": 6,
+          "title": "Freemium Isn't Free",
+          "airDate": "2014-11-05"
+        },
+        {
+          "tvmazeId": 38927,
+          "season": 18,
+          "number": 7,
+          "title": "Grounded Vindaloop",
+          "airDate": "2014-11-12"
+        },
+        {
+          "tvmazeId": 40628,
+          "season": 18,
+          "number": 8,
+          "title": "Cock Magic",
+          "airDate": "2014-11-19"
+        },
+        {
+          "tvmazeId": 46977,
+          "season": 18,
+          "number": 9,
+          "title": "#rehash",
+          "airDate": "2014-12-03"
+        },
+        {
+          "tvmazeId": 46978,
+          "season": 18,
+          "number": 10,
+          "title": "#HappyHolograms",
+          "airDate": "2014-12-10"
+        },
+        {
+          "tvmazeId": 201455,
+          "season": 19,
+          "number": 1,
+          "title": "Stunning and Brave",
+          "airDate": "2015-09-16"
+        },
+        {
+          "tvmazeId": 252182,
+          "season": 19,
+          "number": 2,
+          "title": "Where My Country Gone?",
+          "airDate": "2015-09-23"
+        },
+        {
+          "tvmazeId": 236712,
+          "season": 19,
+          "number": 3,
+          "title": "The City Part of Town",
+          "airDate": "2015-09-30"
+        },
+        {
+          "tvmazeId": 330855,
+          "season": 19,
+          "number": 4,
+          "title": "You're Not Yelping",
+          "airDate": "2015-10-14"
+        },
+        {
+          "tvmazeId": 8177,
+          "season": 19,
+          "number": 5,
+          "title": "Safe Space",
+          "airDate": "2015-10-21"
+        },
+        {
+          "tvmazeId": 186412,
+          "season": 19,
+          "number": 6,
+          "title": "Tweek x Craig",
+          "airDate": "2015-10-28"
+        },
+        {
+          "tvmazeId": 153319,
+          "season": 19,
+          "number": 7,
+          "title": "Naughty Ninjas",
+          "airDate": "2015-11-11"
+        },
+        {
+          "tvmazeId": 153070,
+          "season": 19,
+          "number": 8,
+          "title": "Sponsored Content",
+          "airDate": "2015-11-18"
+        },
+        {
+          "tvmazeId": 153069,
+          "season": 19,
+          "number": 9,
+          "title": "Truth and Advertising",
+          "airDate": "2015-12-02"
+        },
+        {
+          "tvmazeId": 391098,
+          "season": 19,
+          "number": 10,
+          "title": "PC Principal Final Justice",
+          "airDate": "2015-12-09"
+        },
+        {
+          "tvmazeId": 772755,
+          "season": 20,
+          "number": 1,
+          "title": "Member Berries",
+          "airDate": "2016-09-14"
+        },
+        {
+          "tvmazeId": 924464,
+          "season": 20,
+          "number": 2,
+          "title": "Skank Hunt",
+          "airDate": "2016-09-21"
+        },
+        {
+          "tvmazeId": 924465,
+          "season": 20,
+          "number": 3,
+          "title": "The Damned",
+          "airDate": "2016-09-28"
+        },
+        {
+          "tvmazeId": 924466,
+          "season": 20,
+          "number": 4,
+          "title": "Wieners Out",
+          "airDate": "2016-10-12"
+        },
+        {
+          "tvmazeId": 924467,
+          "season": 20,
+          "number": 5,
+          "title": "Douche and a Danish",
+          "airDate": "2016-10-19"
+        },
+        {
+          "tvmazeId": 924468,
+          "season": 20,
+          "number": 6,
+          "title": "Fort Collins",
+          "airDate": "2016-10-26"
+        },
+        {
+          "tvmazeId": 924469,
+          "season": 20,
+          "number": 7,
+          "title": "Oh Jeez",
+          "airDate": "2016-11-09"
+        },
+        {
+          "tvmazeId": 924470,
+          "season": 20,
+          "number": 8,
+          "title": "Members Only",
+          "airDate": "2016-11-16"
+        },
+        {
+          "tvmazeId": 924471,
+          "season": 20,
+          "number": 9,
+          "title": "Not Funny",
+          "airDate": "2016-11-30"
+        },
+        {
+          "tvmazeId": 924472,
+          "season": 20,
+          "number": 10,
+          "title": "The End of Serialization as We Know It",
+          "airDate": "2016-12-07"
+        },
+        {
+          "tvmazeId": 1174751,
+          "season": 21,
+          "number": 1,
+          "title": "White People Renovating Houses",
+          "airDate": "2017-09-13"
+        },
+        {
+          "tvmazeId": 1299703,
+          "season": 21,
+          "number": 2,
+          "title": "Put It Down",
+          "airDate": "2017-09-20"
+        },
+        {
+          "tvmazeId": 1299704,
+          "season": 21,
+          "number": 3,
+          "title": "Holiday Special",
+          "airDate": "2017-09-27"
+        },
+        {
+          "tvmazeId": 1299705,
+          "season": 21,
+          "number": 4,
+          "title": "Franchise Prequel",
+          "airDate": "2017-10-11"
+        },
+        {
+          "tvmazeId": 1175033,
+          "season": 21,
+          "number": 5,
+          "title": "Hummels & Heroin",
+          "airDate": "2017-10-18"
+        },
+        {
+          "tvmazeId": 1175034,
+          "season": 21,
+          "number": 6,
+          "title": "Sons a Witches",
+          "airDate": "2017-10-25"
+        },
+        {
+          "tvmazeId": 1175035,
+          "season": 21,
+          "number": 7,
+          "title": "Doubling Down",
+          "airDate": "2017-11-08"
+        },
+        {
+          "tvmazeId": 1175036,
+          "season": 21,
+          "number": 8,
+          "title": "Moss Piglets",
+          "airDate": "2017-11-15"
+        },
+        {
+          "tvmazeId": 1175037,
+          "season": 21,
+          "number": 9,
+          "title": "Super Hard PCness",
+          "airDate": "2017-11-29"
+        },
+        {
+          "tvmazeId": 1175038,
+          "season": 21,
+          "number": 10,
+          "title": "Splatty Tomato",
+          "airDate": "2017-12-06"
+        },
+        {
+          "tvmazeId": 1494862,
+          "season": 22,
+          "number": 1,
+          "title": "Dead Kids",
+          "airDate": "2018-09-26"
+        },
+        {
+          "tvmazeId": 1536450,
+          "season": 22,
+          "number": 2,
+          "title": "A Boy and a Priest",
+          "airDate": "2018-10-03"
+        },
+        {
+          "tvmazeId": 1536451,
+          "season": 22,
+          "number": 3,
+          "title": "The Problem with a Poo",
+          "airDate": "2018-10-10"
+        },
+        {
+          "tvmazeId": 1536452,
+          "season": 22,
+          "number": 4,
+          "title": "Tegridy Farms",
+          "airDate": "2018-10-17"
+        },
+        {
+          "tvmazeId": 1536453,
+          "season": 22,
+          "number": 5,
+          "title": "The Scoots",
+          "airDate": "2018-10-31"
+        },
+        {
+          "tvmazeId": 1536454,
+          "season": 22,
+          "number": 6,
+          "title": "Time to Get Cereal",
+          "airDate": "2018-11-07"
+        },
+        {
+          "tvmazeId": 1536455,
+          "season": 22,
+          "number": 7,
+          "title": "Nobody Got Cereal?",
+          "airDate": "2018-11-14"
+        },
+        {
+          "tvmazeId": 1536456,
+          "season": 22,
+          "number": 8,
+          "title": "Buddha Box",
+          "airDate": "2018-11-28"
+        },
+        {
+          "tvmazeId": 1536457,
+          "season": 22,
+          "number": 9,
+          "title": "Unfulfilled",
+          "airDate": "2018-12-05"
+        },
+        {
+          "tvmazeId": 1536458,
+          "season": 22,
+          "number": 10,
+          "title": "Bike Parade",
+          "airDate": "2018-12-12"
+        },
+        {
+          "tvmazeId": 1684517,
+          "season": 23,
+          "number": 1,
+          "title": "Mexican Joker",
+          "airDate": "2019-09-25"
+        },
+        {
+          "tvmazeId": 1707981,
+          "season": 23,
+          "number": 2,
+          "title": "Band in China",
+          "airDate": "2019-10-02"
+        },
+        {
+          "tvmazeId": 1707982,
+          "season": 23,
+          "number": 3,
+          "title": "Shots!!!",
+          "airDate": "2019-10-09"
+        },
+        {
+          "tvmazeId": 1707983,
+          "season": 23,
+          "number": 4,
+          "title": "Let Them Eat Goo",
+          "airDate": "2019-10-16"
+        },
+        {
+          "tvmazeId": 1707984,
+          "season": 23,
+          "number": 5,
+          "title": "Tegridy Farms Halloween Special",
+          "airDate": "2019-10-30"
+        },
+        {
+          "tvmazeId": 1707985,
+          "season": 23,
+          "number": 6,
+          "title": "Season Finale",
+          "airDate": "2019-11-06"
+        },
+        {
+          "tvmazeId": 1750707,
+          "season": 23,
+          "number": 7,
+          "title": "Board Girls",
+          "airDate": "2019-11-13"
+        },
+        {
+          "tvmazeId": 1750708,
+          "season": 23,
+          "number": 8,
+          "title": "Turd Burglars",
+          "airDate": "2019-11-27"
+        },
+        {
+          "tvmazeId": 1750709,
+          "season": 23,
+          "number": 9,
+          "title": "Basic Cable",
+          "airDate": "2019-12-04"
+        },
+        {
+          "tvmazeId": 1750710,
+          "season": 23,
+          "number": 10,
+          "title": "Christmas Snow",
+          "airDate": "2019-12-11"
+        },
+        {
+          "tvmazeId": 2257696,
+          "season": 25,
+          "number": 1,
+          "title": "Pajama Day",
+          "airDate": "2022-02-02"
+        },
+        {
+          "tvmazeId": 2266148,
+          "season": 25,
+          "number": 2,
+          "title": "The Big Fix",
+          "airDate": "2022-02-09"
+        },
+        {
+          "tvmazeId": 2270239,
+          "season": 25,
+          "number": 3,
+          "title": "City People",
+          "airDate": "2022-02-16"
+        },
+        {
+          "tvmazeId": 2278925,
+          "season": 25,
+          "number": 4,
+          "title": "Back to the Cold War",
+          "airDate": "2022-03-02"
+        },
+        {
+          "tvmazeId": 2278926,
+          "season": 25,
+          "number": 5,
+          "title": "Help, My Teenager Hates Me!",
+          "airDate": "2022-03-09"
+        },
+        {
+          "tvmazeId": 2278927,
+          "season": 25,
+          "number": 6,
+          "title": "Credigree Weed St. Patrick's Day Special",
+          "airDate": "2022-03-16"
+        },
+        {
+          "tvmazeId": 2475932,
+          "season": 26,
+          "number": 1,
+          "title": "Cupid Ye",
+          "airDate": "2023-02-08"
+        },
+        {
+          "tvmazeId": 2485282,
+          "season": 26,
+          "number": 2,
+          "title": "The World-Wide Privacy Tour",
+          "airDate": "2023-02-15"
+        },
+        {
+          "tvmazeId": 2490958,
+          "season": 26,
+          "number": 3,
+          "title": "Japanese Toilet",
+          "airDate": "2023-03-01"
+        },
+        {
+          "tvmazeId": 2498102,
+          "season": 26,
+          "number": 4,
+          "title": "Deep Learning",
+          "airDate": "2023-03-08"
+        },
+        {
+          "tvmazeId": 2501581,
+          "season": 26,
+          "number": 5,
+          "title": "DiKimble's Hot Dogs",
+          "airDate": "2023-03-22"
+        },
+        {
+          "tvmazeId": 2509776,
+          "season": 26,
+          "number": 6,
+          "title": "Spring Break",
+          "airDate": "2023-03-29"
+        },
+        {
+          "tvmazeId": 3194688,
+          "season": 27,
+          "number": 1,
+          "title": "Sermon on the 'Mount",
+          "airDate": "2025-07-23"
+        },
+        {
+          "tvmazeId": 3309709,
+          "season": 27,
+          "number": 2,
+          "title": "Got a Nut",
+          "airDate": "2025-08-06"
+        },
+        {
+          "tvmazeId": 3314513,
+          "season": 27,
+          "number": 3,
+          "title": "Sickofancy",
+          "airDate": "2025-08-20"
+        },
+        {
+          "tvmazeId": 3314514,
+          "season": 27,
+          "number": 4,
+          "title": "Wok is Dead",
+          "airDate": "2025-09-03"
+        },
+        {
+          "tvmazeId": 3314515,
+          "season": 27,
+          "number": 5,
+          "title": "Conflict of Interest",
+          "airDate": "2025-09-24"
+        },
+        {
+          "tvmazeId": 3314516,
+          "season": 28,
+          "number": 1,
+          "title": "Twisted Christian",
+          "airDate": "2025-10-15"
+        },
+        {
+          "tvmazeId": 3314517,
+          "season": 28,
+          "number": 2,
+          "title": "The Woman in the Hat",
+          "airDate": "2025-10-31"
+        },
+        {
+          "tvmazeId": 3314518,
+          "season": 28,
+          "number": 3,
+          "title": "Sora Not Sorry",
+          "airDate": "2025-11-12"
+        },
+        {
+          "tvmazeId": 3314519,
+          "season": 28,
+          "number": 4,
+          "title": "Turkey Trot",
+          "airDate": "2025-11-26"
+        },
+        {
+          "tvmazeId": 3314520,
+          "season": 28,
+          "number": 5,
+          "title": "The Crap Out",
+          "airDate": "2025-12-10"
+        },
+        {
+          "tvmazeId": 3620764,
+          "season": 29,
+          "number": 1,
+          "title": "South American Biker Gangs",
+          "airDate": "2026-09-16"
+        },
+        {
+          "tvmazeId": 3621226,
+          "season": 29,
+          "number": 2,
+          "title": "TBA",
+          "airDate": "2026-09-30"
+        },
+        {
+          "tvmazeId": 3621227,
+          "season": 29,
+          "number": 3,
+          "title": "TBA",
+          "airDate": "2026-10-14"
+        },
+        {
+          "tvmazeId": 3621228,
+          "season": 29,
+          "number": 4,
+          "title": "TBA",
+          "airDate": "2026-10-28"
+        },
+        {
+          "tvmazeId": 3621229,
+          "season": 29,
+          "number": 5,
+          "title": "TBA",
+          "airDate": "2026-11-11"
+        },
+        {
+          "tvmazeId": 3621230,
+          "season": 29,
+          "number": 6,
+          "title": "TBA",
+          "airDate": "2026-11-25"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "A Different World",
+        "year": 2026,
+        "showId": 91916,
+        "premiered": "2026-09-24",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 3629334,
+          "season": 1,
+          "number": 1,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766074,
+          "season": 1,
+          "number": 2,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766075,
+          "season": 1,
+          "number": 3,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766076,
+          "season": 1,
+          "number": 4,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766077,
+          "season": 1,
+          "number": 5,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766078,
+          "season": 1,
+          "number": 6,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766079,
+          "season": 1,
+          "number": 7,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766080,
+          "season": 1,
+          "number": 8,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766081,
+          "season": 1,
+          "number": 9,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        },
+        {
+          "tvmazeId": 3766082,
+          "season": 1,
+          "number": 10,
+          "title": "TBA",
+          "airDate": "2026-09-24"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "Cyberpunk: Edgerunners",
+        "year": 2022,
+        "showId": 48945,
+        "premiered": "2022-09-13",
+        "language": "Japanese",
+        "seasonRestriction": 1
+      },
+      "episodes": [
+        {
+          "tvmazeId": 2375024,
+          "season": 1,
+          "number": 1,
+          "title": "Let You Down",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375025,
+          "season": 1,
+          "number": 2,
+          "title": "Like a Boy",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375026,
+          "season": 1,
+          "number": 3,
+          "title": "Smooth Criminal",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375027,
+          "season": 1,
+          "number": 4,
+          "title": "Lucky You",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375028,
+          "season": 1,
+          "number": 5,
+          "title": "All Eyez On Me",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375029,
+          "season": 1,
+          "number": 6,
+          "title": "Girl on Fire",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375030,
+          "season": 1,
+          "number": 7,
+          "title": "Stronger",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375031,
+          "season": 1,
+          "number": 8,
+          "title": "Stay",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375032,
+          "season": 1,
+          "number": 9,
+          "title": "Humanity",
+          "airDate": "2022-09-13"
+        },
+        {
+          "tvmazeId": 2375033,
+          "season": 1,
+          "number": 10,
+          "title": "My Moon My Man",
+          "airDate": "2022-09-13"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "Cyberpunk: Edgerunners 2",
+        "year": 2026,
+        "showId": 88337,
+        "premiered": "2026-10-20",
+        "language": "Japanese",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 3707058,
+          "season": 1,
+          "number": 1,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707602,
+          "season": 1,
+          "number": 2,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707604,
+          "season": 1,
+          "number": 3,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707605,
+          "season": 1,
+          "number": 4,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707606,
+          "season": 1,
+          "number": 5,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707607,
+          "season": 1,
+          "number": 6,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707608,
+          "season": 1,
+          "number": 7,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707609,
+          "season": 1,
+          "number": 8,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707610,
+          "season": 1,
+          "number": 9,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        },
+        {
+          "tvmazeId": 3707611,
+          "season": 1,
+          "number": 10,
+          "title": "TBA",
+          "airDate": "2026-10-20"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "Pride and Prejudice",
+        "year": 2026,
+        "showId": 84008,
+        "premiered": "2026-12-03",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 3765170,
+          "season": 1,
+          "number": 1,
+          "title": "Episode 1",
+          "airDate": "2026-12-03"
+        },
+        {
+          "tvmazeId": 3765526,
+          "season": 1,
+          "number": 2,
+          "title": "Episode 2",
+          "airDate": "2026-12-03"
+        },
+        {
+          "tvmazeId": 3765527,
+          "season": 1,
+          "number": 3,
+          "title": "Episode 3",
+          "airDate": "2026-12-03"
+        },
+        {
+          "tvmazeId": 3765528,
+          "season": 1,
+          "number": 4,
+          "title": "Episode 4",
+          "airDate": "2026-12-03"
+        },
+        {
+          "tvmazeId": 3765529,
+          "season": 1,
+          "number": 5,
+          "title": "Episode 5",
+          "airDate": "2026-12-03"
+        },
+        {
+          "tvmazeId": 3765530,
+          "season": 1,
+          "number": 6,
+          "title": "Episode 6",
+          "airDate": "2026-12-03"
+        }
+      ]
+    },
+    {
+      "source": {
+        "title": "The Gold",
+        "year": 2023,
+        "showId": 57137,
+        "premiered": "2023-02-12",
+        "language": "English",
+        "seasonRestriction": null
+      },
+      "episodes": [
+        {
+          "tvmazeId": 2481083,
+          "season": 1,
+          "number": 1,
+          "title": "To Be a King",
+          "airDate": "2023-02-12"
+        },
+        {
+          "tvmazeId": 2483182,
+          "season": 1,
+          "number": 2,
+          "title": "There's Something Going on in Kent",
+          "airDate": "2023-02-12"
+        },
+        {
+          "tvmazeId": 2483183,
+          "season": 1,
+          "number": 3,
+          "title": "The Consequences Are Mine",
+          "airDate": "2023-02-12"
+        },
+        {
+          "tvmazeId": 2483184,
+          "season": 1,
+          "number": 4,
+          "title": "Vengeance Is Easy, Justice Is Hard",
+          "airDate": "2023-02-12"
+        },
+        {
+          "tvmazeId": 2483185,
+          "season": 1,
+          "number": 5,
+          "title": "The Boy You Were",
+          "airDate": "2023-02-12"
+        },
+        {
+          "tvmazeId": 2483186,
+          "season": 1,
+          "number": 6,
+          "title": "I'll Be Remembered",
+          "airDate": "2023-02-12"
+        },
+        {
+          "tvmazeId": 3251221,
+          "season": 2,
+          "number": 1,
+          "title": "Episode 1",
+          "airDate": "2025-06-08"
+        },
+        {
+          "tvmazeId": 3263766,
+          "season": 2,
+          "number": 2,
+          "title": "Episode 2",
+          "airDate": "2025-06-08"
+        },
+        {
+          "tvmazeId": 3269049,
+          "season": 2,
+          "number": 3,
+          "title": "Episode 3",
+          "airDate": "2025-06-08"
+        },
+        {
+          "tvmazeId": 3269050,
+          "season": 2,
+          "number": 4,
+          "title": "Episode 4",
+          "airDate": "2025-06-08"
+        },
+        {
+          "tvmazeId": 3269051,
+          "season": 2,
+          "number": 5,
+          "title": "Episode 5",
+          "airDate": "2025-06-08"
+        },
+        {
+          "tvmazeId": 3269052,
+          "season": 2,
+          "number": 6,
+          "title": "Episode 6",
+          "airDate": "2025-06-08"
+        }
+      ]
+    }
+  ]
+}

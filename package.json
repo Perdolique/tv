@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "catalog:episodes:generate": "pnpm --filter @tv/api run catalog:episodes:generate",
     "build": "pnpm --filter @tv/web run build && pnpm --filter @tv/api run build",
     "cf-typegen": "pnpm --filter @tv/web --filter @tv/api run cf-typegen",
     "cf-typegen:check": "pnpm --filter @tv/web --filter @tv/api run cf-typegen:check",
