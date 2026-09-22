@@ -18,6 +18,15 @@ import { hashPassword, verifyPassword } from '../../auth/password.ts'
 import { findPasswordCredential, findUserBySession } from '../../auth/repository.ts'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
+import { createCatalogDetailsItem } from '../../catalog/details.ts'
+import { createCatalogSearchItems } from '../../catalog/search.ts'
+import { findCatalogUpcomingReleaseRows } from '../../catalog/upcoming-releases-repository.ts'
+
+import {
+  findCatalogDetailsRows,
+  findTitleRowsForMatchingCatalogItems,
+  followCatalogItem
+} from '../../catalog/repository.ts'
 
 const migrationsFolder = fileURLToPath(new URL('../../../../../packages/database/migrations', import.meta.url))
 const migrationName = '20260907210039_minor_lucky_pierre'
@@ -87,11 +96,11 @@ async function withDatabase(run: (fixture: MigrationFixture) => Promise<void>): 
   }
 }
 
-async function prepareLegacy(fixture: MigrationFixture): Promise<void> {
+async function migrateBefore(fixture: MigrationFixture, before: string): Promise<void> {
   const previousFolder = join(fixture.directory, 'previous')
   const folders = await readdir(migrationsFolder)
 
-  const copies = folders.filter(name => name < migrationName).map(async (folder) => {
+  const copies = folders.filter(name => name < before).map(async (folder) => {
     const source = join(migrationsFolder, folder)
     const target = join(previousFolder, folder)
 
@@ -100,6 +109,10 @@ async function prepareLegacy(fixture: MigrationFixture): Promise<void> {
 
   await Promise.all(copies)
   await migrate(fixture.database, { migrationsFolder: previousFolder })
+}
+
+async function prepareLegacy(fixture: MigrationFixture): Promise<void> {
+  await migrateBefore(fixture, migrationName)
 
   const firstHash = await hashPassword(password)
   const secondHash = await hashPassword('The second account keeps its own credential!')
@@ -244,9 +257,9 @@ describe('persisted UUIDv7 and title metadata migration', () => {
 
       expect(after).toStrictEqual(before)
       expect(titlesAfter.rows).toStrictEqual(expect.arrayContaining(titlesBefore.rows))
-      expect(titlesAfter.rows).toHaveLength(titlesBefore.rows.length + 12)
+      expect(titlesAfter.rows).toHaveLength(titlesBefore.rows.length + 13)
       expect(followsAfter.rows[0]?.count).toBe('0')
-      expect(identifiers).toHaveLength(oldIdentifiers.length + 12)
+      expect(identifiers).toHaveLength(oldIdentifiers.length + 13)
       expect(identifiers.every(row => row.version === 7)).toBe(true)
       expect(identifiers.every(row => oldIdentifiers.every(old => old.id !== row.id))).toBe(true)
 
@@ -388,6 +401,151 @@ describe('persisted UUIDv7 and title metadata migration', () => {
       const migrated = await readIdentifiers(fixture.client)
 
       expect(migrated.every(row => row.version === 7)).toBe(true)
+    })
+  })
+})
+
+describe('edgerunners sequel data migration', () => {
+  const sequelMigration = '20260922094600_separate_edgerunners_sequel'
+  const originalId = '10000000-0000-7000-8000-000000000020'
+  const sequelId = '10000000-0000-7000-8000-000000000025'
+
+  it('separates titles and releases without moving follows, then allows following the sequel', async () => {
+    await withDatabase(async (fixture) => {
+      // Arrange: migrate the existing catalog and follow only the original.
+      await migrateBefore(fixture, sequelMigration)
+
+      await fixture.client.query(`
+        INSERT INTO users (id, email) VALUES ($1, 'edgerunners@example.com')
+      `, [firstUserId])
+
+      await followCatalogItem(fixture.database, firstUserId, originalId)
+
+      const followsBefore = await fixture.client.query('SELECT * FROM catalog_item_follows')
+
+      const releasesBefore = await fixture.client.query(`
+        SELECT id, release_date, episode_number FROM catalog_releases
+        WHERE catalog_item_id = $1 ORDER BY id
+      `, [originalId])
+
+      const otherReleasesBefore = await fixture.client.query(`
+        SELECT * FROM catalog_releases WHERE catalog_item_id <> $1 ORDER BY id
+      `, [originalId])
+
+      expect(releasesBefore.rows).toHaveLength(10)
+
+      // Act: apply the data correction through the normal migration runner.
+      await migrate(fixture.database, { migrationsFolder })
+
+      // Assert: both identities work with the existing search and detail contracts.
+      const searchRows = await findTitleRowsForMatchingCatalogItems(fixture.database, 'Edgerunners')
+      const items = createCatalogSearchItems(searchRows, 'en')
+
+      expect(items).toMatchObject([
+        {
+          id: originalId,
+          title: 'Cyberpunk: Edgerunners',
+          releaseYear: 2022,
+          type: 'series'
+        },
+        {
+          id: sequelId,
+          title: 'Cyberpunk: Edgerunners 2',
+          releaseYear: 2026,
+          type: 'series'
+        }
+      ])
+
+      expect(items).toHaveLength(2)
+
+      const detailRows = await findCatalogDetailsRows(fixture.database, sequelId)
+      const details = createCatalogDetailsItem(detailRows, 'en')
+
+      expect(details).toMatchObject({
+        id: sequelId,
+        title: 'Cyberpunk: Edgerunners 2',
+        releaseYear: 2026,
+        type: 'series'
+      })
+
+      const releasesAfter = await fixture.client.query(`
+        SELECT id, release_date, episode_number FROM catalog_releases
+        WHERE catalog_item_id = $1 ORDER BY id
+      `, [sequelId])
+
+      const otherReleasesAfter = await fixture.client.query(`
+        SELECT * FROM catalog_releases WHERE catalog_item_id <> $1 ORDER BY id
+      `, [sequelId])
+
+      const followsAfter = await fixture.client.query('SELECT * FROM catalog_item_follows')
+
+      expect(releasesAfter.rows).toStrictEqual(releasesBefore.rows)
+      expect(otherReleasesAfter.rows).toStrictEqual(otherReleasesBefore.rows)
+      expect(followsAfter.rows).toStrictEqual(followsBefore.rows)
+
+      const query = {
+        from: '2026-09-22',
+        cursor: null
+      }
+
+      const beforeFollowing = await findCatalogUpcomingReleaseRows(fixture.database, firstUserId, query)
+
+      expect(beforeFollowing).toStrictEqual([])
+      await expect(followCatalogItem(fixture.database, firstUserId, sequelId)).resolves.toBe(true)
+
+      const afterFollowing = await findCatalogUpcomingReleaseRows(fixture.database, firstUserId, query)
+      const episodeNumbers = afterFollowing.map(row => row.episodeNumber)
+
+      expect(afterFollowing).toHaveLength(10)
+      expect(episodeNumbers).toStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+
+      for (const release of afterFollowing) {
+        expect(release).toMatchObject({
+          catalogItemId: sequelId,
+          title: 'Cyberpunk: Edgerunners 2',
+          seasonNumber: 1,
+          releaseDate: '2026-10-20'
+        })
+      }
+
+      // A later deployment must not duplicate the title or reset either follow.
+      await migrate(fixture.database, { migrationsFolder })
+
+      const followsAfterRerun = await fixture.client.query(`
+        SELECT catalog_item_id FROM catalog_item_follows WHERE user_id = $1 ORDER BY catalog_item_id
+      `, [firstUserId])
+
+      expect(followsAfterRerun.rows).toStrictEqual([
+        { catalog_item_id: originalId },
+        { catalog_item_id: sequelId }
+      ])
+    })
+  })
+
+  it('rolls back the new title if the expected release batch is incomplete', async () => {
+    await withDatabase(async (fixture) => {
+      // Arrange: simulate a missing release in an existing environment.
+      await migrateBefore(fixture, sequelMigration)
+
+      await fixture.client.query(`
+        DELETE FROM catalog_releases WHERE id = '20000000-0000-7000-8000-000000000039'
+      `)
+
+      // Act: the guarded correction must fail instead of moving a partial batch.
+      await expect(migrate(fixture.database, { migrationsFolder })).rejects.toMatchObject({
+        cause: { message: 'expected to move 10 Edgerunners sequel releases, moved 9' }
+      })
+
+      // Assert: the transaction leaves no sequel and keeps the remaining releases unchanged.
+      const sequel = await fixture.client.query('SELECT id FROM catalog_items WHERE id = $1', [sequelId])
+
+      const releases = await fixture.client.query<{ season_number: number }>(`
+        SELECT season_number FROM catalog_releases WHERE catalog_item_id = $1
+      `, [originalId])
+
+      expect(sequel.rows).toStrictEqual([])
+      expect(releases.rows).toHaveLength(9)
+      expect(releases.rows.every(row => row.season_number === 2)).toBe(true)
     })
   })
 })

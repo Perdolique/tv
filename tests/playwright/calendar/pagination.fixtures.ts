@@ -97,10 +97,10 @@ const forsytes = createSeries('01991a00-0000-7000-8000-000000000010', 'The Forsy
 const southPark = createSeries('01991a00-0000-7000-8000-000000000011', 'South Park', 1997)
 const aDifferentWorld = createSeries('01991a00-0000-7000-8000-000000000012', 'A Different World', 2026)
 
-const cyberpunkEdgerunners = createSeries(
+const cyberpunkEdgerunners2 = createSeries(
   '01991a00-0000-7000-8000-000000000013',
-  'Cyberpunk: Edgerunners',
-  2022
+  'Cyberpunk: Edgerunners 2',
+  2026
 )
 
 const prideAndPrejudice = createSeries(
@@ -154,9 +154,9 @@ const paginationCalendarReleases = [
   ...createEpisodeBatch({
     episodeCount: 10,
     firstReleaseId: 148,
-    item: cyberpunkEdgerunners,
+    item: cyberpunkEdgerunners2,
     releaseDate: '2026-10-20',
-    seasonNumber: 2
+    seasonNumber: 1
   }),
   ...createEpisodeBatch({
     episodeCount: 6,
