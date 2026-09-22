@@ -6,6 +6,8 @@ import type {
   CatalogReleasesResponse,
   CatalogSearchResponse,
   CatalogUpcomingReleasesResponse,
+  CatalogViewingHistoryResponse,
+  CatalogViewingSummaryResponse,
   CatalogWatchedResponse,
   CatalogWatchlistResponse
 } from '@tv/shared/catalog'
@@ -58,6 +60,52 @@ const catalogWatchlistResponseSchema = v.object({
   }))
 }) satisfies v.GenericSchema<CatalogWatchlistResponse>
 
+const viewingTitleEntries = {
+  ...catalogSearchItemSchema.entries,
+  id: catalogItemIdSchema,
+  posterUrl: catalogPosterUrlSchema
+}
+
+const viewingMarkEntries = {
+  ...viewingTitleEntries,
+  entryId: catalogItemIdSchema,
+  markedAt: v.pipe(v.string(), v.isoTimestamp(), v.regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u))
+}
+
+const catalogViewingHistoryResponseSchema = v.object({
+  items: v.pipe(v.array(v.variant('kind', [
+    v.object({
+      ...viewingMarkEntries,
+      kind: v.literal('movie'),
+      type: v.literal('movie'),
+      episodeNumber: v.null(),
+      seasonNumber: v.null(),
+      sourceTitle: v.null()
+    }),
+    v.object({
+      ...viewingMarkEntries,
+      kind: v.literal('episode'),
+      type: v.literal('series'),
+      episodeNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      seasonNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      sourceTitle: v.nullable(v.string())
+    })
+  ])), v.maxLength(20)),
+
+  nextCursor: v.nullable(v.pipe(v.string(), v.minLength(1)))
+}) satisfies v.GenericSchema<CatalogViewingHistoryResponse>
+
+const catalogViewingSummaryResponseSchema = v.object({
+  watchedMovieCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  watchedEpisodeCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+
+  series: v.array(v.object({
+    ...viewingTitleEntries,
+    type: v.literal('series'),
+    watchedEpisodeCount: v.pipe(v.number(), v.integer(), v.minValue(1))
+  }))
+}) satisfies v.GenericSchema<CatalogViewingSummaryResponse>
+
 const calendarDateSchema = v.pipe(
   v.string(),
   v.check(value => parseCalendarDate(value) !== null)
@@ -105,6 +153,8 @@ export {
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
+  catalogViewingHistoryResponseSchema,
+  catalogViewingSummaryResponseSchema,
   catalogWatchedResponseSchema,
   catalogSearchResponseSchema,
   catalogWatchlistResponseSchema,

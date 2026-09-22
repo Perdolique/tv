@@ -56,6 +56,30 @@ interface CatalogWatchlistResponse {
   items: CatalogWatchlistItem[];
 }
 
+interface CatalogViewingHistoryItem extends CatalogWatchlistItem {
+  kind: 'movie' | 'episode';
+  entryId: string;
+  markedAt: string;
+  episodeNumber: number | null;
+  seasonNumber: number | null;
+  sourceTitle: string | null;
+}
+
+interface CatalogViewingHistoryResponse {
+  items: CatalogViewingHistoryItem[];
+  nextCursor: string | null;
+}
+
+interface CatalogViewingSeries extends CatalogWatchlistItem {
+  watchedEpisodeCount: number;
+}
+
+interface CatalogViewingSummaryResponse {
+  watchedMovieCount: number;
+  watchedEpisodeCount: number;
+  series: CatalogViewingSeries[];
+}
+
 interface CatalogReleaseItem extends CatalogWatchlistItem {
   episodeNumber: number | null;
   releaseDate: string;
@@ -104,6 +128,10 @@ export type {
   CatalogSearchResponse,
   CatalogItemType,
   CatalogUpcomingReleasesResponse,
+  CatalogViewingHistoryItem,
+  CatalogViewingHistoryResponse,
+  CatalogViewingSeries,
+  CatalogViewingSummaryResponse,
   CatalogWatchedResponse,
   CatalogWatchlistItem,
   CatalogWatchlistResponse

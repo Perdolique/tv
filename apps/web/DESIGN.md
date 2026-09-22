@@ -649,17 +649,15 @@ Desktop:
 
 ### Personal dashboard
 
-Content priority:
-
-1. weekly summary;
-2. continue watching;
-3. next upcoming release;
-4. friends' activity;
-5. ratings summary and watchlist progress;
-6. remainder of the week.
-
-Mobile uses stacked sections. Tablet uses a primary column and social rail.
-Desktop uses a sidebar, wide main column, and `320px` secondary rail.
+- `/dashboard` shows current watched marks for the signed-in account, including titles that are not followed.
+- Show all-time movie and episode counts, newest marks first, and episode counts per series. Do not show completion percentages or infer actual viewing dates.
+- Label each timestamp as Marked and show its absolute date and time in the viewer's timezone.
+- History loads twenty marks at a time. A manual Load more action appends older marks, preserves existing rows on failure, and moves focus to the first added title link after success.
+- Each history row links to its title and shows a poster, title, type, and episode metadata when applicable. Series summaries link to their titles and are ordered by the most recent mark.
+- Mobile places metrics, history, and series counts in that reading order. Tablet uses a main history column and a series rail of at least 240px. Desktop uses the application sidebar, main history column, and a 320px series rail.
+- History and summary have separate loading, empty, and retryable error states. Session changes clear all private content. A session-check failure has its own recovery action.
+- Authenticated navigation lists Catalog, Calendar, Watchlist, and Dashboard in that order. Mobile uses four equal columns; the current page has an accessible active state.
+- Ratings, social activity, playback, weekly summaries, and upcoming releases in the generated dashboard references are outside the current dashboard.
 
 ### Personal calendar
 

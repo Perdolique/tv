@@ -4,6 +4,8 @@ import { detailsItems, dune, russianDune } from '../catalog/details.fixtures.ts'
 import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 import { calendarReleases } from '../calendar/fixtures.ts'
 import { watchlistItems } from '../watchlist/fixtures.ts'
+import { paginatedHistory } from '../dashboard/fixtures.ts'
+import { createViewingItems, createViewingSummary } from '../dashboard/service.ts'
 import { longEmail } from './constants.ts'
 
 import {
@@ -931,6 +933,61 @@ async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<
   })
 }
 
+async function handleCatalogViewing(request: Request, url: URL): Promise<Response> {
+  if (!hasAuthenticatedCatalogSession(request) || hasCookie(request, 'expire_viewing=1')) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401, {
+      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    })
+  }
+
+  const isSummary = url.pathname.endsWith('viewing-summary')
+  const failureCookie = isSummary ? 'fail_viewing_summary' : 'fail_viewing_history'
+  const isMore = url.searchParams.has('cursor')
+  const failMore = isMore && hasCookie(request, 'fail_viewing_more=1')
+
+  if (hasCookie(request, `${failureCookie}=1`) || failMore) {
+    const name = failMore ? 'fail_viewing_more' : failureCookie
+
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private database details'
+    } }, 503, {
+      'Set-Cookie': `${name}=; Max-Age=0; Path=/; SameSite=Lax`
+    })
+  }
+
+  if (hasCookie(request, 'slow_viewing=1')) {
+    // oxlint-disable-next-line promise/avoid-new -- A delayed service response exercises loading and cancellation.
+    await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
+  }
+
+  const movieIds = getWatchedCatalogItemIds(request, getWatchedCookieName(request))
+  const episodeIds = getWatchedCatalogItemIds(request, getEpisodeWatchedCookieName(request))
+
+  // Fixed fixture times make local-time and SSR assertions deterministic; mark cookies own membership.
+  const items = hasCookie(request, 'paginated_viewing=1') ? paginatedHistory : createViewingItems(movieIds, episodeIds)
+
+  if (isSummary) {
+    const summary = createViewingSummary(items)
+
+    return json(summary)
+  }
+
+  const cursor = url.searchParams.get('cursor')
+  const position = cursor === null ? -1 : items.findIndex(item => `${item.kind}:${item.entryId}` === cursor)
+  const page = items.slice(position + 1, position + 21)
+  const last = page.at(-1)
+  const hasMore = position + 21 < items.length
+
+  return json({
+    items: page,
+    nextCursor: hasMore && last !== undefined ? `${last.kind}:${last.entryId}` : null
+  })
+}
+
 async function handleCatalogDetails(request: Request, url: URL): Promise<Response> {
   if (hasCookie(request, 'fail_details=1')) {
     return json({ error: {
@@ -1012,6 +1069,10 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/search') {
       return handleCatalogSearch(request, url)
+    }
+
+    if (request.method === 'GET' && ['/api/catalog/viewing-history', '/api/catalog/viewing-summary'].includes(url.pathname)) {
+      return handleCatalogViewing(request, url)
     }
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/watchlist') {
