@@ -8,6 +8,7 @@ import { resolveCurrentSession } from '../auth/current-session.ts'
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog uses the shared API database adapter.
 import { connectDatabaseAdapter } from '../database.ts'
 import { CatalogHttpError } from './errors.ts'
+import { hasCatalogImportPermission } from './permissions.ts'
 
 interface CatalogEnvironment {
   Bindings: CloudflareBindings;
@@ -134,9 +135,27 @@ async function withCatalogSession<Result>(
   return operationOutcome.result
 }
 
+// Import handlers use this boundary so each request checks the current database grant.
+async function withCatalogImportAccess<Result>(
+  context: CatalogContext,
+  connectDatabase: ConnectCatalogDatabase,
+  operation: (session: CatalogSession) => Promise<Result>
+): Promise<Result> {
+  return withCatalogSession(context, connectDatabase, async (session) => {
+    const allowed = await hasCatalogImportPermission(session.database, session.user.id)
+
+    if (!allowed) {
+      throw new CatalogHttpError('FORBIDDEN', 403)
+    }
+
+    return operation(session)
+  })
+}
+
 export {
   defaultCatalogDependencies,
   logCatalogServerError,
+  withCatalogImportAccess,
   withCatalogSession
 }
 

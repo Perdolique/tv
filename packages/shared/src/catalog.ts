@@ -98,6 +98,7 @@ interface CatalogUpcomingReleasesResponse {
 
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
+  | 'FORBIDDEN'
   | 'INTERNAL_ERROR'
   | 'INVALID_REQUEST'
   | 'NOT_FOUND'
