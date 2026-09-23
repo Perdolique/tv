@@ -23,6 +23,12 @@ WebP files retain the source composition, are at most 480 × 720 pixels without 
 
 The migration fills metadata using the historical seed IDs before converting persisted UUIDv4 identifiers. Asset filenames do not contain database IDs, so the same paths work in local, staging, and production environments.
 
+## Managed import research
+
+[Managed catalog import](catalog-import.md) records the selected sources, identity and manual-value rules, reviewed preview contract, owned-poster path, and maintenance procedure for issue 60. The [sample report](catalog-import-sample.md) contains the checked TMDB and TVMaze examples, language and poster coverage, and episode-structure differences. The completed research defines the later implementation; it does not add a working importer or change catalog data.
+
+The planned browser flow keeps TVMaze for regular episodes and introduces TMDB for cards. It must preserve the existing title and episode UUIDs, user relationships, editorial descriptions and posters, and reviewed exceptions below. The current snapshot procedure remains the available workflow until the source-link and managed-import tasks implement its replacement or adaptation. Episode air dates remain separate from release-calendar data.
+
 ## UUIDv7 rollout
 
 The migration takes exclusive locks on the five related tables, changes IDs and dependent references in a single Drizzle transaction, validates foreign keys immediately, and restores their original non-deferrable definitions. Passwords, token hashes, timestamps, and row counts remain intact. A failed migration rolls back and prevents deployment through the existing workflow.
