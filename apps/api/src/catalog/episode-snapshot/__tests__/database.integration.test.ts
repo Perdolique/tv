@@ -21,10 +21,9 @@ if (databaseUrl === undefined || databaseUrl === '') {
 
 const client = new Client({ connectionString: databaseUrl })
 const snapshotUrl = new URL('../../../../../../packages/database/data/catalog-episodes.json', import.meta.url)
-const migrationUrl = new URL('../../../../../../packages/database/migrations/20260922115517_fill_catalog_episodes/migration.sql', import.meta.url)
 const serialized = await readFile(snapshotUrl, 'utf8')
 const snapshot = v.parse(episodeSnapshotSchema, JSON.parse(serialized))
-const migration = await readFile(migrationUrl, 'utf8')
+const migration = renderEpisodeMigration(snapshot)
 
 type ExpectedEpisodeRow = SnapshotSeries['episodes'][number] & {
   series: string;
@@ -136,13 +135,16 @@ describe('catalog episode snapshot migration', () => {
     ])
 
     const episodes = await client.query(`
-      SELECT title.title AS series, item.release_year AS year, episode.tvmaze_episode_id AS "tvmazeId",
+      SELECT title.title AS series, item.release_year AS year, link.external_id::integer AS "tvmazeId",
         episode.season_number AS season, episode.episode_number AS number,
         episode.source_title AS title, episode.air_date::text AS "airDate"
       FROM catalog_episodes AS episode
+      JOIN catalog_external_links AS link
+        ON link.catalog_episode_id = episode.id
+          AND link.provider = 'tvmaze' AND link.entity_type = 'episode'
       JOIN catalog_items AS item ON item.id = episode.catalog_item_id
       JOIN catalog_item_titles AS title ON title.catalog_item_id = item.id AND title.locale = 'en'
-      ORDER BY episode.tvmaze_episode_id
+      ORDER BY link.external_id::integer
     `)
 
     const expected: ExpectedEpisodeRow[] = []
@@ -218,12 +220,23 @@ describe('catalog episode snapshot migration', () => {
       }
     }
 
-    const before = await client.query('SELECT id, tvmaze_episode_id FROM catalog_episodes ORDER BY id')
+    const before = await client.query(`
+      SELECT episode.id, link.external_id FROM catalog_episodes AS episode
+      JOIN catalog_external_links AS link ON link.catalog_episode_id = episode.id
+        AND link.provider = 'tvmaze' AND link.entity_type = 'episode'
+      ORDER BY episode.id
+    `)
+
     const sql = renderEpisodeMigration(laterSnapshot)
 
     await client.query(sql)
 
-    const after = await client.query('SELECT id, tvmaze_episode_id FROM catalog_episodes ORDER BY id')
+    const after = await client.query(`
+      SELECT episode.id, link.external_id FROM catalog_episodes AS episode
+      JOIN catalog_external_links AS link ON link.catalog_episode_id = episode.id
+        AND link.provider = 'tvmaze' AND link.entity_type = 'episode'
+      ORDER BY episode.id
+    `)
 
     const changed = await client.query(`
       SELECT count(*)::integer AS count FROM catalog_episodes WHERE source_title = $1 AND air_date IS NULL
@@ -235,7 +248,11 @@ describe('catalog episode snapshot migration', () => {
 
   it('refuses to move a watched source episode to another coordinate', async () => {
     await client.query(`
-      UPDATE catalog_episodes SET episode_number = 99 WHERE tvmaze_episode_id = 1594417
+      UPDATE catalog_episodes SET episode_number = 99
+      WHERE id = (
+        SELECT catalog_episode_id FROM catalog_external_links
+        WHERE provider = 'tvmaze' AND entity_type = 'episode' AND external_id = '1594417'
+      )
     `)
 
     await expect(client.query(migration)).rejects.toThrow('TVMaze episode identity changed')
@@ -243,18 +260,24 @@ describe('catalog episode snapshot migration', () => {
 
   it('refuses a new source ID that would replace an existing episode coordinate', async () => {
     await client.query(`
-      UPDATE catalog_episodes SET tvmaze_episode_id = 9000099 WHERE tvmaze_episode_id = 1594417
+      UPDATE catalog_external_links SET external_id = '9000099'
+      WHERE provider = 'tvmaze' AND entity_type = 'episode' AND external_id = '1594417'
     `)
 
-    await expect(client.query(migration)).rejects.toMatchObject({ code: '23505' })
+    await expect(client.query(migration)).rejects.toThrow('coordinate conflicts with an existing episode')
   })
 
-  it('rejects same-name catalog adaptations with the wrong release year', async () => {
+  it('finds a reviewed series by its show link after editorial title and year changes', async () => {
     await client.query(`
       UPDATE catalog_items SET release_year = 1987
       WHERE id = '10000000-0000-7000-8000-000000000019'
     `)
 
-    await expect(client.query(migration)).rejects.toThrow('expected exactly one catalog series')
+    await client.query(`
+      UPDATE catalog_item_titles SET title = 'Reviewed adaptation'
+      WHERE catalog_item_id = '10000000-0000-7000-8000-000000000019' AND locale = 'en'
+    `)
+
+    await expect(client.query(migration)).resolves.toBeDefined()
   })
 })

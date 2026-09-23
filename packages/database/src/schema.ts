@@ -16,6 +16,8 @@ import {
   varchar
 } from 'drizzle-orm/pg-core'
 
+import { createCatalogExternalLinksTable } from './catalog-external-links.ts'
+
 const catalogItemType = pgEnum('catalog_item_type', ['movie', 'series'])
 
 const catalogItems = pgTable('catalog_items', {
@@ -101,20 +103,15 @@ const catalogEpisodes = pgTable('catalog_episodes', {
     .notNull(),
 
   sourceTitle: text('source_title'),
-  airDate: date('air_date', { mode: 'string' }),
-
-  tvmazeEpisodeId:
-    integer('tvmaze_episode_id')
-    .notNull()
+  airDate: date('air_date', { mode: 'string' })
 }, (table) => [
   check('catalog_episodes_season_number_positive', sql`${table.seasonNumber} > 0`),
   check('catalog_episodes_episode_number_positive', sql`${table.episodeNumber} > 0`),
-  check('catalog_episodes_tvmaze_episode_id_positive', sql`${table.tvmazeEpisodeId} > 0`),
   uniqueIndex('catalog_episodes_catalog_item_season_episode_unique')
-    .on(table.catalogItemId, table.seasonNumber, table.episodeNumber),
-  uniqueIndex('catalog_episodes_tvmaze_episode_id_unique')
-    .on(table.tvmazeEpisodeId)
+    .on(table.catalogItemId, table.seasonNumber, table.episodeNumber)
 ])
+
+const catalogExternalLinks = createCatalogExternalLinksTable(catalogItems, catalogEpisodes)
 
 const users = pgTable('users', {
   id:
@@ -320,6 +317,7 @@ const sessions = pgTable('sessions', {
 export {
   catalogEpisodes,
   catalogEpisodeWatches,
+  catalogExternalLinks,
   catalogItemFollows,
   catalogMovieWatches,
   catalogItemTitles,

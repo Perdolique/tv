@@ -66,10 +66,13 @@ describe('postgreSQL catalog episodes and watches', () => {
       source_title: string;
       tvmaze_episode_id: number;
     }>(`
-      SELECT id, season_number, episode_number, source_title, air_date::text AS air_date, tvmaze_episode_id
-      FROM catalog_episodes
-      WHERE catalog_item_id = $1
-      ORDER BY season_number, episode_number, id
+      SELECT episode.id, episode.season_number, episode.episode_number, episode.source_title,
+        episode.air_date::text AS air_date, link.external_id::integer AS tvmaze_episode_id
+      FROM catalog_episodes AS episode
+      JOIN catalog_external_links AS link ON link.catalog_episode_id = episode.id
+        AND link.provider = 'tvmaze' AND link.entity_type = 'episode'
+      WHERE episode.catalog_item_id = $1
+      ORDER BY episode.season_number, episode.episode_number, episode.id
     `, [chernobylId])
 
     expect(result.rows).toStrictEqual([
@@ -138,23 +141,23 @@ describe('postgreSQL catalog episodes and watches', () => {
     const fixtureId = '70000000-0000-7000-8000-000000000001'
 
     await expect(client.query(`
-      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, tvmaze_episode_id)
-      VALUES ($1, $2, 1, 6, 1594417)
+      INSERT INTO catalog_external_links (provider, entity_type, external_id, catalog_episode_id)
+      VALUES ('tvmaze', 'episode', '1594417', '30000000-0000-7000-8000-000000000002')
+    `)).rejects.toMatchObject({ code: '23505' })
+
+    await expect(client.query(`
+      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number)
+      VALUES ($1, $2, 1, 1)
     `, [fixtureId, chernobylId])).rejects.toMatchObject({ code: '23505' })
 
     await expect(client.query(`
-      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, tvmaze_episode_id)
-      VALUES ($1, $2, 1, 1, 9000001)
-    `, [fixtureId, chernobylId])).rejects.toMatchObject({ code: '23505' })
-
-    await expect(client.query(`
-      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, tvmaze_episode_id)
-      VALUES ($1, $2, 0, 6, 9000002)
+      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number)
+      VALUES ($1, $2, 0, 6)
     `, [fixtureId, chernobylId])).rejects.toMatchObject({ code: '23514' })
 
     await expect(client.query(`
-      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, tvmaze_episode_id)
-      VALUES ($1, $2, 1, 1, 9000003)
+      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number)
+      VALUES ($1, $2, 1, 1)
     `, [fixtureId, movieId])).rejects.toMatchObject({ code: '23514' })
 
     await expect(client.query(`
@@ -211,8 +214,8 @@ describe('postgreSQL catalog episodes and watches', () => {
 
       await client.query(`
         INSERT INTO catalog_episodes (
-          id, catalog_item_id, season_number, episode_number, source_title, air_date, tvmaze_episode_id
-        ) VALUES ($1, $2, 2, 1, 'Future episode', '2099-01-01', 9000022)
+          id, catalog_item_id, season_number, episode_number, source_title, air_date
+        ) VALUES ($1, $2, 2, 1, 'Future episode', '2099-01-01')
       `, [episodeId, chernobylId])
 
       await expect(markCatalogEpisodeWatched(database, userId, episodeId)).resolves.toBe('marked')
@@ -258,9 +261,14 @@ describe('postgreSQL catalog episodes and watches', () => {
     `, [seriesId])
 
     await client.query(`
-      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, tvmaze_episode_id)
-      VALUES ($1, $2, 1, 1, 9000033)
+      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number)
+      VALUES ($1, $2, 1, 1)
     `, [episodeId, seriesId])
+
+    await client.query(`
+      INSERT INTO catalog_external_links (provider, entity_type, external_id, catalog_episode_id)
+      VALUES ('tvmaze', 'episode', '9000033', $1)
+    `, [episodeId])
 
     await markCatalogEpisodeWatched(database, userId, episodeId)
     await client.query('DELETE FROM catalog_items WHERE id = $1', [seriesId])
@@ -269,7 +277,13 @@ describe('postgreSQL catalog episodes and watches', () => {
       SELECT count(*) FROM catalog_episode_watches WHERE user_id = $1
     `, [userId])
 
+    const linksAfterSeriesDelete = await client.query<{ count: string }>(`
+      SELECT count(*) FROM catalog_external_links
+      WHERE provider = 'tvmaze' AND entity_type = 'episode' AND external_id = '9000033'
+    `)
+
     expect(afterSeriesDelete.rows[0]?.count).toBe('0')
+    expect(linksAfterSeriesDelete.rows[0]?.count).toBe('0')
 
     await markCatalogEpisodeWatched(
       database,
