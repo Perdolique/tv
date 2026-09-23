@@ -4,7 +4,7 @@ Status: completed research for [issue 60](https://github.com/Perdolique/tv/issue
 
 ## Evidence and method
 
-The checkout was `docs/60-catalog-import-plan` at `f42ff99`. After fetching origin, it was one documentation commit ahead of `origin/master` (`881b8f7`), with no commits behind and a clean working tree. Application code matched the saved planning baseline. No live catalog database was queried or changed.
+No live catalog database was queried or changed during this research.
 
 The TVMaze sample started at 2026-09-22 20:16 UTC. Requests used HTTPS, an identifying User-Agent, a 30-second client timeout, and at least 650 ms between the main probe's requests. The main probe made 24 explicit GET requests, excluding redirect follow-ups: 13 show/episode requests, four episode requests including specials, four identifier lookups, and three missing-result probes. A separate request inspected a lookup redirect without following it. These are research settings, not browser-import defaults.
 
@@ -20,7 +20,7 @@ The owner then configured a local TMDB read token. Authenticated search and card
 | Repository inspection | Current schema constraints, locale fallback behavior, poster validation, episode mappings, and existing snapshot |
 | Outside these live checks | Actual database matches and repeat application, current Cloudflare account allowances, deployed image handling, and controlled timeout/429/5xx tests |
 
-The TVMaze results agree with the earlier [planning sample](plans/60-catalog-import-handoff.md#live-tvmaze-sample-from-planning). Dates and counts describe returned source data at check time, not a claim that a series is complete or that future dates are final.
+Dates and counts describe returned source data at check time, not a claim that a series is complete or that future dates are final.
 
 ## Approved first batch
 
@@ -196,7 +196,7 @@ Official documentation was re-read for the selected sources and alternatives. Th
 
 TMDB API terms returned HTTP 200 on direct retrieval and still showed a last-updated date of 2023-10-20. The six-month cache restriction and content removal after API use ends remain relevant to the selected manual maintenance procedure. Cloudflare pricing still distinguishes hosted storage, standard delivery, and binding transformations. No cloud resource was created or changed.
 
-The owner's existing Workers Paid and Images Paid subscriptions remain user-confirmed information. The earlier Cloudflare connector authentication failure is recorded in the handoff; account usage was not rechecked here. Verify remaining storage and shared allowances before resource setup in later tasks. This does not block independent source research, but it prevents a promise of zero additional cost.
+The owner's existing Workers Paid and Images Paid subscriptions remain user-confirmed information. Account usage was not rechecked here. Verify remaining storage and shared allowances before resource setup in later tasks. This does not block independent source research, but it prevents a promise of zero additional cost.
 
 ## Completion status
 

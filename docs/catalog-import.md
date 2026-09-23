@@ -2,7 +2,7 @@
 
 Status: completed research for [issue 60](https://github.com/Perdolique/tv/issues/60), checked on 2026-09-22. Authenticated TMDB checks cover the approved 20 new cards and five existing titles; the episode comparison confirms the selected TVMaze structure. This document defines the agreed behavior, not an implemented importer. See the [sample evidence and verification limits](catalog-import-sample.md).
 
-The [saved plan](plans/60-catalog-import-plan.md) and [handoff](plans/60-catalog-import-handoff.md) preserve the earlier decisions. This research covers the sources, rules, preview contract, and approved first batch. Application changes, database migrations, cloud resource setup, imports, and general catalog editing belong to later tasks in [Epic 59](https://github.com/Perdolique/tv/issues/59).
+This research covers the sources, rules, preview contract, and approved first batch. Application changes, database migrations, cloud resource setup, imports, and general catalog editing belong to later tasks in [Epic 59](https://github.com/Perdolique/tv/issues/59).
 
 ## Source decision
 
