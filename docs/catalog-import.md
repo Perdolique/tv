@@ -34,9 +34,9 @@ Using TMDB for all data would reduce the number of fetching adapters and offer l
 
 ## Identity and matching
 
-Internal title and episode UUIDs remain authoritative. Follows and watched marks keep those UUIDs. Store external links separately as `(provider, provider entity type, external ID) -> internal UUID`; the external tuple is unique. For example, TMDB movie and TV identifiers have different entity types. A manual catalog record may have no external link.
+Internal title and episode UUIDs remain authoritative. Follows and watched marks keep those UUIDs. External links are stored separately as `(provider, provider entity type, external ID) -> internal UUID`; the external tuple is unique. For example, TMDB movie and TV identifiers have different entity types. A manual catalog record may have no external link.
 
-Move the required `tvmaze_episode_id` values into episode links without recreating the existing episodes. Preserve unique episode coordinates within each series. Both the browser importer and the existing episode snapshot workflow must use the same identity rules after that migration.
+The source-link migration moves the required `tvmaze_episode_id` values into episode links without recreating the existing episodes. It also links the 15 reviewed TVMaze shows and five checked existing TMDB cards. Other existing cards remain unlinked until reviewed. Preserve unique episode coordinates within each series. The episode snapshot workflow now uses the source links; the later browser importer must use the same identity rules.
 
 Select an exact TMDB result. Compare media type, original title, year, and available external IDs. Names and years help review; they are not merge keys. Keep both Office adaptations, both Thing movies, and standalone sequels separate.
 
