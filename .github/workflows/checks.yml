@@ -18,7 +18,7 @@ jobs:
       group: checks-lint-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v4
         with:
           install-dependencies: true
       - run: pnpm run format:check
@@ -31,7 +31,7 @@ jobs:
       group: checks-typecheck-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v4
         with:
           install-dependencies: true
       - run: pnpm run test:typecheck
@@ -42,7 +42,7 @@ jobs:
       group: checks-unit-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v4
         with:
           install-dependencies: true
       - run: pnpm run test:unit
@@ -69,7 +69,7 @@ jobs:
           --health-timeout 2s
           --health-retries 15
     steps:
-      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v4
         with:
           install-dependencies: true
       - run: pnpm run test:integration
@@ -80,7 +80,7 @@ jobs:
       group: checks-e2e-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v4
         with:
           install-dependencies: true
       - run: pnpm exec playwright install --with-deps chromium
@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment: ${{ github.event_name == 'pull_request' && 'staging' || 'production' }}
     steps:
-      - uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+      - uses: Perdolique/automations/.github/actions/setup-pnpm@v4
         with:
           install-dependencies: true
       - name: Run database migration
@@ -120,7 +120,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: Perdolique/automations/.github/workflows/deploy.yml@v3
+    uses: Perdolique/automations/.github/workflows/deploy.yml@v4
     with:
       artifact-path: apps/web/.output
       artifact-name: tv-workers
