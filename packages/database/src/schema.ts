@@ -142,6 +142,19 @@ const users = pgTable('users', {
   uniqueIndex('users_email_unique').on(table.email)
 ])
 
+const userPermissions = pgTable('user_permissions', {
+  userId:
+    uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+
+  permission:
+    text()
+    .notNull()
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.permission] })
+])
+
 const catalogItemFollows = pgTable('catalog_item_follows', {
   userId:
     uuid('user_id')
@@ -327,5 +340,6 @@ export {
   emailVerificationTokens,
   passwordCredentials,
   sessions,
+  userPermissions,
   users
 }
