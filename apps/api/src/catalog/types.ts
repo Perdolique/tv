@@ -21,6 +21,13 @@ interface CatalogDescriptionRow {
 interface CatalogDetailsRows {
   titles: CatalogDetailsRow[];
   descriptions: CatalogDescriptionRow[];
+  sourceLinks?: CatalogSourceRow[];
+}
+
+interface CatalogSourceRow {
+  provider: string;
+  entityType: string;
+  externalId: string;
 }
 
 interface CatalogWatchlistRow extends CatalogTitleRow {

@@ -8,6 +8,7 @@ import { afterAll, afterEach, assert, beforeAll, beforeEach, describe, expect, i
 import { assertDisposableTestDatabase } from '../../../../testing/test-database.ts'
 import { movieResponse, seriesResponse, showResponse } from '../../../../testing/import-fixtures.ts'
 import { applyImportPreview, listImportOperations, type ApplyImportOptions } from '../../apply-service.ts'
+import { findImportOperationView, listImportOperationPage } from '../../history.ts'
 import { createImportPreview, type ImportSession } from '../../service.ts'
 
 const firstClient = new Client({ connectionString: env.TEST_DATABASE_URL })
@@ -546,6 +547,53 @@ describe('saved catalog import application', () => {
       })
     ]))
 
+    const ownPage = await listImportOperationPage(session, null, start)
+    const failedOperation = ownPage.items.find(item => item.previewId === preview.id)
+
+    expect(failedOperation).toMatchObject({
+      actor: session.user.email,
+      status: 'failed',
+      issue: { code: 'interrupted' },
+      canRetry: true
+    })
+
+    const colleague = {
+      id: randomUUID(),
+      email: `${randomUUID()}@example.com`
+    }
+
+    await firstClient.query('INSERT INTO users (id, email) VALUES ($1, $2)', [colleague.id, colleague.email])
+    await firstClient.query('INSERT INTO user_permissions (user_id, permission) VALUES ($1, \'catalog.manage\')', [colleague.id])
+
+    try {
+      const sharedPage = await listImportOperationPage({
+        database: secondDatabase,
+        user: colleague
+      }, null, start)
+
+      const shared = sharedPage.items.find(item => item.previewId === preview.id)
+
+      expect(shared).toMatchObject({
+        actor: session.user.email,
+        canRetry: false
+      })
+
+      expect(shared?.issue?.message).not.toContain('private')
+
+      await expect(applyImportPreview({
+        database: secondDatabase,
+        user: colleague
+      }, preview.id, {
+        ...applyOptions(),
+        retry: true
+      })).resolves.toMatchObject({ status: 'blocked' })
+    } finally {
+      await firstClient.query('DELETE FROM users WHERE id = $1', [colleague.id])
+    }
+
+    assert(failedOperation !== undefined, 'Expected the interrupted attempt in shared history')
+    await expect(findImportOperationView(session, failedOperation.id, start)).resolves.toMatchObject({ canRetry: true })
+
     await expect(applyImportPreview(session, preview.id, applyOptions())).resolves.toMatchObject({
       status: 'failed',
       issue: { code: 'interrupted' }
@@ -570,6 +618,116 @@ describe('saved catalog import application', () => {
         failure_code: null
       }
     ])
+
+    const completedPage = await listImportOperationPage(session, null, start)
+    const oldAttempt = completedPage.items.find(item => item.id === failedOperation.id)
+
+    expect(oldAttempt).toMatchObject({
+      status: 'failed',
+      canRetry: false
+    })
+
+    await expect(findImportOperationView(session, failedOperation.id, start)).resolves.toMatchObject({ canRetry: false })
+  })
+
+  it.each([
+    {
+      status: 'pending',
+      retryable: false
+    },
+    {
+      status: 'failed',
+      retryable: false
+    },
+    {
+      status: 'failed',
+      retryable: true
+    }
+  ] as const)('offers retry only for the latest attempt with status $status and retryable $retryable', async ({ status, retryable }) => {
+    // Arrange
+    const preview = await savedPreview()
+    const olderId = '00000000-0000-4000-8000-000000000001'
+    const latestId = '00000000-0000-4000-8000-000000000002'
+    const leaseExpiresAt = new Date(start.getTime() + 5 * 60 * 1000)
+
+    await firstClient.query(`
+      INSERT INTO catalog_import_operations (
+        id, preview_id, operator_id, selection, title, status, started_at,
+        finished_at, failure_code, failure_message, retryable
+      ) VALUES ($1, $2, $3, $4, 'Original test title', 'failed', $5, $5, 'apply_failed', 'Safe failure', true)
+    `, [olderId, preview.id, session.user.id, movie, start])
+
+    await firstClient.query(`
+      INSERT INTO catalog_import_operations (
+        id, preview_id, operator_id, selection, title, status, started_at,
+        lease_expires_at, finished_at, failure_code, failure_message, retryable
+      ) VALUES (
+        $1, $2, $3, $4, 'Original test title', $5, $6,
+        CASE WHEN $5 = 'pending' THEN $7::timestamptz END,
+        CASE WHEN $5 = 'failed' THEN $6::timestamptz END,
+        CASE WHEN $5 = 'failed' THEN 'apply_failed' END,
+        CASE WHEN $5 = 'failed' THEN 'Safe failure' END, $8
+      )
+    `, [latestId, preview.id, session.user.id, movie, status, start, leaseExpiresAt, retryable])
+
+    // Act
+    const page = await listImportOperationPage(session, null, start)
+
+    const attempts = page.items.map(item => {
+      return {
+        id: item.id,
+        canRetry: item.canRetry
+      }
+    })
+
+    // Assert
+    expect(attempts).toStrictEqual([
+      {
+        id: latestId,
+        canRetry: retryable
+      },
+      {
+        id: olderId,
+        canRetry: false
+      }
+    ])
+
+    await expect(findImportOperationView(session, olderId, start)).resolves.toMatchObject({ canRetry: false })
+    await expect(findImportOperationView(session, latestId, start)).resolves.toMatchObject({ canRetry: retryable })
+  })
+
+  it('pages shared operation history by a stable cursor without repeating an attempt', async () => {
+    const preview = await savedPreview()
+
+    await firstClient.query(`
+      INSERT INTO catalog_import_operations (
+        preview_id, operator_id, selection, title, status, started_at, finished_at, failure_code, failure_message, retryable
+      )
+      SELECT $1, $2, $3, 'Original test title', 'failed',
+        $4::timestamptz - number * interval '1 second',
+        $4::timestamptz - number * interval '1 second',
+        'apply_failed', 'Safe failure', true
+      FROM generate_series(0, 20) AS number
+    `, [preview.id, session.user.id, movie, start])
+
+    const first = await listImportOperationPage(session, null, start)
+
+    expect(first.items).toHaveLength(20)
+    expect(first.nextCursor).not.toBeNull()
+    expect(first.items[0]?.canRetry).toBe(true)
+
+    const olderAttempts = first.items.slice(1)
+    const olderRetryable = olderAttempts.some(item => item.canRetry)
+
+    expect(olderRetryable).toBe(false)
+
+    const second = await listImportOperationPage(session, first.nextCursor, start)
+
+    expect(second.items).toHaveLength(1)
+    expect(second.nextCursor).toBeNull()
+    expect(second.items[0]?.canRetry).toBe(false)
+    expect(new Set([...first.items, ...second.items].map(item => item.id)).size).toBe(21)
+    await expect(listImportOperationPage(session, 'bad-cursor', start)).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
   })
 
   it('rolls back a mid-write failure, saves safe history and succeeds only on explicit retry', async () => {

@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
 import { inspectCatalogState, readCatalogState } from '../catalog-state.ts'
 import { deleteExpiredImportPreviews, PREVIEW_LIFETIME_MS } from '../repository.ts'
+import { createImportPreviewView } from '../review.ts'
 
 import {
   createImportPreview,
@@ -349,6 +350,69 @@ describe('saved catalog import previews', () => {
     expect(edited).not.toBe(linked)
     assertSavedResult(editedPreview)
     expect(editedPreview.preview.catalogFingerprint).toBe(edited)
+  })
+
+  it('marks only source-linked catalog cards as exact and same-name cards as suggestions', async () => {
+    const exactId = await createItem('movie', ['tmdb', 'movie', '603'])
+    const possibleId = await createItem('movie', ['tmdb', 'movie', '9000006'])
+
+    await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original) VALUES ($1, \'en\', \'Existing exact\', true), ($2, \'en\', \'Original test title\', true)', [exactId, possibleId])
+
+    const result = await createImportPreview(session, movieSelection, dependencies())
+
+    assertSavedResult(result)
+
+    const review = await createImportPreviewView(database, result.preview)
+
+    expect(review.matches).toStrictEqual([
+      expect.objectContaining({
+        id: exactId,
+        kind: 'exact_source'
+      }),
+      expect.objectContaining({
+        id: possibleId,
+        kind: 'possible_title'
+      })
+    ])
+
+    expect(JSON.stringify(review)).not.toContain('posterBytes')
+  })
+
+  it('suggests an exact localized title match while keeping the English display title', async () => {
+    // Arrange
+    const possibleId = await createItem('movie', ['tmdb', 'movie', '9000006'])
+    const partialId = await createItem('movie', ['tmdb', 'movie', '9000007'])
+
+    await client.query(`
+      INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original)
+      VALUES ($1, 'en', 'Solaris', true), ($1, 'ru', 'Солярис', false),
+        ($2, 'en', 'Solaris sequel', true), ($2, 'ru', 'Солярис 2', false)
+    `, [possibleId, partialId])
+
+    const tmdb = {
+      ...movieResponse(),
+      original_title: 'Солярис',
+      original_language: 'ru'
+    }
+
+    const options = dependencies(tmdb)
+    const result = await createImportPreview(session, movieSelection, options)
+
+    assertSavedResult(result)
+
+    // Act
+    const review = await createImportPreviewView(database, result.preview)
+
+    // Assert
+    expect(review.matches).toStrictEqual([{
+      id: possibleId,
+      title: 'Solaris',
+      year: null,
+      type: 'movie',
+      kind: 'possible_title'
+    }])
+
+    expect(review.data.additions.createItem).toBe(true)
   })
 
   it('rejects forged operators and revoked access before contacting sources', async () => {

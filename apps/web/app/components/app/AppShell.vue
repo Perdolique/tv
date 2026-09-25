@@ -1,5 +1,5 @@
 <template>
-  <div :class="$style.component" :data-authenticated="isAuthenticated">
+  <div :class="$style.component" :data-authenticated="isAuthenticated" :data-focused="focused">
     <header v-if="!isAuthenticated" :class="$style.guestBar">
       <NuxtLink :class="$style.wordmark" to="/" aria-label="TV home">TV</NuxtLink>
       <nav :class="$style.guestNavigation" aria-label="Main navigation">
@@ -29,11 +29,19 @@
         <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:dashboard-square-01" /></span>
         <span :class="$style.navigationLabel">Dashboard</span>
       </NuxtLink>
+      <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/imports" :aria-current="importsCurrent">
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" /></span>
+        <span :class="$style.navigationLabel">Add title</span>
+      </NuxtLink>
     </nav>
     <header v-if="isAuthenticated" :class="$style.accountBar">
       <p :class="$style.wordmark">TV</p>
       <div :class="$style.accountActions">
         <p :class="$style.accountEmail" :title="userEmail">Signed in as <strong>{{ userEmail }}</strong></p>
+        <NuxtLink v-if="canManage" :class="$style.mobileAddLink" to="/manage/imports" :aria-current="importsCurrent">
+          <Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" />
+          <span>Add title</span>
+        </NuxtLink>
         <AppMessage v-if="hasSignOutError" :class="$style.accountError" role="alert" tone="danger">{{ signOutError }}</AppMessage>
         <AppButton
           ref="signOutButton"
@@ -74,22 +82,29 @@
   import { Icon } from '#components'
   import { useRequestFetch, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
-  import { computed, nextTick, ref, useTemplateRef } from 'vue'
+  import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
+  import { useCatalogImportAccess } from '~/composables/use-catalog-import-access.ts'
 
   type NavigationDestination = 'calendar' | 'catalog' | 'dashboard' | 'watchlist'
 
   interface Props {
     activeDestination?: NavigationDestination;
+    focused?: boolean;
   }
 
-  const { activeDestination } = defineProps<Props>()
-  const emit = defineEmits<{ signedOut: [] }>()
+  interface Emits {
+    signedOut: [];
+  }
+
+  const { activeDestination, focused = false } = defineProps<Props>()
+  const emit = defineEmits<Emits>()
   const route = useRoute()
   const requestFetch = useRequestFetch()
   const { restoreSession, setAnonymous, state } = useAuthSession()
+  const { canManage, discover: discoverImportAccess } = useCatalogImportAccess()
   const signOutButton = useTemplateRef('signOutButton')
   const signOutError = ref('')
   const isSigningOut = ref(false)
@@ -97,6 +112,7 @@
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
   const hasSessionError = computed(() => state.value.status === 'error')
   const hasSignOutError = computed(() => signOutError.value !== '')
+  const importsCurrent = computed(() => route.path.startsWith('/manage/imports') ? 'page' : undefined)
   const catalogCurrent = computed(() => activeDestination === 'catalog' ? 'page' : undefined)
   const calendarCurrent = computed(() => activeDestination === 'calendar' ? 'page' : undefined)
   const watchlistCurrent = computed(() => activeDestination === 'watchlist' ? 'page' : undefined)
@@ -117,6 +133,12 @@
       query: { redirectTo: redirectTo.value }
     }
   })
+
+  watch(isAuthenticated, (authenticated) => {
+    if (authenticated && import.meta.client) {
+      void discoverImportAccess()
+    }
+  }, { immediate: true })
 
   async function retrySession(): Promise<void> {
     isRetryingSession.value = true
@@ -158,6 +180,10 @@
     .component[data-authenticated='true'] {
       padding-block-end: calc(5.5rem + env(safe-area-inset-bottom));
     }
+    @media (width < 40rem) {
+      .component[data-focused='true'] { padding-block-end: env(safe-area-inset-bottom); }
+      .component[data-focused='true'] :is(.accountBar, .mobileNavigation) { display: none; }
+    }
     .accountBar, .guestBar {
       display: flex;
       flex-wrap: wrap;
@@ -190,6 +216,17 @@
       color: var(--color-text-secondary);
       font-size: 0.875rem;
     }
+    .mobileAddLink {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      min-block-size: 2.75rem;
+      color: var(--color-text-primary);
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-underline-offset: 0.25em;
+    }
+    .mobileAddLink :global(svg) { inline-size: 1.5rem; block-size: 1.5rem; }
     .accountError { flex: 1 0 100%; }
     .signOutButton {
       inline-size: 3.5rem;
@@ -304,6 +341,7 @@
         margin-block-start: auto;
         margin-inline-start: 0;
       }
+      .mobileAddLink { display: none; }
       .accountError {
         position: fixed;
         inset-inline-start: calc(var(--layout-sidebar-compact) + var(--space-3));
@@ -314,7 +352,7 @@
       .desktopNavigation {
         position: fixed;
         inset-inline-start: 0;
-        inset-block: 5rem 5rem;
+        inset-block-start: 5rem;
         z-index: 2;
         display: grid;
         align-content: start;
@@ -330,7 +368,7 @@
     @media (width >= 64rem) {
       .component[data-authenticated='true'] { padding-inline-start: var(--layout-sidebar-wide); }
       .desktopNavigation {
-        inset-block: 5.5rem 11rem;
+        inset-block-start: 5.5rem;
         inline-size: var(--layout-sidebar-wide);
         padding: var(--space-3) var(--space-4);
       }
@@ -348,6 +386,7 @@
       .navigationLabel { font-size: 1rem; }
       .navigationLink[aria-current='page'] {
         background: var(--color-surface-muted);
+        box-shadow: inset 3px 0 var(--color-accent);
       }
       .navigationLink[aria-current='page'] .navigationIcon {
         background: transparent;

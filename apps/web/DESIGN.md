@@ -1,6 +1,6 @@
 # TV design specification
 
-> Status: active design source of truth · Version: 1.4 · Last updated: 2026-08-30
+> Status: implementation guide for the reference images · Version: 1.5 · Last updated: 2026-09-26
 
 ## Purpose
 
@@ -10,8 +10,7 @@ requirements.
 
 The filename is a project convention, not a framework feature. Nuxt does not
 load it at runtime. Humans and coding agents use it to make consistent design
-decisions. Keep this file in the repository root and reference it from
-`AGENTS.md` so that it is read before any UI work.
+decisions. Keep this file in `apps/web` and reference it from the root and web `AGENTS.md` files so that it is read before UI work.
 
 This specification consolidates the generated reference designs for:
 
@@ -25,41 +24,29 @@ This specification consolidates the generated reference designs for:
 - mobile, tablet, and desktop layouts;
 - light and dark themes.
 
-The generated images communicate visual intent. This document resolves any
-accidental inconsistencies between them and is authoritative for implementation.
+The images in `designs/{theme}/{breakpoint}/{screen}.png` are the visual source of truth. Follow their composition, spacing, controls, and responsive changes. This document records implementation rules for those designs; update a written visual rule when it conflicts with the images. Keep accessibility and delivered product behavior. Omit controls for features that are not implemented.
 
 ## How to use this document
 
 ### Before implementing UI
 
-1. Identify the relevant page specification.
-2. Apply semantic tokens rather than copying colors from a screenshot.
-3. Use the component patterns defined here before creating a new variant.
-4. Start with the mobile layout and progressively add tablet and desktop rules.
-5. Verify both themes, keyboard behavior, focus states, and content overflow.
+1. Inspect the relevant images in both themes and all three breakpoints.
+2. Read the page specification and identify the delivered features shown in the images.
+3. Reproduce the image composition with semantic tokens and shared components. Do not replace it with a new layout because a component already exists.
+4. Omit unsupported controls. Do not extract illustrative artwork from a mockup for production use.
+5. Verify the rendered result beside the matching image, including keyboard behavior, focus, and overflow.
 
 ### Source-of-truth order
 
 When sources disagree, use this order:
 
 1. accessibility and functional requirements;
-2. this `DESIGN.md` file;
-3. implemented semantic tokens and shared components;
-4. generated screen references;
+2. the relevant reference image for the theme and breakpoint;
+3. this `DESIGN.md` implementation guide;
+4. implemented semantic tokens and shared components;
 5. one-off implementation details.
 
-### Repository integration
-
-Add the following instruction to the root `AGENTS.md`:
-
-```markdown
-## UI implementation
-
-- Read `DESIGN.md` before changing UI, styling, themes, or responsive behavior.
-- Treat its semantic tokens and component rules as the design source of truth.
-```
-
-Link this document from `README.md` when the first production UI is added.
+The root and web `AGENTS.md` files point to these references. Keep their design priority consistent with this order.
 
 ## Product context
 
@@ -228,6 +215,19 @@ argument order of CSS `light-dark()`.
 | `--color-social` | `#7755C6` | `#9A72E8` | Social metadata and activity |
 | `--color-focus` | `#667F00` | `#D7FF55` | Keyboard focus indicator |
 | `--color-danger` | `#A82F2F` | `#FF8A8A` | Validation and destructive text and outlines |
+| `--color-success` | `#456000` | `#D7FF55` | Added data and successful operation status |
+| `--color-info` | `#245F9E` | `#9BC7FF` | Updated data status |
+| `--color-warning` | `#805100` | `#FFD27A` | Review, pending, and preserved-value status |
+| `--color-status-neutral-background` | `#EFEEEF` | `#2E2225` | Neutral status chip background |
+| `--color-status-neutral-border` | `#D1CECF` | `#493D40` | Neutral status chip border |
+| `--color-status-success-background` | `#EBEEE6` | `#272D18` | Success status chip background |
+| `--color-status-success-border` | `#C3CDB6` | `#4A5627` | Success status chip border |
+| `--color-status-info-background` | `#E8EEF6` | `#1F2834` | Info status chip background |
+| `--color-status-info-border` | `#BCCEE3` | `#37485C` | Info status chip border |
+| `--color-status-warning-background` | `#F2EDE6` | `#302818` | Warning status chip background |
+| `--color-status-warning-border` | `#D9C9B6` | `#59492C` | Warning status chip border |
+| `--color-status-danger-background` | `#F9EAE9` | `#34201F` | Danger status chip background |
+| `--color-status-danger-border` | `#EBC2BD` | `#5C3535` | Danger status chip border |
 | `--color-artwork-fallback` | `#0B0D12` | `#0B0D12` | Backdrop behind slow or missing artwork |
 
 ### Theme behavior
@@ -275,6 +275,19 @@ The token layer is the theme implementation:
     --color-artwork-fallback: #0b0d12;
     --color-focus: light-dark(#667f00, #d7ff55);
     --color-danger: light-dark(#a82f2f, #ff8a8a);
+    --color-success: light-dark(#456000, #d7ff55);
+    --color-info: light-dark(#245f9e, #9bc7ff);
+    --color-warning: light-dark(#805100, #ffd27a);
+    --color-status-neutral-background: light-dark(#efeeef, #2e2225);
+    --color-status-neutral-border: light-dark(#d1cecf, #493d40);
+    --color-status-success-background: light-dark(#ebeee6, #272d18);
+    --color-status-success-border: light-dark(#c3cdb6, #4a5627);
+    --color-status-info-background: light-dark(#e8eef6, #1f2834);
+    --color-status-info-border: light-dark(#bccee3, #37485c);
+    --color-status-warning-background: light-dark(#f2ede6, #302818);
+    --color-status-warning-border: light-dark(#d9c9b6, #59492c);
+    --color-status-danger-background: light-dark(#f9eae9, #34201f);
+    --color-status-danger-border: light-dark(#ebc2bd, #5c3535);
   }
 }
 ```
@@ -513,7 +526,7 @@ profile access, safe-area handling, and content gutters.
 - Tablet application pages use the compact navigation rail.
 - Desktop application pages use the labeled sidebar.
 - Auth pages use only the TV wordmark; they do not show Back or authenticated application navigation.
-- Focused add/request flow may hide mobile global navigation.
+- Focused add/request/import flows use the back action and centered page title from the mobile add-title reference. Hide mobile account and bottom navigation; keep the normal rail and sidebar on larger screens.
 
 ### Buttons
 
@@ -541,19 +554,21 @@ Toggle buttons keep a stable label. A selected toggle uses `--color-surface-sele
 ### Inputs
 
 - Default height is `52px`; compact desktop filters may use `40px`.
-- Authentication fields show their label inside while empty, then compact it above the value inside the same fixed-height control on focus, value, or error; focus and label state changes never move the control or surrounding content. Other product forms keep visible labels outside the field.
+- Editable fields use the strong border token and no card shadow, including import search. Keep each search action in the position shown in its reference image.
+- Authentication fields show their label inside while empty, then compact it above the value inside the same fixed-height control on focus, value, or error; focus and label state changes never move the control or surrounding content. Metadata and other non-search forms keep visible labels outside the field.
 - Placeholder text is never the only accessible label.
 - Error state includes a message and danger border rather than relying on color alone; a semantic status icon is optional, and authentication fields do not use decorative leading icons.
-- Search uses a leading search icon and a clear action when populated.
+- Follow the search control in the relevant image. Add-title and import use one field with the search action inside its right edge and an accessible name; do not add a separate text submit button.
 - Text areas expose character limits only when limits matter.
 
 ### Segmented controls, tabs, and chips
 
-- Segmented controls choose one mode inside a stable context.
+- Segmented controls choose one mode inside a stable context. The add-title Movie/Series mode uses a lime filled pill with dark text in both themes; the quiet selected-toggle surface does not apply to this control.
 - Tabs change content within a page without changing the page identity.
 - Filter chips may be multi-select.
 - Active state uses fill or underline plus weight change, never color alone.
 - Pills must not be used for ordinary navigation labels.
+- Import statuses use compact rounded chips with a tinted background and a text label: green for additions or success, blue for updates, amber for review or preserved values, neutral for unchanged values, and red for blocked or failed operations. Color never replaces the label.
 
 ### Cards
 
@@ -696,25 +711,28 @@ credits, availability, and related-title information.
 
 ### Add or request title
 
-This flow must remain valid whether titles are added directly or moderated.
+Use `designs/{theme}/{breakpoint}/add-title.png` for this composition. Search, review, and explicit submission are separate decisions. Render only modes and actions that the product supports.
 
-Required sequence:
+- Use the wide rounded mode selector, a single search field with its action at the right, and poster match cards with a dedicated Use this button.
+- A match card shows title, year, type, and available source identity. Show catalog status only after the catalog has actually been checked.
+- Place editable metadata in labeled fields with generous vertical gaps. Pair short fields when space allows. Read-only import values use labeled text in the same column layout, without input borders, shadows, or fixed control heights, and are clearly described as saved source data.
+- Use a poster/source/workflow panel rather than metric tiles. The primary action describes the operation being confirmed.
+- On mobile, use a back action and centered heading, one content column, and the final action after the review content. Hide application account/bottom navigation and the desktop step strip.
+- On tablet, search modes, field, and result cards span the content width. Split metadata and the poster panel below them; keep the final action below the review content.
+- On desktop, show the short introduction and step strip above the main column. The workflow rail starts beside the search modes or review fields and is about 320px wide. Keep the final action in that rail.
+- Upload, request, draft, notification, help, and editable metadata controls appear only when their behavior is implemented.
 
-1. Search the existing catalog and supported external sources.
-2. Review a matched title and metadata.
-3. Submit a request or direct add according to the user's permission.
+### Catalog import management
 
-Rules:
+The operator flow at `/manage/imports` applies the add-title design to the saved-preview import contract.
 
-- Search is required before manual creation.
-- Movie, Series, and Request are explicit modes.
-- Show catalog status such as Not in catalog or Already exists.
-- External matches use a dedicated Use this action.
-- The final action label reflects behavior: Add title, Submit request, or Send
-  for review.
-- Show source-matching and moderation status on tablet and desktop.
-- Save draft is secondary.
-- Notify me when published is optional and enabled only with an account.
+- Show Add title with a plus icon after the main destinations in the tablet and desktop sidebar, only for accounts with `catalog.manage`. Mark it as current throughout search, review, and history. On mobile, keep Add title in the top account bar and preserve the four-item bottom navigation; the focused import pages hide both bars.
+- Search offers Movie and Series. A result can show a TMDB thumbnail; it is not the saved import poster. Movie selection keeps focus and scroll at Use this. Series selection replaces the result list with the selected card and Change selection, then searches TVMaze automatically. Select the TVMaze show explicitly, refine the search, or record why no match exists after a successful search. Explain any missing episode-source choice beside the disabled review action.
+- Review shows the saved poster, original and localized fields, catalog matches, proposed field changes, and regular episodes. Keep long change and episode lists in labeled disclosures so the page stays usable.
+- The source panel identifies TMDB and the selected TVMaze show, provides source links, and shows the workflow state. Confirmation uses only the saved preview.
+- Exact source-ID matches identify an existing card. Name matches are hints and must not imply that the operator can link an unlinked card until that feature is delivered.
+- Keep blocked, expired, pending, successful, and retryable outcomes beside the confirmation action. Preserve the explicit retry and permission rules.
+- History uses the release/activity row language with title, source identity, operator, time, outcome, and available actions. There is no separate history mockup; reuse those existing patterns without inventing a dashboard.
 
 ## Content rules
 

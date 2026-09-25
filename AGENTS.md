@@ -11,8 +11,8 @@
 
 ## UI implementation
 
-- Read `apps/web/DESIGN.md` before changing UI, styling, themes, or responsive behavior.
-- Treat its semantic tokens and component rules as the design source of truth.
+- Inspect the relevant images in `apps/web/designs` and read `apps/web/DESIGN.md` before changing UI, styling, themes, or responsive behavior.
+- The images are the visual source of truth. Follow their composition and controls in each theme and breakpoint; update conflicting rules in `DESIGN.md`. Keep accessibility and delivered product behavior, and omit controls for features that are not implemented.
 
 ## Verification
 

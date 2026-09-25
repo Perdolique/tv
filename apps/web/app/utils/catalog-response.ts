@@ -16,7 +16,7 @@ import * as v from 'valibot'
 import { parseCalendarDate } from '~/utils/calendar-date.ts'
 
 const catalogPosterUrlSchema = v.nullable(
-  v.pipe(v.string(), v.regex(/^\/posters\/[a-z0-9-]+\.webp$/u))
+  v.pipe(v.string(), v.regex(/^\/(?:posters\/[a-z0-9-]+|api\/posters\/tv-[a-z0-9-]+-(?:movie|series)-[1-9]\d*-[a-f0-9]{64})\.webp$/u))
 )
 
 const catalogItemIdSchema = v.pipe(v.string(), v.uuid())
@@ -40,7 +40,12 @@ const catalogDetailsResponseSchema = v.object({
     ...catalogSearchItemSchema.entries,
     description: v.nullable(v.string()),
     descriptionLocale: v.nullable(v.string()),
-    posterUrl: catalogPosterUrlSchema
+    posterUrl: catalogPosterUrlSchema,
+
+    sources: v.optional(v.array(v.object({
+      provider: v.picklist(['tmdb', 'tvmaze']),
+      url: v.pipe(v.string(), v.url())
+    })))
   })
 }) satisfies v.GenericSchema<CatalogDetailsResponse>
 

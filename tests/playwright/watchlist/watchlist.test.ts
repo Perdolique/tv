@@ -158,9 +158,23 @@ failedWatchlistTest('shows a safe error and restores focus after another failure
 
 // oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with an expected HTTP error.
 expiredWatchlistTest('clears private rows after a late 401 and returns after sign in', async ({ page, context }) => {
+  const navigationGate = Promise.withResolvers<boolean>()
+  const navigationUrl = `${appBaseUrl}/api/catalog/imports/navigation`
+
+  await page.route(navigationUrl, async (route) => {
+    await navigationGate.promise
+
+    await route.continue()
+  })
+
+  const navigationRequest = page.waitForRequest(navigationUrl)
+
   await addCookie(context, 'tv_session', `e2e-expiring-${crypto.randomUUID()}`)
   await page.goto('/')
   await waitForHydration(page)
+
+  await navigationRequest
+
   await addCookie(context, 'expire_watchlist', '1')
 
   await page.getByRole('link', {
@@ -170,6 +184,20 @@ expiredWatchlistTest('clears private rows after a late 401 and returns after sig
 
   await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/watchlist`)
   await expect(page.getByRole('list', { name: 'Followed titles' })).toHaveCount(0)
+
+  const navigationResponse = page.waitForResponse(navigationUrl)
+
+  navigationGate.resolve(true)
+
+  const response = await navigationResponse
+
+  expect(response.status()).toBe(200)
+
+  await expect(page.getByRole('link', {
+    name: 'Add title',
+    exact: true
+  })).toHaveCount(0)
+
   await context.clearCookies({ name: 'expire_watchlist' })
   await page.getByLabel('Email').fill('viewer@example.com')
   await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')

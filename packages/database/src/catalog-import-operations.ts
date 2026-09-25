@@ -1,17 +1,7 @@
+import type { ImportApplySummary } from '@tv/shared/catalog-import'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, boolean } from 'drizzle-orm/pg-core'
 import type { ImportSelection } from './import-preview.ts'
-
-interface ImportApplySummary {
-  catalogItemId: string;
-  createdItem: boolean;
-  createdEpisodes: number;
-  linkedSources: number;
-  changedFields: number;
-  updatedFields: number;
-  preservedFields: number;
-  posterPath: string | null;
-}
 
 const catalogImportOperations = pgTable('catalog_import_operations', {
   id: uuid().default(sql`uuidv7()`).primaryKey(),
@@ -56,4 +46,4 @@ const catalogImportOperations = pgTable('catalog_import_operations', {
 ])
 
 export { catalogImportOperations }
-export type { ImportApplySummary }
+export type { ImportApplySummary } from '@tv/shared/catalog-import'

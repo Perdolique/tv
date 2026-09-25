@@ -98,7 +98,7 @@ function logCatalogServerError(
 async function withCatalogSession<Result>(
   context: CatalogContext,
   connectDatabase: ConnectCatalogDatabase,
-  operation: (session: CatalogSession) => Promise<Result>
+  operation: (session: CatalogSession) => Result | Promise<Result>
 ): Promise<Result> {
   let adapter: Awaited<ReturnType<typeof connectDatabaseAdapter>> | undefined = undefined
 
@@ -139,7 +139,7 @@ async function withCatalogSession<Result>(
 async function withCatalogImportAccess<Result>(
   context: CatalogContext,
   connectDatabase: ConnectCatalogDatabase,
-  operation: (session: CatalogSession) => Promise<Result>
+  operation: (session: CatalogSession) => Result | Promise<Result>
 ): Promise<Result> {
   return withCatalogSession(context, connectDatabase, async (session) => {
     const allowed = await hasCatalogImportPermission(session.database, session.user.id)

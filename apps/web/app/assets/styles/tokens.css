@@ -20,6 +20,19 @@
     --color-on-accent: light-dark(#15171a, #0b0d12);
     --color-focus: light-dark(var(--brand-lime-700), var(--brand-lime-300));
     --color-danger: light-dark(#a82f2f, #ff8a8a);
+    --color-success: light-dark(#456000, #d7ff55);
+    --color-info: light-dark(#245f9e, #9bc7ff);
+    --color-warning: light-dark(#805100, #ffd27a);
+    --color-status-neutral-background: light-dark(#efeeef, #2e2225);
+    --color-status-neutral-border: light-dark(#d1cecf, #493d40);
+    --color-status-success-background: light-dark(#ebeee6, #272d18);
+    --color-status-success-border: light-dark(#c3cdb6, #4a5627);
+    --color-status-info-background: light-dark(#e8eef6, #1f2834);
+    --color-status-info-border: light-dark(#bccee3, #37485c);
+    --color-status-warning-background: light-dark(#f2ede6, #302818);
+    --color-status-warning-border: light-dark(#d9c9b6, #59492c);
+    --color-status-danger-background: light-dark(#f9eae9, #34201f);
+    --color-status-danger-border: light-dark(#ebc2bd, #5c3535);
     --color-artwork-fallback: #0b0d12;
 
     --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;

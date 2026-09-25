@@ -4,6 +4,7 @@ import { TURNSTILE_RESPONSE_FIELD } from '../../../packages/shared/src/turnstile
 import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { waitForHydration } from '../catalog/helpers.ts'
 import { longEmail } from './constants.ts'
 
 const validPassword = 'correct horse battery staple'
@@ -138,6 +139,7 @@ async function fillSignIn(
   email = 'viewer@example.com',
   password = validPassword
 ): Promise<void> {
+  await waitForHydration(page)
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
 }
@@ -336,6 +338,7 @@ test.describe('Authentication forms', () => {
     )
 
     await page.goto('/register')
+    await waitForHydration(page)
     await page.getByLabel('Email').fill('viewer@example.com')
 
     const submitButton = page.getByRole('button', {
@@ -387,6 +390,7 @@ test.describe('Authentication forms', () => {
 
   test('toggles password visibility with an accessible name', async ({ page }) => {
     await page.goto('/sign-in')
+    await waitForHydration(page)
 
     const signInPassword = page.getByLabel('Password', { exact: true })
     const showPasswordButton = page.getByRole('button', { name: 'Show password' })
@@ -410,6 +414,7 @@ test.describe('Authentication forms', () => {
     expect(await hidePasswordButton.boundingBox()).toStrictEqual(buttonBoundsBeforeToggle)
     expect(await hiddenIcon.boundingBox()).toStrictEqual(iconBoundsBeforeToggle)
     await page.goto(`/register#token=${validVerificationToken}`)
+    await waitForHydration(page)
 
     const registrationPassword = page.getByLabel('Password', { exact: true })
 
@@ -428,6 +433,7 @@ test.describe('Authentication forms', () => {
     })
 
     await page.goto('/sign-in')
+    await waitForHydration(page)
 
     const emailInput = page.getByLabel('Email')
 
@@ -453,6 +459,7 @@ test.describe('Authentication forms', () => {
     })
 
     await page.goto('/register')
+    await waitForHydration(page)
 
     const emailInput = page.getByLabel('Email')
 
@@ -467,6 +474,7 @@ test.describe('Authentication forms', () => {
 
   test('verifies email, creates an account, and returns through ordinary sign-in', async ({ page }) => {
     await page.goto('/register?redirectTo=%2F%3Fquery%3DDark')
+    await waitForHydration(page)
     await page.getByLabel('Email').fill('  viewer@example.com  ')
 
     const registrationRequestPromise = page.waitForRequest(`${appBaseUrl}/api/auth/register`)
@@ -488,6 +496,7 @@ test.describe('Authentication forms', () => {
     await expect(page.getByText(/Check your email for the next step/u)).toBeVisible()
     await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?query=Dark`)
     await page.goto(`/register?redirectTo=%2F%3Fquery%3DDark#token=${catalogVerificationToken}`)
+    await waitForHydration(page)
     await expect(page.getByRole('heading', { name: 'Choose your password' })).toBeVisible()
     await expect(page).toHaveURL(`${appBaseUrl}/register?redirectTo=/?query=Dark`)
     await expect(page.getByLabel('Password', { exact: true })).toBeFocused()
@@ -522,6 +531,7 @@ test.describe('Authentication forms', () => {
 
   test('returns focus to the email field when choosing a different address', async ({ page }) => {
     await page.goto('/register')
+    await waitForHydration(page)
     await page.getByLabel('Email').fill('viewer@example.com')
     await page.getByRole('button', { name: 'Email me a verification link' }).click()
     await page.getByRole('button', { name: 'Use a different email' }).click()
@@ -531,6 +541,7 @@ test.describe('Authentication forms', () => {
 
   test('replaces a malformed fragment with a fresh link in the same tab', async ({ page }) => {
     await page.goto('/register#token=short')
+    await waitForHydration(page)
 
     const invalidAlert = page.getByRole('alert')
 
@@ -575,6 +586,7 @@ test.describe('Authentication forms', () => {
     })
 
     await page.goto('/register')
+    await waitForHydration(page)
 
     const emailInput = page.getByLabel('Email')
 
@@ -596,6 +608,7 @@ test.describe('Authentication forms', () => {
 
   expectedRegistrationValidationTest('shows a compromised-password field error', async ({ page }) => {
     await page.goto(`/register#token=${compromisedVerificationToken}`)
+    await waitForHydration(page)
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
     await page.getByRole('button', { name: 'Create account' }).click()
 
@@ -617,6 +630,7 @@ test.describe('Authentication forms', () => {
 
   expectedInvalidVerificationTest('focuses an expired-link alert and offers a restart', async ({ page }) => {
     await page.goto(`/register?redirectTo=%2F%3Fview%3Drecent#token=${expiredVerificationToken}`)
+    await waitForHydration(page)
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
     await page.getByRole('button', { name: 'Create account' }).click()
 
@@ -636,6 +650,7 @@ test.describe('Authentication forms', () => {
 
   expectedRegistrationCompletionUnavailableTest('shows a safe activation service error', async ({ page }) => {
     await page.goto(`/register#token=${unavailableVerificationToken}`)
+    await waitForHydration(page)
     await page.getByLabel('Password', { exact: true }).fill(validPassword)
     await page.getByRole('button', { name: 'Create account' }).click()
 

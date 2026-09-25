@@ -413,10 +413,8 @@ async function applyImportPreview(session: ImportSession, previewId: string, opt
   }
 }
 
-async function listImportOperations(session: ImportSession, limit = 50, now = new Date()): Promise<ImportOperation[]> {
-  await requireImportPermission(session)
-
-  await session.database.update(catalogImportOperations)
+async function expirePendingImportOperations(database: Database, now: Date): Promise<void> {
+  await database.update(catalogImportOperations)
     .set({
       status: 'failed',
       leaseExpiresAt: null,
@@ -431,6 +429,11 @@ async function listImportOperations(session: ImportSession, limit = 50, now = ne
         lte(catalogImportOperations.leaseExpiresAt, now)
       )
     )
+}
+
+async function listImportOperations(session: ImportSession, limit = 50, now = new Date()): Promise<ImportOperation[]> {
+  await requireImportPermission(session)
+  await expirePendingImportOperations(session.database, now)
 
   return session.database.select()
     .from(catalogImportOperations)
@@ -438,5 +441,5 @@ async function listImportOperations(session: ImportSession, limit = 50, now = ne
     .limit(Math.min(Math.max(limit, 1), 100))
 }
 
-export { applyImportPreview, listImportOperations }
+export { applyImportPreview, expirePendingImportOperations, listImportOperations }
 export type { ApplyImportOptions, ApplyImportResult }
