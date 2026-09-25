@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { createAuthApp } from './auth/routes.ts'
 import { createCatalogApp } from './catalog/routes.ts'
+import { scheduled } from './catalog/import/scheduled.ts'
 
 const app = new Hono<{ Bindings: CloudflareBindings }>()
 const authApp = createAuthApp()
@@ -14,4 +15,7 @@ app.get('/health', (context) => context.json({
 app.route('/', authApp)
 app.route('/', catalogApp)
 
-export default app
+export default {
+  fetch: app.fetch,
+  scheduled
+} satisfies ExportedHandler<CloudflareBindings>

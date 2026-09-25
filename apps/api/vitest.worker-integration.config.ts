@@ -22,7 +22,8 @@ export default defineConfig({
         compatibilityDate: '2026-09-04',
 
         bindings: {
-          TURNSTILE_SECRET: '1x0000000000000000000000000000000AA'
+          TURNSTILE_SECRET: '1x0000000000000000000000000000000AA',
+          TMDB_READ_ACCESS_TOKEN: 'test-token'
         },
 
         hyperdrives: {

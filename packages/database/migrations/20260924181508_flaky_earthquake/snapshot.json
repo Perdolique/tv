@@ -1,0 +1,1857 @@
+{
+  "version": "8",
+  "dialect": "postgres",
+  "id": "7b72a555-e196-4136-bdd6-6a0e5afa14ce",
+  "prevIds": [
+    "8cb4138c-10fb-40e3-82a3-97d81c20a114"
+  ],
+  "ddl": [
+    {
+      "values": [
+        "movie",
+        "series"
+      ],
+      "name": "catalog_item_type",
+      "entityType": "enums",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_episode_watches",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_episodes",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_external_links",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_import_previews",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_item_follows",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_item_titles",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_items",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_movie_watches",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "catalog_releases",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "email_verification_tokens",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "password_credentials",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "sessions",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "user_permissions",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "users",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_episode_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "marked_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuidv7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_item_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "season_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "episode_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "source_title",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "air_date",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provider",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "entity_type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "external_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_item_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_episode_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuidv7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "operator_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "selection",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "data",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_fingerprint",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "bytea",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "poster_bytes",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_item_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "followed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_item_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "type": "varchar(35)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "locale",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "title",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "description",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "is_original",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuidv7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_items"
+    },
+    {
+      "type": "catalog_item_type",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_items"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "release_year",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_items"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "poster_path",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_items"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_item_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "marked_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuidv7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_releases"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "catalog_item_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_releases"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "release_date",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_releases"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "season_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_releases"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "episode_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "catalog_releases"
+    },
+    {
+      "type": "varchar(64)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "token_hash",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_verification_tokens"
+    },
+    {
+      "type": "varchar(254)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "email",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_verification_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "redirect_to",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_verification_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_verification_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_verification_tokens"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "password_credentials"
+    },
+    {
+      "type": "varchar(256)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "password_hash",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "password_credentials"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "password_credentials"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "password_credentials"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuidv7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "type": "varchar(64)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "token_hash",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "user_permissions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "permission",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "user_permissions"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuidv7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "users"
+    },
+    {
+      "type": "varchar(254)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "email",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "users"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "users"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "users"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_episode_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_episode_watches_catalog_episode_id_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "marked_at",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "catalog_episode_id",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_episode_watches_user_marked_at_episode_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_item_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "season_number",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "episode_number",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_episodes_catalog_item_season_episode_unique",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_item_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "provider",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "entity_type",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"catalog_item_id\" IS NOT NULL",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_external_links_item_source_unique",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_episode_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "provider",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "entity_type",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"catalog_episode_id\" IS NOT NULL",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_external_links_episode_source_unique",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "expires_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_import_previews_expires_at_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_item_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_item_follows_catalog_item_id_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "followed_at",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_item_follows_user_followed_at_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_item_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"is_original\"",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_item_titles_original_unique",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_item_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_movie_watches_catalog_item_id_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "marked_at",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "catalog_item_id",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_movie_watches_user_marked_at_item_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "catalog_item_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "release_date",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "catalog_releases_catalog_item_id_release_date_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "catalog_releases"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "email",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "email_verification_tokens_email_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "email_verification_tokens"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "expires_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "email_verification_tokens_expires_at_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "email_verification_tokens"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "token_hash",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "sessions_token_hash_unique",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "sessions_user_id_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "expires_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "sessions_expires_at_index",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "email",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "users_email_unique",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "users"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_episode_watches_user_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_episode_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_episodes",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_episode_watches_ynhUEcsHjZFY_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_item_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_items",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_episodes_catalog_item_id_catalog_items_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_item_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_items",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_external_links_catalog_item_id_catalog_items_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_episode_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_episodes",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_external_links_moTTrI8RbD50_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "operator_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_import_previews_operator_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_item_follows_user_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_item_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_items",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_item_follows_catalog_item_id_catalog_items_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_item_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_items",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_item_titles_catalog_item_id_catalog_items_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_movie_watches_user_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_item_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_items",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_movie_watches_catalog_item_id_catalog_items_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "catalog_item_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "catalog_items",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "catalog_releases_catalog_item_id_catalog_items_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "catalog_releases"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "password_credentials_user_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "password_credentials"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "sessions_user_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "sessions"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "user_permissions_user_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "user_permissions"
+    },
+    {
+      "columns": [
+        "user_id",
+        "catalog_episode_id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_episode_watches_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "catalog_episode_watches"
+    },
+    {
+      "columns": [
+        "provider",
+        "entity_type",
+        "external_id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_external_links_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "columns": [
+        "user_id",
+        "catalog_item_id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_item_follows_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "catalog_item_follows"
+    },
+    {
+      "columns": [
+        "catalog_item_id",
+        "locale"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_item_titles_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "catalog_item_titles"
+    },
+    {
+      "columns": [
+        "user_id",
+        "catalog_item_id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_movie_watches_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "catalog_movie_watches"
+    },
+    {
+      "columns": [
+        "user_id",
+        "permission"
+      ],
+      "nameExplicit": false,
+      "name": "user_permissions_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "user_permissions"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_episodes_pkey",
+      "schema": "public",
+      "table": "catalog_episodes",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_import_previews_pkey",
+      "schema": "public",
+      "table": "catalog_import_previews",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_items_pkey",
+      "schema": "public",
+      "table": "catalog_items",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "catalog_releases_pkey",
+      "schema": "public",
+      "table": "catalog_releases",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "token_hash"
+      ],
+      "nameExplicit": false,
+      "name": "email_verification_tokens_pkey",
+      "schema": "public",
+      "table": "email_verification_tokens",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "user_id"
+      ],
+      "nameExplicit": false,
+      "name": "password_credentials_pkey",
+      "schema": "public",
+      "table": "password_credentials",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "sessions_pkey",
+      "schema": "public",
+      "table": "sessions",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "users_pkey",
+      "schema": "public",
+      "table": "users",
+      "entityType": "pks"
+    },
+    {
+      "value": "\"season_number\" > 0",
+      "name": "catalog_episodes_season_number_positive",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "value": "\"episode_number\" > 0",
+      "name": "catalog_episodes_episode_number_positive",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_episodes"
+    },
+    {
+      "value": "\"external_id\" ~ '^[1-9][0-9]*$'",
+      "name": "catalog_external_links_external_id_positive",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "value": "(\"catalog_item_id\" IS NULL) <> (\"catalog_episode_id\" IS NULL)",
+      "name": "catalog_external_links_target",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "value": "\n      (\"provider\" = 'tmdb' AND \"entity_type\" IN ('movie', 'tv') AND \"catalog_item_id\" IS NOT NULL)\n      OR (\"provider\" = 'tvmaze' AND \"entity_type\" = 'show' AND \"catalog_item_id\" IS NOT NULL)\n      OR (\"provider\" = 'tvmaze' AND \"entity_type\" = 'episode' AND \"catalog_episode_id\" IS NOT NULL)\n    ",
+      "name": "catalog_external_links_source",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_external_links"
+    },
+    {
+      "value": "\"status\" IN ('ready', 'blocked')",
+      "name": "catalog_import_previews_status",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "value": "\"catalog_fingerprint\" ~ '^[0-9a-f]{64}$'",
+      "name": "catalog_import_previews_fingerprint",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "value": "\"expires_at\" = \"created_at\" + interval '24 hours'",
+      "name": "catalog_import_previews_lifetime",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "value": "octet_length(\"poster_bytes\") BETWEEN 1 AND 1048576",
+      "name": "catalog_import_previews_poster_size",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    },
+    {
+      "value": "(\"poster_bytes\" IS NULL) = (\"data\"->>'poster' IS NULL)",
+      "name": "catalog_import_previews_poster_pair",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "catalog_import_previews"
+    }
+  ],
+  "renames": []
+}

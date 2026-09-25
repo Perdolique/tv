@@ -10,9 +10,16 @@
   "limits": {
     "cpu_ms": 1000
   },
+  "images": {
+    "binding": "IMAGES"
+  },
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  },
   "secrets": {
     "required": [
-      "TURNSTILE_SECRET"
+      "TURNSTILE_SECRET",
+      "TMDB_READ_ACCESS_TOKEN"
     ]
   },
   "hyperdrive": [
@@ -73,18 +80,29 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
-    "redact_query_string": true
+    "redact_query_string": true,
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
   },
   "upload_source_maps": true,
   "env": {
     "staging": {
       "name": "tv-api-staging",
+      "images": {
+        "binding": "IMAGES"
+      },
+      "triggers": {
+        "crons": ["30 3 * * *"]
+      },
       "limits": {
         "cpu_ms": 1000
       },
       "secrets": {
         "required": [
-          "TURNSTILE_SECRET"
+          "TURNSTILE_SECRET",
+          "TMDB_READ_ACCESS_TOKEN"
         ]
       },
       "hyperdrive": [

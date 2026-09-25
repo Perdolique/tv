@@ -17,6 +17,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import { createCatalogExternalLinksTable } from './catalog-external-links.ts'
+import { createCatalogImportPreviewsTable } from './catalog-import-previews.ts'
 
 const catalogItemType = pgEnum('catalog_item_type', ['movie', 'series'])
 
@@ -141,6 +142,8 @@ const users = pgTable('users', {
 }, (table) => [
   uniqueIndex('users_email_unique').on(table.email)
 ])
+
+const catalogImportPreviews = createCatalogImportPreviewsTable(users)
 
 const userPermissions = pgTable('user_permissions', {
   userId:
@@ -331,6 +334,7 @@ export {
   catalogEpisodes,
   catalogEpisodeWatches,
   catalogExternalLinks,
+  catalogImportPreviews,
   catalogItemFollows,
   catalogMovieWatches,
   catalogItemTitles,
