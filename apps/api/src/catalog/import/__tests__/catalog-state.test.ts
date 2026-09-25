@@ -8,8 +8,10 @@ describe('import catalog-state contract', () => {
     const state: CatalogState = {
       items: [],
       titles: [],
+      descriptions: [],
       episodes: [],
-      links: []
+      links: [],
+      fields: []
     }
 
     const first = inspectCatalogState(state, {
@@ -45,7 +47,9 @@ describe('import catalog-state contract', () => {
       }],
 
       titles: [],
+      descriptions: [],
       episodes: [],
+      fields: [],
 
       links: [{
         provider: 'tmdb',
@@ -98,7 +102,9 @@ describe('import catalog-state contract', () => {
       }],
 
       titles: [],
+      descriptions: [],
       episodes: [episode],
+      fields: [],
 
       links: [
         {
@@ -125,7 +131,13 @@ describe('import catalog-state contract', () => {
     const changed = inspectCatalogState(state, selection, source.episodes)
 
     expect(first.errors).toStrictEqual([])
-    expect(first.additions.episodeIds).toStrictEqual(['910002'])
+    expect(first.additions.episodeExternalIds).toStrictEqual(['910002'])
     expect(changed.fingerprint).not.toBe(first.fingerprint)
+
+    episode.episodeNumber = 3
+
+    const relocated = inspectCatalogState(state, selection, source.episodes)
+
+    expect(relocated.errors.map(problem => problem.code)).toContain('episode_coordinates_changed')
   })
 })

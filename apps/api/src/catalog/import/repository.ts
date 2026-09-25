@@ -16,7 +16,7 @@ interface PreviewLookup {
 }
 
 // Both future review and application must use this expiry- and owner-checked reader.
-async function findImportPreview(database: Database, lookup: PreviewLookup): Promise<StoredPreview | null> {
+async function findImportPreview(database: Pick<Database, 'select'>, lookup: PreviewLookup): Promise<StoredPreview | null> {
   const rows = await database
     .select()
     .from(catalogImportPreviews)

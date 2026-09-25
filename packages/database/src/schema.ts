@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-lines -- The central schema keeps related catalog and account table exports in one place. */
 import { sql } from 'drizzle-orm'
 
 import {
@@ -17,6 +18,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import { createCatalogExternalLinksTable } from './catalog-external-links.ts'
+import { createCatalogImportFieldsTable } from './catalog-import-fields.ts'
 import { createCatalogImportPreviewsTable } from './catalog-import-previews.ts'
 
 const catalogItemType = pgEnum('catalog_item_type', ['movie', 'series'])
@@ -49,8 +51,6 @@ const catalogItemTitles = pgTable('catalog_item_titles', {
     text()
     .notNull(),
 
-  description: text(),
-
   isOriginal:
     boolean('is_original')
     .default(false)
@@ -60,6 +60,14 @@ const catalogItemTitles = pgTable('catalog_item_titles', {
   uniqueIndex('catalog_item_titles_original_unique')
     .on(table.catalogItemId)
     .where(sql`${table.isOriginal}`)
+])
+
+const catalogItemDescriptions = pgTable('catalog_item_descriptions', {
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  locale: varchar({ length: 35 }).notNull(),
+  description: text().notNull()
+}, (table) => [
+  primaryKey({ columns: [table.catalogItemId, table.locale] })
 ])
 
 const catalogReleases = pgTable('catalog_releases', {
@@ -113,6 +121,7 @@ const catalogEpisodes = pgTable('catalog_episodes', {
 ])
 
 const catalogExternalLinks = createCatalogExternalLinksTable(catalogItems, catalogEpisodes)
+const catalogImportFields = createCatalogImportFieldsTable(catalogItems, catalogEpisodes)
 
 const users = pgTable('users', {
   id:
@@ -334,8 +343,10 @@ export {
   catalogEpisodes,
   catalogEpisodeWatches,
   catalogExternalLinks,
+  catalogImportFields,
   catalogImportPreviews,
   catalogItemFollows,
+  catalogItemDescriptions,
   catalogMovieWatches,
   catalogItemTitles,
   catalogItems,
@@ -347,3 +358,5 @@ export {
   userPermissions,
   users
 }
+
+export { catalogImportOperations } from './catalog-import-operations.ts'

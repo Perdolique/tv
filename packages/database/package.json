@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./catalog-import-operations": "./src/catalog-import-operations.ts",
     "./import-preview": "./src/import-preview.ts",
     "./schema": "./src/schema.ts"
   },

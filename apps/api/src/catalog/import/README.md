@@ -1,6 +1,6 @@
-# Catalog import previews
+# Catalog import previews and application
 
-This internal service implements #63. It prepares one explicitly selected TMDB movie or series. It does not add HTTP routes or write catalog, release-calendar, subscription, or watched records. Application belongs to #64; the protected web flow belongs to #65.
+This internal service implements #63 and #64. It previews and applies one explicitly selected TMDB movie or series with regular TVMaze episodes. HTTP routes, the protected web flow, and public poster delivery belong to #65.
 
 ## Service boundary
 
@@ -13,21 +13,23 @@ Call `createImportPreview(session, selection, { token: env.TMDB_READ_ACCESS_TOKE
 
 `openImportPreview(session, id)` checks the current grant, owner, expiry, and poster hash. It returns the saved data and bytes without contacting the providers. Missing, foreign, or expired previews return `null`. The future HTTP layer must use protected, uncached responses, including `Cache-Control: no-store` for poster bytes. Do not put preview data or images in a public cache.
 
+Call `applyImportPreview(session, previewId, { hosted: env.IMAGES.hosted, namespace })` to apply a ready version 2 preview. Use a stable environment namespace such as `production` or `staging`. The service checks access again, applies the saved card and episodes, and returns a result with the catalog item ID and change counts. It does not contact TMDB or TVMaze again. A repeated call returns the successful operation, even after preview cleanup. A failed operation stays in history; pass `retry: true` to start a new attempt while its preview is still valid. Applying again or reading history marks pending attempts that have passed their five-minute lease as interrupted; a new attempt then needs an explicit retry. `listImportOperations(session)` reads the history for an authorized operator.
+
 ## Source data
 
 TMDB card requests include `translations` and `external_ids` through `append_to_response`. Original titles come from the original-title field. Localized names and descriptions come only from actual translation entries. Original-language, English, and Russian entries keep their full source locales, such as `en-US` and `en-GB`; the service does not silently pick a regional variant or relabel fallback text. Each value includes its source identity, field, and locale. Optional missing values stay `null` or absent from the translation list.
 
 TVMaze requests use an explicitly selected show with embedded episodes. Shared IMDb and TheTVDB IDs must agree. If no shared ID is available, the preview warns that the explicit choice needs review. Only regular episodes with stable IDs and positive coordinates are accepted. Unknown names and air dates stay `null`; future episodes are kept. Show `48945` is restricted to season 1. Episode IDs and coordinates must be unique, and existing reviewed source mappings cannot be replaced.
 
-Title and year are not merge keys. Proposed additions list the new card, episode source IDs, and missing source links. They do not propose overwriting existing editorial fields. Field ownership and the final update summary remain part of #64.
+Title and year are not merge keys. A version 2 preview includes changes per field and episode: add, update, unchanged, preserve an editorial value, or retain a value missing from the source. Existing fields without import provenance are editorial. Imported fields update only while their current value still equals the last applied value, including `null`. Source values and the last applied values are tracked separately; poster provenance keeps the checked TMDB path and image hash as well as the hash of the last applied image. A linked episode with changed coordinates blocks the preview for review.
 
-## Storage and application handoff
+## Storage and atomic application
 
 `catalog_import_previews` stores the operator, selection, versioned normalized data, identity evidence, issues, proposed additions, affected-catalog fingerprint, and optional WebP bytes. A preview expires exactly 24 hours after it is saved. Its data must not be refreshed in place.
 
-The fingerprint covers selected title identities, matching catalog cards and localized fields, their episodes, and source links. It also detects a previously absent source link being added. It excludes follows, watched marks, and release-calendar records. Build it with `readCatalogState` and `inspectCatalogState` in a repeatable-read transaction, using the saved selection and episodes. #64 must recheck this fingerprint and current access before writing, reject blocked or expired previews, and implement atomic, idempotent application. A later ownership table must be included in that state check when #64 introduces it.
+The fingerprint covers selected title identities, matching catalog cards, titles, descriptions, imported-field provenance, episodes, and source links. It also detects a previously absent source link being added. It excludes follows, watched marks, and release-calendar records. Build it with `readCatalogState` and `inspectCatalogState` in a repeatable-read transaction, using the saved selection and episodes. Application rechecks the saved plan, current grant, expiry, and fingerprint inside the transaction. Catalog writes and the successful operation result commit together. A failure rolls back catalog changes, records a safe reason in operation history, and sends technical details to private Worker logs. Database uniqueness constraints settle races between different previews for the same source or episode.
 
-Posters are downloaded only from a validated path on `https://image.tmdb.org/t/p/original`, with redirects disabled and a 10 MiB input limit. Images prepares one WebP within 480 × 720, with no crop or enlargement. Output must be at most 1 MiB. The preview stores the source URL, source hash, output hash, dimensions, and exact output bytes. The database also enforces the output size limit. Permanent upload and applied-image delivery are not part of this task.
+Posters are downloaded only from a validated path on `https://image.tmdb.org/t/p/original`, with redirects disabled and a 10 MiB input limit. Images prepares one WebP within 480 × 720, with no crop or enlargement. Output must be at most 1 MiB. The preview stores the source URL, source hash, output hash, dimensions, and exact output bytes. The database also enforces the output size limit. Application uploads those exact bytes through the hosted Images binding before the catalog transaction. The ID includes environment, type, TMDB ID, and output hash; an existing ID is reused only when its bytes match. The operation records this ID even if the later database write fails, so an unreferenced upload can be inspected and reused. Catalog rows use `/api/posters/<id>.webp`; #65 will serve that path through the Worker and cache. Existing `/posters/*.webp` paths remain valid.
 
 Provider HTTP requests allow at most three attempts, each with a 10-second deadline. JSON bodies are limited to 4 MiB for TMDB and 8 MiB for TVMaze. A retry waits for `Retry-After` when present. Delays above five seconds are returned to the caller instead of retrying early. 404, authorization failures, malformed data, and invalid artwork never become missing optional data.
 
@@ -37,6 +39,6 @@ Both Worker environments declare the `IMAGES` binding and require `TMDB_READ_ACC
 
 Production cleanup runs daily at 03:00 UTC; staging runs at 03:30 UTC. Each invocation deletes at most ten batches of 100 expired previews and closes its database connection. Expired previews cannot be opened even before cleanup removes them.
 
-Focused unit tests cover normalization, source failures, fingerprints, and poster limits. Disposable PostgreSQL tests cover storage, identity conflicts, access, expiry, bounded cleanup, and catalog preservation. Worker tests cover real local Images transforms, saved-byte integrity, and the scheduled database job. Local Images tests do not prove remote account access; verify that separately before a staging smoke test.
+Focused unit tests cover normalization, source failures, fingerprints, and poster limits. Disposable PostgreSQL tests cover previews, application, idempotency, explicit retry, concurrent source conflicts, access, expiry, migration backfill, mid-write rollback, and preservation of UUIDs and user activity. Worker tests cover real local Images transforms, hosted upload of saved bytes, reuse, failure, and the scheduled database job. Local Images tests do not prove remote account access or remaining paid quota; verify those before the #66 staging smoke test.
 
 References: [TMDB append-to-response](https://developer.themoviedb.org/docs/append-to-response), [TVMaze API](https://www.tvmaze.com/api), [Images binding](https://developers.cloudflare.com/images/optimization/binding/), and [Worker cron triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/).

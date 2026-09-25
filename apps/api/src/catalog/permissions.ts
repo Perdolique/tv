@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm'
 
 const CATALOG_IMPORT_PERMISSION = 'catalog.manage'
 
-async function hasCatalogImportPermission(database: Database, userId: string): Promise<boolean> {
+async function hasCatalogImportPermission(database: Pick<Database, 'select'>, userId: string): Promise<boolean> {
   const rows = await database
     .select({ permission: userPermissions.permission })
     .from(userPermissions)

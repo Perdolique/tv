@@ -226,7 +226,7 @@ describe('saved catalog import previews', () => {
 
     assertSavedResult(result)
     expect(result.preview.data.episodes).toHaveLength(3)
-    expect(result.preview.data.additions.episodeIds).toStrictEqual(['910001', '910002', '910004'])
+    expect(result.preview.data.additions.episodeExternalIds).toStrictEqual(['910001', '910002', '910004'])
     await expect(catalogSnapshot()).resolves.toStrictEqual(before)
   })
 
@@ -340,7 +340,8 @@ describe('saved catalog import previews', () => {
     await expect(fingerprint(movieSelection)).resolves.toBe(linked)
     await createItem('movie', ['tmdb', 'movie', '9000005'])
     await expect(fingerprint(movieSelection)).resolves.toBe(linked)
-    await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title, description) VALUES ($1, \'en\', \'Manual\', \'\')', [itemId])
+    await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title) VALUES ($1, \'en\', \'Manual\')', [itemId])
+    await client.query('INSERT INTO catalog_item_descriptions (catalog_item_id, locale, description) VALUES ($1, \'en\', \'\')', [itemId])
 
     const edited = await fingerprint(movieSelection)
     const editedPreview = await createImportPreview(session, movieSelection, dependencies())

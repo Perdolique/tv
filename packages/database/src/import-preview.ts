@@ -91,7 +91,7 @@ interface PreviewIssue {
 interface PreviewAdditions {
   catalogItemId: string | null;
   createItem: boolean;
-  episodeIds: string[];
+  episodeExternalIds: string[];
   sourceLinks: SourceIdentity[];
 }
 
@@ -105,15 +105,32 @@ interface PreviewPoster {
   byteLength: number;
 }
 
+type ImportFieldName = 'title' | 'description' | 'releaseYear' | 'posterPath' | 'seasonNumber' | 'episodeNumber' | 'sourceTitle' | 'airDate'
+type PreviewChangeAction = 'add' | 'update' | 'unchanged' | 'preserve_manual' | 'retain_missing'
+
+interface PreviewChange {
+  target: 'item' | 'title' | 'description' | 'episode';
+  field: ImportFieldName;
+  locale: string | null;
+  episodeExternalId: string | null;
+  action: PreviewChangeAction;
+  before: string | number | null;
+  after: string | number | null;
+  sourceValue: string | number | null;
+  sourceHash: string | null;
+  source: FieldOrigin;
+}
+
 // Only normalized, reviewed data belongs here. Provider response dumps are not stored.
 interface ImportPreviewData {
-  version: 1;
+  version: 2;
   card: ImportCard | null;
   episodes: ImportEpisode[];
   evidence: IdentityEvidence;
   warnings: PreviewIssue[];
   errors: PreviewIssue[];
   additions: PreviewAdditions;
+  changes: PreviewChange[];
   poster: PreviewPoster | null;
 }
 
@@ -123,10 +140,13 @@ export type {
   IdentityEvidence,
   ImportCard,
   ImportEpisode,
+  ImportFieldName,
   ImportPreviewData,
   ImportSelection,
   ImportTranslation,
   PreviewAdditions,
+  PreviewChange,
+  PreviewChangeAction,
   PreviewIssue,
   PreviewPoster,
   ShowEvidence,

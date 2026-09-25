@@ -5,7 +5,6 @@ import type { CatalogDetailsRow } from '../types.ts'
 
 const original: CatalogDetailsRow = {
   catalogItemId: '01991a00-0000-7000-8000-000000000001',
-  description: 'Original Japanese description.',
   isOriginal: true,
   locale: 'ja',
   posterPath: null,
@@ -20,19 +19,34 @@ describe('catalog details', () => {
       ...original,
       isOriginal: false,
       locale: 'en',
-      title: 'English title',
-      description: 'English description.'
+      title: 'English title'
     }
 
     const russian = {
       ...original,
       isOriginal: false,
       locale: 'ru',
-      title: 'Русское название',
-      description: '  '
+      title: 'Русское название'
     }
 
-    const rows = [original, english, russian]
+    const rows = {
+      titles: [original, english, russian],
+
+      descriptions: [
+        {
+          locale: 'ja',
+          description: 'Original Japanese description.'
+        },
+        {
+          locale: 'en',
+          description: 'English description.'
+        },
+        {
+          locale: 'ru',
+          description: '  '
+        }
+      ]
+    }
 
     expect(createCatalogDetailsItem(rows, 'ru-RU')).toStrictEqual({
       id: original.catalogItemId,
@@ -47,30 +61,63 @@ describe('catalog details', () => {
       posterUrl: null
     })
 
-    expect(createCatalogDetailsItem([original, russian], 'ru-RU')).toMatchObject({
+    expect(createCatalogDetailsItem({
+      titles: [original, russian],
+      descriptions: rows.descriptions.filter(row => row.locale !== 'en')
+    }, 'ru-RU')).toMatchObject({
       titleLocale: 'ru',
-      description: original.description,
+      description: 'Original Japanese description.',
       descriptionLocale: 'ja'
     })
 
     const localized = {
-      ...russian,
+      locale: 'ru',
       description: ' Русское описание. '
     }
 
-    expect(createCatalogDetailsItem([original, english, localized], 'ru-RU')).toMatchObject({
+    expect(createCatalogDetailsItem({
+      titles: [original, english, russian],
+      descriptions: [...rows.descriptions.filter(row => row.locale !== 'ru'), localized]
+    }, 'ru-RU')).toMatchObject({
       description: 'Русское описание.',
       descriptionLocale: 'ru'
+    })
+
+    expect(createCatalogDetailsItem({
+      titles: [original, english],
+
+      descriptions: [{
+        locale: 'ru-RU',
+        description: 'Описание без переведённого названия.'
+      }]
+    }, 'ru-RU')).toMatchObject({
+      titleLocale: 'en',
+      description: 'Описание без переведённого названия.',
+      descriptionLocale: 'ru-RU'
+    })
+  })
+
+  it('falls back to a regional description in the original language', () => {
+    const details = createCatalogDetailsItem({
+      titles: [original],
+
+      descriptions: [{
+        locale: 'ja-JP',
+        description: 'Regional original description.'
+      }]
+    }, 'de-DE')
+
+    expect(details).toMatchObject({
+      description: 'Regional original description.',
+      descriptionLocale: 'ja-JP'
     })
   })
 
   it('keeps absent optional fields nullable and distinguishes a missing item', () => {
-    const row = {
-      ...original,
-      description: null
-    }
-
-    expect(createCatalogDetailsItem([row], 'en')).toMatchObject({
+    expect(createCatalogDetailsItem({
+      titles: [original],
+      descriptions: []
+    }, 'en')).toMatchObject({
       title: original.title,
       titleLocale: 'ja',
       description: null,
@@ -79,7 +126,10 @@ describe('catalog details', () => {
       releaseYear: null
     })
 
-    expect(createCatalogDetailsItem([], 'en')).toBeNull()
+    expect(createCatalogDetailsItem({
+      titles: [],
+      descriptions: []
+    }, 'en')).toBeNull()
   })
 
   it('retains a poster and rejects a broken original-title invariant', () => {
@@ -88,12 +138,19 @@ describe('catalog details', () => {
       posterPath: '/posters/dune-2021.webp'
     }
 
-    expect(createCatalogDetailsItem([row], 'en')?.posterUrl).toBe('/posters/dune-2021.webp')
+    expect(createCatalogDetailsItem({
+      titles: [row],
+      descriptions: []
+    }, 'en')?.posterUrl).toBe('/posters/dune-2021.webp')
 
-    expect(() => createCatalogDetailsItem([{
-      ...row,
-      isOriginal: false
-    }], 'en')).toThrow('has no original title')
+    expect(() => createCatalogDetailsItem({
+      titles: [{
+        ...row,
+        isOriginal: false
+      }],
+
+      descriptions: []
+    }, 'en')).toThrow('has no original title')
   })
 
   it.each(['', 'not-an-id', 'search', '\'; DROP TABLE users; --'])('rejects invalid ID %s', (id) => {

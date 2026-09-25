@@ -2,7 +2,7 @@ import type { CatalogDetailsItem } from '@tv/shared/catalog'
 import * as v from 'valibot'
 import { CatalogHttpError } from './errors.ts'
 import { createCatalogSearchItems, getLocaleFallbacks } from './search.ts'
-import type { CatalogDetailsRow } from './types.ts'
+import type { CatalogDetailsRows } from './types.ts'
 
 const catalogItemIdSchema = v.pipe(v.string(), v.uuid())
 
@@ -17,25 +17,31 @@ function validateCatalogItemId(value: string): string {
 }
 
 function createCatalogDetailsItem(
-  rows: CatalogDetailsRow[],
+  rows: CatalogDetailsRows,
   requestedLocale: string
 ): CatalogDetailsItem | null {
-  const [summary] = createCatalogSearchItems(rows, requestedLocale)
+  const [summary] = createCatalogSearchItems(rows.titles, requestedLocale)
 
   if (summary === undefined) {
     return null
   }
 
-  const locales = getLocaleFallbacks(requestedLocale)
+  const availableLocales = rows.descriptions.map(row => row.locale)
+  const locales = getLocaleFallbacks(requestedLocale, availableLocales)
+  const originalLanguageFallbacks = getLocaleFallbacks(summary.originalTitleLocale, availableLocales)
 
-  locales.push(summary.originalTitleLocale)
+  for (const locale of originalLanguageFallbacks) {
+    if (!locales.includes(locale)) {
+      locales.push(locale)
+    }
+  }
 
   let description: string | null = null
   let descriptionLocale: string | null = null
 
   for (const locale of locales) {
-    const row = rows.find(candidate => candidate.locale === locale)
-    const candidateDescription = row?.description?.trim()
+    const row = rows.descriptions.find(candidate => candidate.locale === locale)
+    const candidateDescription = row?.description.trim()
 
     if (candidateDescription !== undefined && candidateDescription !== '') {
       description = candidateDescription
@@ -55,7 +61,7 @@ function createCatalogDetailsItem(
     type: summary.type,
     description,
     descriptionLocale,
-    posterUrl: rows[0]?.posterPath ?? null
+    posterUrl: rows.titles[0]?.posterPath ?? null
   }
 }
 

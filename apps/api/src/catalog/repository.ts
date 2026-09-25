@@ -1,10 +1,18 @@
 import type { Database } from '@tv/database'
-import { catalogItemFollows, catalogItemTitles, catalogItems, catalogReleases } from '@tv/database/schema'
+
+import {
+  catalogItemDescriptions,
+  catalogItemFollows,
+  catalogItemTitles,
+  catalogItems,
+  catalogReleases
+} from '@tv/database/schema'
+
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { escapeLikePattern } from './search.ts'
 
 import type {
-  CatalogDetailsRow,
+  CatalogDetailsRows,
   CatalogReleaseRange,
   CatalogReleaseRow,
   CatalogTitleRow,
@@ -52,11 +60,10 @@ async function findTitleRowsForMatchingCatalogItems(
 async function findCatalogDetailsRows(
   database: Database,
   id: string
-): Promise<CatalogDetailsRow[]> {
-  return database
+): Promise<CatalogDetailsRows> {
+  const titles = await database
     .select({
       catalogItemId: catalogItems.id,
-      description: catalogItemTitles.description,
       isOriginal: catalogItemTitles.isOriginal,
       locale: catalogItemTitles.locale,
       posterPath: catalogItems.posterPath,
@@ -68,6 +75,20 @@ async function findCatalogDetailsRows(
     .innerJoin(catalogItemTitles, eq(catalogItemTitles.catalogItemId, catalogItems.id))
     .where(eq(catalogItems.id, id))
     .orderBy(catalogItemTitles.locale)
+
+  const descriptions = await database
+    .select({
+      description: catalogItemDescriptions.description,
+      locale: catalogItemDescriptions.locale
+    })
+    .from(catalogItemDescriptions)
+    .where(eq(catalogItemDescriptions.catalogItemId, id))
+    .orderBy(catalogItemDescriptions.locale)
+
+  return {
+    titles,
+    descriptions
+  }
 }
 
 async function findCatalogWatchlistRows(
