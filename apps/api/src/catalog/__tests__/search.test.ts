@@ -107,6 +107,12 @@ describe(getLocaleFallbacks, () => {
 
     expect(getLocaleFallbacks('ru-RU')).toStrictEqual(['ru-RU', 'ru', 'en'])
   })
+
+  it('uses available regional text under its real locale', () => {
+    expect(getLocaleFallbacks('ru', ['en-GB', 'en-US', 'ru-UA', 'ru-RU'])).toStrictEqual([
+      'ru', 'ru-RU', 'ru-UA', 'en', 'en-US', 'en-GB'
+    ])
+  })
 })
 
 describe(createCatalogSearchItems, () => {
@@ -160,6 +166,25 @@ describe(createCatalogSearchItems, () => {
     expect(createCatalogSearchItems(originalRows, 'de-DE')[0]).toMatchObject({
       title: '원제',
       titleLocale: 'ko'
+    })
+  })
+
+  it('uses a regional English translation without relabeling it', () => {
+    const rows = [
+      createTitleRow({
+        locale: 'ja',
+        title: '原題'
+      }),
+      createTitleRow({
+        isOriginal: false,
+        locale: 'en-US',
+        title: 'English title'
+      })
+    ]
+
+    expect(createCatalogSearchItems(rows, 'en')[0]).toMatchObject({
+      title: 'English title',
+      titleLocale: 'en-US'
     })
   })
 

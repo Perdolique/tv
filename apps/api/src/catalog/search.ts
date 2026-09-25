@@ -48,7 +48,7 @@ function escapeLikePattern(value: string): string {
     .replaceAll('_', String.raw`\_`)
 }
 
-function getLocaleFallbacks(locale: string): string[] {
+function getLocaleFallbacks(locale: string, availableLocales: string[] = []): string[] {
   const subtags = locale.split('-')
   const fallbacks = new Set<string>()
   const { length: subtagCount } = subtags
@@ -67,7 +67,42 @@ function getLocaleFallbacks(locale: string): string[] {
     }
   }
 
+  const [requestedLanguage] = subtags
+
+  function addRegionalVariants(language: string): void {
+    let preferred: string | null = null
+
+    if (language === 'ru') {
+      preferred = 'ru-RU'
+    } else if (language === 'en') {
+      preferred = 'en-US'
+    }
+
+    const regional = availableLocales
+      .filter(candidate => candidate.startsWith(`${language}-`))
+      .toSorted((first, second) => {
+        if (first === preferred) {
+          return -1
+        }
+
+        if (second === preferred) {
+          return 1
+        }
+
+        return first.localeCompare(second)
+      })
+
+    for (const candidate of regional) {
+      fallbacks.add(candidate)
+    }
+  }
+
+  if (requestedLanguage !== undefined) {
+    addRegionalVariants(requestedLanguage)
+  }
+
   fallbacks.add(DEFAULT_TITLE_LOCALE)
+  addRegionalVariants(DEFAULT_TITLE_LOCALE)
 
   return [...fallbacks]
 }
@@ -96,7 +131,6 @@ function createLocalizedCatalogItems(
     }
   }
 
-  const localeFallbacks = getLocaleFallbacks(requestedLocale)
   const items: CatalogSearchItem[] = []
 
   for (const [catalogItemId, itemRows] of rowsByItem) {
@@ -106,6 +140,8 @@ function createLocalizedCatalogItems(
       throw new Error(`Catalog item ${catalogItemId} has no original title`)
     }
 
+    const availableLocales = itemRows.map(row => row.locale)
+    const localeFallbacks = getLocaleFallbacks(requestedLocale, availableLocales)
     let displayTitle = originalTitle
 
     for (const locale of localeFallbacks) {

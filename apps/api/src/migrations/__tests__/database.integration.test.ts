@@ -341,7 +341,7 @@ describe('persisted UUIDv7 and title metadata migration', () => {
 
       const descriptions = await fixture.client.query<{ description: string; locale: string }>(`
         SELECT description, locale
-        FROM catalog_item_titles
+        FROM catalog_item_descriptions
         WHERE locale IN ('en', 'ru') AND description IS NOT NULL
       `)
 
@@ -401,6 +401,47 @@ describe('persisted UUIDv7 and title metadata migration', () => {
       const migrated = await readIdentifiers(fixture.client)
 
       expect(migrated.every(row => row.version === 7)).toBe(true)
+    })
+  })
+})
+
+describe('independent localized descriptions migration', () => {
+  it('moves every existing non-null description with its original locale and item ID', async () => {
+    await withDatabase(async (fixture) => {
+      await migrateBefore(fixture, '20260925120049_apply_catalog_imports')
+
+      const selected = await fixture.client.query<{ catalog_item_id: string }>(`
+        SELECT catalog_item_id FROM catalog_item_titles WHERE is_original ORDER BY catalog_item_id LIMIT 1
+      `)
+
+      const itemId = selected.rows[0]?.catalog_item_id
+
+      assert(itemId !== undefined, 'The pre-import catalog has no original title')
+
+      await fixture.client.query(`
+        INSERT INTO catalog_item_titles (catalog_item_id, locale, title, description)
+        VALUES ($1, 'en-GB', 'Regional title', 'Regional description')
+      `, [itemId])
+
+      const before = await fixture.client.query(`
+        SELECT catalog_item_id, locale, description FROM catalog_item_titles
+        WHERE description IS NOT NULL ORDER BY catalog_item_id, locale
+      `)
+
+      await migrate(fixture.database, { migrationsFolder })
+
+      const after = await fixture.client.query(`
+        SELECT catalog_item_id, locale, description FROM catalog_item_descriptions
+        ORDER BY catalog_item_id, locale
+      `)
+
+      expect(after.rows).toStrictEqual(before.rows)
+
+      expect(after.rows).toContainEqual({
+        catalog_item_id: itemId,
+        locale: 'en-GB',
+        description: 'Regional description'
+      })
     })
   })
 })

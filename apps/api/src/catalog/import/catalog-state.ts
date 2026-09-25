@@ -8,7 +8,15 @@ import type {
   SourceIdentity
 } from '@tv/database/import-preview'
 
-import { catalogEpisodes, catalogExternalLinks, catalogItems, catalogItemTitles } from '@tv/database/schema'
+import {
+  catalogEpisodes,
+  catalogExternalLinks,
+  catalogImportFields,
+  catalogItemDescriptions,
+  catalogItems,
+  catalogItemTitles
+} from '@tv/database/schema'
+
 import { and, eq, inArray, or } from 'drizzle-orm'
 import { sha256 } from './poster.ts'
 
@@ -17,8 +25,10 @@ type CatalogReader = Pick<Database, 'select'>
 interface CatalogState {
   items: (typeof catalogItems.$inferSelect)[];
   titles: (typeof catalogItemTitles.$inferSelect)[];
+  descriptions: (typeof catalogItemDescriptions.$inferSelect)[];
   episodes: (typeof catalogEpisodes.$inferSelect)[];
   links: (typeof catalogExternalLinks.$inferSelect)[];
+  fields: (typeof catalogImportFields.$inferSelect)[];
 }
 
 interface CatalogInspection {
@@ -65,12 +75,12 @@ async function readCatalogState(database: CatalogReader, selection: ImportSelect
   ))
 
   if (episodes.length > 0) {
-    const episodeIds = episodes.map(episode => episode.identity.externalId)
+    const episodeExternalIds = episodes.map(episode => episode.identity.externalId)
 
     conditions.push(and(
       eq(catalogExternalLinks.provider, 'tvmaze'),
       eq(catalogExternalLinks.entityType, 'episode'),
-      inArray(catalogExternalLinks.externalId, episodeIds)
+      inArray(catalogExternalLinks.externalId, episodeExternalIds)
     ))
   }
 
@@ -111,8 +121,10 @@ async function readCatalogState(database: CatalogReader, selection: ImportSelect
     return {
       items: [],
       titles: [],
+      descriptions: [],
       episodes: [],
-      links: []
+      links: [],
+      fields: []
     }
   }
 
@@ -133,6 +145,12 @@ async function readCatalogState(database: CatalogReader, selection: ImportSelect
       inArray(catalogItemTitles.catalogItemId, ids)
     )
     .orderBy(catalogItemTitles.catalogItemId, catalogItemTitles.locale)
+
+  const descriptions = await database
+    .select()
+    .from(catalogItemDescriptions)
+    .where(inArray(catalogItemDescriptions.catalogItemId, ids))
+    .orderBy(catalogItemDescriptions.catalogItemId, catalogItemDescriptions.locale)
 
   const storedEpisodes = await database
     .select()
@@ -157,11 +175,25 @@ async function readCatalogState(database: CatalogReader, selection: ImportSelect
     )
     .orderBy(catalogExternalLinks.provider, catalogExternalLinks.entityType, catalogExternalLinks.externalId)
 
+  const fieldConditions = [inArray(catalogImportFields.catalogItemId, ids)]
+
+  if (allEpisodeIds.length > 0) {
+    fieldConditions.push(inArray(catalogImportFields.catalogEpisodeId, allEpisodeIds))
+  }
+
+  const fields = await database
+    .select()
+    .from(catalogImportFields)
+    .where(or(...fieldConditions))
+    .orderBy(catalogImportFields.id)
+
   return {
     items,
     titles,
+    descriptions,
     episodes: storedEpisodes,
-    links
+    links,
+    fields
   }
 }
 
@@ -182,13 +214,13 @@ function fingerprintCatalogState(state: CatalogState, selection: ImportSelection
 }
 
 interface EpisodeInspection {
-  episodeIds: string[];
+  episodeExternalIds: string[];
   sourceLinks: SourceIdentity[];
   errors: PreviewIssue[];
 }
 
 function inspectEpisodeChanges(state: CatalogState, catalogItemId: string | null, episodes: ImportEpisode[]): EpisodeInspection {
-  const episodeIds: string[] = []
+  const episodeExternalIds: string[] = []
   const sourceLinks: SourceIdentity[] = []
   const errors: PreviewIssue[] = []
   const episodeLinks = state.links.filter(link => link.provider === 'tvmaze' && link.entityType === 'episode')
@@ -219,6 +251,16 @@ function inspectEpisodeChanges(state: CatalogState, catalogItemId: string | null
       })
     }
 
+    if (linkedEpisode !== undefined && (
+      linkedEpisode.seasonNumber !== episode.seasonNumber.value
+      || linkedEpisode.episodeNumber !== episode.episodeNumber.value
+    )) {
+      errors.push({
+        code: 'episode_coordinates_changed',
+        message: 'An existing episode has different source coordinates and needs review.'
+      })
+    }
+
     if (coordinateEpisode !== undefined && coordinateEpisode.id !== linkedEpisode?.id) {
       errors.push({
         code: 'episode_coordinates_conflict',
@@ -227,13 +269,13 @@ function inspectEpisodeChanges(state: CatalogState, catalogItemId: string | null
     }
 
     if (link === undefined && coordinateEpisode === undefined) {
-      episodeIds.push(episode.identity.externalId)
+      episodeExternalIds.push(episode.identity.externalId)
       sourceLinks.push(episode.identity)
     }
   }
 
   return {
-    episodeIds,
+    episodeExternalIds,
     sourceLinks,
     errors
   }
@@ -291,7 +333,7 @@ function inspectCatalogState(state: CatalogState, selection: ImportSelection, ep
     additions: {
       catalogItemId,
       createItem: catalogItemId === null,
-      episodeIds: episodeChanges.episodeIds,
+      episodeExternalIds: episodeChanges.episodeExternalIds,
       sourceLinks
     },
 

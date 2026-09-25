@@ -10,8 +10,17 @@ interface CatalogTitleRow {
 }
 
 interface CatalogDetailsRow extends CatalogTitleRow {
-  description: string | null;
   posterPath: string | null;
+}
+
+interface CatalogDescriptionRow {
+  description: string;
+  locale: string;
+}
+
+interface CatalogDetailsRows {
+  titles: CatalogDetailsRow[];
+  descriptions: CatalogDescriptionRow[];
 }
 
 interface CatalogWatchlistRow extends CatalogTitleRow {
@@ -63,6 +72,7 @@ interface CatalogUpcomingReleaseQuery {
 
 export type {
   CatalogDetailsRow,
+  CatalogDetailsRows,
   CatalogEpisodeListing,
   CatalogEpisodeRow,
   CatalogEpisodeWatchListing,

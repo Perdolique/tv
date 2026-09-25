@@ -12,6 +12,7 @@ import { CatalogHttpError } from '../errors.ts'
 // oxlint-disable-next-line import/no-relative-parent-imports -- Imports reuse the catalog access and session boundaries.
 import { hasCatalogImportPermission } from '../permissions.ts'
 import { inspectCatalogState, readCatalogState } from './catalog-state.ts'
+import { planImportChanges } from './changes.ts'
 import { preparePoster, type PreparedPoster } from './poster.ts'
 import { findImportPreview, PREVIEW_LIFETIME_MS, type StoredPreview } from './repository.ts'
 import { selectionSchema } from './selection.ts'
@@ -99,7 +100,7 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
   const selection = parsed.output
 
   const data: ImportPreviewData = {
-    version: 1,
+    version: 2,
     card: null,
     episodes: [],
 
@@ -115,10 +116,11 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
     additions: {
       catalogItemId: null,
       createItem: false,
-      episodeIds: [],
+      episodeExternalIds: [],
       sourceLinks: []
     },
 
+    changes: [],
     poster: null
   }
 
@@ -213,9 +215,18 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
     const state = await readCatalogState(transaction, selection, data.episodes)
     const inspection = inspectCatalogState(state, selection, data.episodes)
 
-    data.additions = inspection.additions
+    const changePlan = planImportChanges(state, {
+      card: data.card,
+      episodes: data.episodes,
+      catalogItemId: inspection.additions.catalogItemId,
+      posterHash: data.poster?.sha256 ?? null
+    })
 
-    data.errors.push(...inspection.errors)
+    data.additions = inspection.additions
+    data.changes = changePlan.changes
+
+    data.errors.push(...inspection.errors, ...changePlan.errors)
+    data.warnings.push(...changePlan.warnings)
 
     const now = dependencies.now?.() ?? new Date()
     const expiresAt = new Date(now.getTime() + PREVIEW_LIFETIME_MS)
@@ -263,5 +274,5 @@ async function openImportPreview(session: ImportSession, id: string, now = new D
   })
 }
 
-export { createImportPreview, openImportPreview }
+export { createImportPreview, openImportPreview, requireImportPermission }
 export type { ImportDependencies, ImportPreviewResult, ImportSession }
