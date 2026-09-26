@@ -1,6 +1,6 @@
 # Catalog import previews and application
 
-This internal service implements #63 and #64. It previews and applies one explicitly selected TMDB movie or series with regular TVMaze episodes. HTTP routes, the protected web flow, and public poster delivery belong to #65.
+This service implements #63, #64, and #65. It previews and applies one explicitly selected TMDB movie or series with regular TVMaze episodes. Operators use the protected web flow at `/manage/imports`.
 
 ## Service boundary
 
@@ -11,9 +11,23 @@ Call `createImportPreview(session, selection, { token: env.TMDB_READ_ACCESS_TOKE
 - `ready` and `blocked` results contain the saved preview. Only `ready` can be considered for application. Temporary source failures return `source_failure` with a safe issue and optional `retryAfterSeconds`; they do not create a preview.
 - Permanent source errors and identity conflicts produce a saved `blocked` preview. Technical source causes go to private Worker logs, not preview messages. Full provider responses are not stored.
 
-`openImportPreview(session, id)` checks the current grant, owner, expiry, and poster hash. It returns the saved data and bytes without contacting the providers. Missing, foreign, or expired previews return `null`. The future HTTP layer must use protected, uncached responses, including `Cache-Control: no-store` for poster bytes. Do not put preview data or images in a public cache.
+`openImportPreview(session, id)` checks the current grant, owner, expiry, and poster hash. It returns the saved data and bytes without contacting the providers. Missing, foreign, or expired previews return `null`. The HTTP layer returns JSON without poster bytes and serves saved poster bytes through a separate protected URL with `Cache-Control: no-store`. Preview data and images never enter a public cache.
 
-Call `applyImportPreview(session, previewId, { hosted: env.IMAGES.hosted, namespace })` to apply a ready version 2 preview. Use a stable environment namespace such as `production` or `staging`. The service checks access again, applies the saved card and episodes, and returns a result with the catalog item ID and change counts. It does not contact TMDB or TVMaze again. A repeated call returns the successful operation, even after preview cleanup. A failed operation stays in history; pass `retry: true` to start a new attempt while its preview is still valid. Applying again or reading history marks pending attempts that have passed their five-minute lease as interrupted; a new attempt then needs an explicit retry. `listImportOperations(session)` reads the history for an authorized operator.
+Call `applyImportPreview(session, previewId, { hosted: env.IMAGES.hosted, namespace })` to apply a ready version 2 preview. The HTTP layer derives a stable namespace from `WEB_ORIGIN`. The service checks access again, applies the saved card and episodes, and returns a result with the catalog item ID and change counts. It does not contact TMDB or TVMaze again. A repeated call returns the successful operation, even after preview cleanup. A failed operation stays in history; pass `retry: true` to start a new attempt while its preview is still valid. Applying again or reading history marks pending attempts that have passed their five-minute lease as interrupted; a new attempt then needs an explicit retry. The HTTP history uses a cursor and shows the operator's current email, source selection, safe outcome, and an author-only retry flag.
+
+## HTTP routes
+
+All `/api/catalog/imports/*` routes resolve the current session and `catalog.manage` grant on every request. They return private uncached responses. Access is not added to `/api/auth/session`.
+
+- `GET /api/catalog/imports/access` checks the grant.
+- `GET /api/catalog/imports/navigation` returns a boolean hint for the account link. It checks the same current grant and returns `false` when access is missing or the session has expired, so ordinary account pages do not emit an access error in the console. Every import action still uses the protected access boundary.
+- `GET /api/catalog/imports/search?type=movie|series&query=...&page=...` searches TMDB by exact type and returns source IDs, names, years, and a next page.
+- `GET /api/catalog/imports/shows?query=...` returns TVMaze show candidates with their IDs and external IDs.
+- `POST /api/catalog/imports/previews` accepts only the explicit selection. `GET /api/catalog/imports/previews/:id` reads its saved review data. `GET /api/catalog/imports/previews/:id/poster` streams its saved WebP privately.
+- `POST /api/catalog/imports/previews/:id/apply` accepts `{ "retry": true|false }` and returns the existing operation on a repeated normal request.
+- `GET /api/catalog/imports/operations?cursor=...` lists shared history. `GET /api/catalog/imports/operations/:id` refreshes one operation.
+
+Temporary provider failures return a safe issue with status 503 and `Retry-After` when known. `GET /api/posters/:id.webp` is public, accepts only an ID in the current environment namespace, and serves uploaded WebP bytes with an immutable cache header.
 
 ## Source data
 
@@ -29,7 +43,7 @@ Title and year are not merge keys. A version 2 preview includes changes per fiel
 
 The fingerprint covers selected title identities, matching catalog cards, titles, descriptions, imported-field provenance, episodes, and source links. It also detects a previously absent source link being added. It excludes follows, watched marks, and release-calendar records. Build it with `readCatalogState` and `inspectCatalogState` in a repeatable-read transaction, using the saved selection and episodes. Application rechecks the saved plan, current grant, expiry, and fingerprint inside the transaction. Catalog writes and the successful operation result commit together. A failure rolls back catalog changes, records a safe reason in operation history, and sends technical details to private Worker logs. Database uniqueness constraints settle races between different previews for the same source or episode.
 
-Posters are downloaded only from a validated path on `https://image.tmdb.org/t/p/original`, with redirects disabled and a 10 MiB input limit. Images prepares one WebP within 480 × 720, with no crop or enlargement. Output must be at most 1 MiB. The preview stores the source URL, source hash, output hash, dimensions, and exact output bytes. The database also enforces the output size limit. Application uploads those exact bytes through the hosted Images binding before the catalog transaction. The ID includes environment, type, TMDB ID, and output hash; an existing ID is reused only when its bytes match. The operation records this ID even if the later database write fails, so an unreferenced upload can be inspected and reused. Catalog rows use `/api/posters/<id>.webp`; #65 will serve that path through the Worker and cache. Existing `/posters/*.webp` paths remain valid.
+Posters are downloaded only from a validated path on `https://image.tmdb.org/t/p/original`, with redirects disabled and a 10 MiB input limit. Images prepares one WebP within 480 × 720, with no crop or enlargement. Output must be at most 1 MiB. The preview stores the source URL, source hash, output hash, dimensions, and exact output bytes. The database also enforces the output size limit. Application uploads those exact bytes through the hosted Images binding before the catalog transaction. The ID includes environment, type, TMDB ID, and output hash; an existing ID is reused only when its bytes match. The operation records this ID even if the later database write fails, so an unreferenced upload can be inspected and reused. Catalog rows use `/api/posters/<id>.webp`, served by the Worker. Existing `/posters/*.webp` paths remain valid.
 
 Provider HTTP requests allow at most three attempts, each with a 10-second deadline. JSON bodies are limited to 4 MiB for TMDB and 8 MiB for TVMaze. A retry waits for `Retry-After` when present. Delays above five seconds are returned to the caller instead of retrying early. 404, authorization failures, malformed data, and invalid artwork never become missing optional data.
 

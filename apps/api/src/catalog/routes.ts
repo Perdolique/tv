@@ -9,6 +9,7 @@ import { isSessionTransportAllowed } from '../auth/session.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
 import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
 import { registerCatalogEpisodeRoutes } from './episode-routes.ts'
+import { registerCatalogImportRoutes } from './import/routes.ts'
 import { registerCatalogViewingRoutes } from './viewing-routes.ts'
 
 import {
@@ -58,6 +59,8 @@ function createCatalogApp(
     await next()
     context.header('Cache-Control', 'no-store')
   })
+
+  registerCatalogImportRoutes(app, dependencies)
 
   app.get('/api/catalog/items/:id', async (context) => {
     const id = validateCatalogItemId(context.req.param('id'))

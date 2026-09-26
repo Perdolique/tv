@@ -1,4 +1,4 @@
-import type { CatalogDetailsItem } from '@tv/shared/catalog'
+import type { CatalogDetailsItem, CatalogSourceLink } from '@tv/shared/catalog'
 import * as v from 'valibot'
 import { CatalogHttpError } from './errors.ts'
 import { createCatalogSearchItems, getLocaleFallbacks } from './search.ts'
@@ -51,6 +51,24 @@ function createCatalogDetailsItem(
     }
   }
 
+  const sources: CatalogSourceLink[] = []
+
+  for (const link of rows.sourceLinks ?? []) {
+    if (link.provider === 'tmdb' && (link.entityType === 'movie' || link.entityType === 'tv')) {
+      sources.push({
+        provider: 'tmdb',
+        url: `https://www.themoviedb.org/${link.entityType}/${link.externalId}`
+      })
+    }
+
+    if (link.provider === 'tvmaze' && link.entityType === 'show') {
+      sources.push({
+        provider: 'tvmaze',
+        url: `https://www.tvmaze.com/shows/${link.externalId}`
+      })
+    }
+  }
+
   return {
     id: summary.id,
     title: summary.title,
@@ -61,7 +79,8 @@ function createCatalogDetailsItem(
     type: summary.type,
     description,
     descriptionLocale,
-    posterUrl: rows.titles[0]?.posterPath ?? null
+    posterUrl: rows.titles[0]?.posterPath ?? null,
+    ...(sources.length > 0 ? { sources } : {})
   }
 }
 

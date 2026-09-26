@@ -2,6 +2,7 @@ import type { Database } from '@tv/database'
 
 import {
   catalogItemDescriptions,
+  catalogExternalLinks,
   catalogItemFollows,
   catalogItemTitles,
   catalogItems,
@@ -85,9 +86,19 @@ async function findCatalogDetailsRows(
     .where(eq(catalogItemDescriptions.catalogItemId, id))
     .orderBy(catalogItemDescriptions.locale)
 
+  const sourceLinks = await database.select({
+    provider: catalogExternalLinks.provider,
+    entityType: catalogExternalLinks.entityType,
+    externalId: catalogExternalLinks.externalId
+  }).from(catalogExternalLinks)
+    .where(
+      eq(catalogExternalLinks.catalogItemId, id)
+    )
+
   return {
     titles,
-    descriptions
+    descriptions,
+    sourceLinks
   }
 }
 

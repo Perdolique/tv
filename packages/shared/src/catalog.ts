@@ -18,6 +18,12 @@ interface CatalogDetailsItem extends CatalogSearchItem {
   description: string | null;
   descriptionLocale: string | null;
   posterUrl: string | null;
+  sources?: CatalogSourceLink[];
+}
+
+interface CatalogSourceLink {
+  provider: 'tmdb' | 'tvmaze';
+  url: string;
 }
 
 interface CatalogDetailsResponse {
@@ -127,6 +133,7 @@ export type {
   CatalogReleasesResponse,
   CatalogSearchItem,
   CatalogSearchResponse,
+  CatalogSourceLink,
   CatalogItemType,
   CatalogUpcomingReleasesResponse,
   CatalogViewingHistoryItem,

@@ -7,6 +7,7 @@ import { watchlistItems } from '../watchlist/fixtures.ts'
 import { paginatedHistory } from '../dashboard/fixtures.ts'
 import { createViewingItems, createViewingSummary } from '../dashboard/service.ts'
 import { longEmail } from './constants.ts'
+import { handleImportRequest, OPERATOR_ID, POSTER_ID } from '../imports/worker.ts'
 
 import {
   TURNSTILE_ACTIONS,
@@ -49,7 +50,7 @@ interface SafeErrorOptions {
 
 const AUTHENTICATED_USER = {
   email: 'viewer@example.com',
-  id: 'user-e2e'
+  id: OPERATOR_ID
 } as const
 
 const VALID_VERIFICATION_TOKEN = 'v'.repeat(43)
@@ -1014,6 +1015,24 @@ async function handleCatalogDetails(request: Request, url: URL): Promise<Respons
   const locale = url.searchParams.get('titleLocale') ?? 'en'
   const localized = id === dune.id && locale.startsWith('ru') ? russianDune : item
 
+  if (id === dune.id && hasCookie(request, 'import_public_poster=1')) {
+    return json({ item: {
+      ...localized,
+      posterUrl: `/api/posters/${POSTER_ID}.webp`,
+
+      sources: [
+        {
+        provider: 'tmdb',
+        url: 'https://www.themoviedb.org/movie/603'
+      },
+        {
+        provider: 'tvmaze',
+        url: 'https://www.tvmaze.com/shows/100'
+      }
+      ]
+    } })
+  }
+
   return json({ item: localized })
 }
 
@@ -1022,6 +1041,9 @@ export default {
   // oxlint-disable-next-line eslint/complexity -- One explicit dispatcher keeps the fake service routes auditable.
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
+    const importResponse = await handleImportRequest(request, url, hasAuthenticatedCatalogSession(request))
+
+    if (importResponse !== null) {return importResponse}
 
     if (
       request.method === 'GET'

@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./catalog": "./src/catalog.ts",
+    "./catalog-import": "./src/catalog-import.ts",
     "./errors": "./src/errors.ts",
     "./network": "./src/network.ts",
     "./redirect": "./src/redirect.ts",

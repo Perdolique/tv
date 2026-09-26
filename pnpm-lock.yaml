@@ -221,6 +221,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@tv/shared':
+        specifier: workspace:*
+        version: link:../shared
       drizzle-orm:
         specifier: 1.0.0-rc.4
         version: 1.0.0-rc.4(@cloudflare/workers-types@5.20260908.1)(@types/pg@8.23.1)(pg@8.23.0)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3)

@@ -157,6 +157,18 @@
             </section>
           </div>
         </section>
+        <section v-if="hasSourceLinks" :class="$style.credits" aria-label="Sources and credits">
+          <h2 :class="$style.subheading">Sources and credits</h2>
+          <ul :class="$style.sourceList">
+            <li v-for="source in sourceLinks" :key="source.url">
+              <a :class="$style.sourceLink" :href="source.url" rel="noopener noreferrer" target="_blank">
+                <img v-if="isTmdbSource(source)" :class="$style.tmdbLogo" src="/tmdb-logo.svg" alt="TMDB" width="137" height="18">
+                <span v-else>TVMaze show</span>
+              </a>
+            </li>
+          </ul>
+          <p v-if="hasTmdbSource" :class="$style.supportingText">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+        </section>
       </article>
     </main>
   </AppShell>
@@ -272,6 +284,14 @@
 
   const showOriginalTitle = computed(() => item.value !== undefined && item.value.originalTitle !== item.value.title)
   const hasDescription = computed(() => item.value?.description !== null && item.value?.description !== undefined)
+  const sourceLinks = computed(() => item.value?.sources ?? [])
+  const hasSourceLinks = computed(() => sourceLinks.value.length > 0)
+  const hasTmdbSource = computed(() => sourceLinks.value.some(source => source.provider === 'tmdb'))
+
+  function isTmdbSource(source: (typeof sourceLinks.value)[number]): boolean {
+    return source.provider === 'tmdb'
+  }
+
   const descriptionLocale = computed(() => item.value?.descriptionLocale ?? undefined)
 
   const metadata = computed(() => {
@@ -702,6 +722,17 @@
       font-weight: 600;
     }
     .description { max-inline-size: 65ch; line-height: 1.65; }
+    .credits {
+      grid-column: 1 / -1;
+      display: grid;
+      justify-items: start;
+      gap: var(--space-3);
+      padding-block-start: var(--space-6);
+      border-block-start: 1px solid var(--color-border);
+    }
+    .sourceList { display: flex; flex-wrap: wrap; gap: var(--space-4); padding: 0; list-style: none; }
+    .sourceLink { display: inline-flex; align-items: center; min-block-size: 2.75rem; color: var(--color-text-primary); text-underline-offset: 0.25em; }
+    .tmdbLogo { inline-size: 8.56rem; block-size: auto; }
     .message { display: grid; justify-items: start; gap: var(--space-4); }
     .posterSkeleton { inline-size: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--color-surface-muted); }
     .loadingCopy { color: var(--color-text-secondary); }
