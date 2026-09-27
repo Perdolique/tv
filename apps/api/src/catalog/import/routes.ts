@@ -33,7 +33,7 @@ const importBodyLimit = bodyLimit({
 })
 
 function imageNamespace(origin: string): string {
-  const {hostname} = new URL(origin)
+  const { hostname } = new URL(origin)
   const namespace = hostname.replaceAll('.', '-')
 
   if (!/^[a-z0-9-]+$/u.test(namespace)) {

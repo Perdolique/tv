@@ -64,7 +64,7 @@ interface OperationViewInput {
 
 function createImportOperationView(row: OperationViewInput, viewerId: string, now: Date): ImportOperationView {
   const { operation } = row
-  const {failureCode} = operation
+  const { failureCode } = operation
   const code = failureCode !== null && isFailureCode(failureCode) ? failureCode : 'apply_failed'
 
   const issue = operation.status === 'failed'

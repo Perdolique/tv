@@ -16,8 +16,8 @@
     "@tv/database": "workspace:*",
     "@tv/shared": "workspace:*",
     "drizzle-orm": "1.0.0-rc.4",
-    "hono": "4.13.7",
+    "hono": "4.13.9",
     "pg": "8.23.0",
-    "valibot": "1.4.2"
+    "valibot": "1.5.0"
   }
 }

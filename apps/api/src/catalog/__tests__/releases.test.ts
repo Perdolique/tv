@@ -321,10 +321,12 @@ describe(findCatalogReleaseRows, () => {
     builder.innerJoin.mockReturnValue(builder)
     builder.where.mockReturnValue(builder)
 
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The fluent stub isolates the repository ordering contract without opening a database connection.
-    const database = {
+    const databaseStub = {
       select: vi.fn().mockReturnValue(builder)
-    } as unknown as Database
+    }
+
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The fluent stub isolates the repository ordering contract without opening a database connection.
+    const database = databaseStub as unknown as Database
 
     await findCatalogReleaseRows(
       database,

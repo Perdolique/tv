@@ -119,7 +119,7 @@ function createEpisode(index: number): ImportEpisode {
 }
 
 function createPreview(selection: ImportSelection, blocked: boolean, episodeCount: number): ImportPreviewView {
-  const {type} = selection
+  const { type } = selection
   const hasSelectedShow = type === 'series' && selection.tvmaze.status === 'selected'
   const hasVerifiedAbsence = type === 'series' && selection.tvmaze.status === 'verified_absent'
   const id = selection.tmdbId
