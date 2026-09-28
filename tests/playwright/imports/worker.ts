@@ -1,15 +1,19 @@
 /* oxlint-disable eslint/max-lines -- The browser fixture models one complete saved import workflow. */
 import type {
+  ImportCatalogMatch,
   ImportEpisode,
   ImportOperationView,
   ImportPreviewView,
-  ImportSelection
+  ImportSelection,
+  ImportTargetChoice
 } from '../../../packages/shared/src/catalog-import.ts'
 
 import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 
 const OPERATOR_ID = '40000000-0000-4000-8000-000000000065'
 const PREVIEW_ID = '50000000-0000-4000-8000-000000000065'
+const TARGET_PREVIEW_ID = '50000000-0000-4000-8000-000000000073'
+const NEW_CATALOG_ID = '70000000-0000-4000-8000-000000000073'
 const OPERATION_ID = '60000000-0000-4000-8000-000000000065'
 const CATALOG_ID = '70000000-0000-4000-8000-000000000065'
 const POSTER_ID = `tv-tv-perd-dev-movie-603-${'a'.repeat(64)}`
@@ -19,6 +23,7 @@ const expiresAt = '2099-09-26T10:00:00.000Z'
 
 interface ImportCaseState {
   preview: ImportPreviewView | null;
+  previews: Map<string, ImportPreviewView>;
   operation: ImportOperationView | null;
 }
 
@@ -118,7 +123,15 @@ function createEpisode(index: number): ImportEpisode {
   }
 }
 
-function createPreview(selection: ImportSelection, blocked: boolean, episodeCount: number): ImportPreviewView {
+interface PreviewOptions {
+  blocked: boolean;
+  episodeCount: number;
+  seriesCandidate: boolean;
+  sourceError: boolean;
+}
+
+// oxlint-disable-next-line eslint/complexity -- The fixture defines source, target, and blocked review states together.
+function createPreview(selection: ImportSelection, { blocked, episodeCount, seriesCandidate, sourceError }: PreviewOptions): ImportPreviewView {
   const { type } = selection
   const hasSelectedShow = type === 'series' && selection.tvmaze.status === 'selected'
   const hasVerifiedAbsence = type === 'series' && selection.tvmaze.status === 'verified_absent'
@@ -134,24 +147,42 @@ function createPreview(selection: ImportSelection, blocked: boolean, episodeCoun
     message: 'The operator verified that no matching TVMaze show exists.'
   }] : []
 
+  const candidates: ImportCatalogMatch[] = (type === 'movie' || seriesCandidate) && !blocked ? [{
+    id: CATALOG_ID,
+    title,
+    year: type === 'movie' ? 2003 : 2011,
+    type,
+    kind: 'possible_title',
+    sources: []
+  }] : []
+
+  const unresolved = candidates.length > 0
+
+  const sourceErrors = sourceError ? [{
+    code: 'source_invalid',
+    message: 'The source returned invalid or incomplete data.'
+  }] : []
+
+  const errors = blocked ? [{
+    code: 'catalog_changed',
+    message: 'The catalog changed. Create a new preview.'
+  }] : []
+
   return {
     id: PREVIEW_ID,
-    status: blocked ? 'blocked' : 'ready',
+    status: blocked || unresolved || sourceError ? 'blocked' : 'ready',
     selection,
     createdAt,
     expiresAt,
     posterUrl: type === 'movie' ? `/api/catalog/imports/previews/${PREVIEW_ID}/poster` : null,
 
-    matches: [{
-      id: CATALOG_ID,
-      title: 'The Return',
-      year: 2003,
-      type,
-      kind: 'possible_title'
-    }],
-
     data: {
-      version: 2,
+      version: 3,
+      target: { kind: unresolved ? 'unresolved' : 'new' },
+      candidates,
+      sourcesFetchedAt: createdAt,
+      sourceErrors,
+      sourceWarnings: warnings,
 
       card: {
         identity,
@@ -202,19 +233,22 @@ function createPreview(selection: ImportSelection, blocked: boolean, episodeCoun
 
       warnings,
 
-      errors: blocked ? [{
-        code: 'catalog_changed',
-        message: 'The catalog changed. Create a new preview.'
-      }] : [],
+      errors: [
+        ...sourceErrors,
+        ...(unresolved ? [{
+          code: 'target_required',
+          message: 'Choose a catalog card or confirm a separate card.'
+        }] : errors)
+      ],
 
       additions: {
         catalogItemId: null,
-        createItem: true,
+        createItem: !unresolved,
         episodeExternalIds,
         sourceLinks: [identity]
       },
 
-      changes: [{
+      changes: unresolved ? [] : [{
         target: 'title',
         field: 'title',
         locale: 'en-US',
@@ -252,6 +286,7 @@ function getState(request: Request): ImportCaseState {
   if (state === undefined) {
     state = {
       preview: null,
+      previews: new Map(),
       operation: null
     }
 
@@ -306,6 +341,16 @@ function parseSelection(input: unknown): ImportSelection | null {
   return null
 }
 
+function isValidTargetChoice(input: unknown, preview: ImportPreviewView): input is ImportTargetChoice {
+  if (!isRecord(input)) {return false}
+
+  if (input.kind === 'new') {return Object.keys(input).length === 1}
+
+  return input.kind === 'existing'
+    && Object.keys(input).length === 2
+    && preview.data.candidates.some(candidate => candidate.id === input.catalogItemId)
+}
+
 function createOperation(preview: ImportPreviewView, failed: boolean): ImportOperationView {
   return {
     id: OPERATION_ID,
@@ -319,8 +364,8 @@ function createOperation(preview: ImportPreviewView, failed: boolean): ImportOpe
     finishedAt: createdAt,
 
     result: failed ? null : {
-      catalogItemId: CATALOG_ID,
-      createdItem: true,
+      catalogItemId: preview.data.additions.catalogItemId ?? NEW_CATALOG_ID,
+      createdItem: preview.data.target.kind === 'new',
       createdEpisodes: preview.data.episodes.length,
       linkedSources: 1,
       changedFields: 1,
@@ -450,9 +495,38 @@ async function handleImportRequest(request: Request, url: URL, authenticated: bo
       return json({ error: { code: 'INVALID_REQUEST' } }, 400)
     }
 
-    const episodeCount = cookieValue(request, 'import_long_series') === '1' ? 40 : 1
+    const previewOptions: PreviewOptions = {
+      blocked: cookieValue(request, 'import_blocked') === '1',
+      episodeCount: cookieValue(request, 'import_long_series') === '1' ? 40 : 1,
+      seriesCandidate: cookieValue(request, 'import_series_candidate') === '1',
+      sourceError: cookieValue(request, 'import_source_error') === '1'
+    }
 
-    state.preview = createPreview(selection, cookieValue(request, 'import_blocked') === '1', episodeCount)
+    state.preview = createPreview(selection, previewOptions)
+
+    const [candidate] = state.preview.data.candidates
+
+    if (candidate !== undefined && cookieValue(request, 'import_long_title') === '1') {
+      const longName = 'LongUnbrokenName'.repeat(12)
+
+      candidate.title = `The Return: A Very Long Catalog Title With Another Name — ${longName}`
+    }
+
+    if (candidate !== undefined && cookieValue(request, 'import_exact') === '1') {
+      candidate.kind = 'exact_source'
+      candidate.sources = [sourceIdentity(selection.type, selection.tmdbId)]
+      state.preview.status = 'ready'
+      state.preview.data.target = {
+        kind: 'existing',
+        catalogItemId: CATALOG_ID
+      }
+      state.preview.data.errors = []
+      state.preview.data.additions.catalogItemId = CATALOG_ID
+      state.preview.data.additions.sourceLinks = []
+    }
+
+    state.previews.set(state.preview.id, state.preview)
+
     state.operation = null
 
     return json({ preview: state.preview }, 201)
@@ -473,21 +547,81 @@ async function handleImportRequest(request: Request, url: URL, authenticated: bo
     return state.operation === null ? json({ error: { code: 'NOT_FOUND' } }, 404) : json({ operation: state.operation })
   }
 
-  if (url.pathname === `/api/catalog/imports/previews/${PREVIEW_ID}` && request.method === 'GET') {
-    if (cookieValue(request, 'import_expired') === '1' || state.preview === null) {return json({ error: { code: 'NOT_FOUND' } }, 404)}
+  const previewPath = /^\/api\/catalog\/imports\/previews\/(?<id>[^/]+)(?:\/(?<action>target|poster|apply))?$/u.exec(url.pathname)
+  const previewId = previewPath?.groups?.id
+  const saved = previewId === undefined ? undefined : state.previews.get(previewId)
+  const action = previewPath?.groups?.action
 
-    return json({ preview: state.preview })
+  if (saved !== undefined && action === 'target' && request.method === 'POST') {
+    const input: unknown = await request.json()
+
+    if (!isValidTargetChoice(input, saved)) {
+      return json({ error: { code: 'INVALID_REQUEST' } }, 400)
+    }
+
+    const child = structuredClone(saved)
+    const episodeConflict = cookieValue(request, 'import_episode_conflict') === '1' && saved.selection.type === 'series'
+    const sourceTitle = saved.data.card?.translations[0]?.title.value ?? 'The Return'
+
+    child.id = state.previews.has(TARGET_PREVIEW_ID) ? crypto.randomUUID() : TARGET_PREVIEW_ID
+    child.data.target = input.kind === 'new' ? { kind: 'new' } : {
+      kind: 'existing',
+      catalogItemId: CATALOG_ID
+    }
+    child.data.additions.catalogItemId = input.kind === 'existing' ? CATALOG_ID : null
+    child.data.additions.createItem = input.kind === 'new'
+    child.data.errors = [
+      ...saved.data.sourceErrors,
+      ...(episodeConflict ? [{
+        code: 'episode_coordinates_conflict',
+        message: 'Episode coordinates belong to a different local episode.'
+      }] : [])
+    ]
+
+    child.status = child.data.errors.length > 0 ? 'blocked' : 'ready'
+    child.createdAt = '2026-09-25T11:00:00.000Z'
+    child.posterUrl = child.data.poster === null ? null : `/api/catalog/imports/previews/${child.id}/poster`
+    child.data.changes = [{
+      target: 'title',
+      field: 'title',
+      locale: 'en-US',
+      episodeExternalId: null,
+      action: input.kind === 'new' ? 'add' : 'preserve_manual',
+      before: input.kind === 'new' ? null : 'Manual catalog title',
+      after: input.kind === 'new' ? sourceTitle : 'Manual catalog title',
+      sourceValue: sourceTitle,
+      sourceHash: null,
+
+      source: {
+        identity: sourceIdentity(saved.selection.type, saved.selection.tmdbId),
+        field: 'title',
+        locale: 'en-US'
+      }
+    }]
+
+    state.previews.set(child.id, child)
+
+    state.preview = child
+    state.operation = null
+
+    return json({ preview: child }, 201)
   }
 
-  if (url.pathname === `/api/catalog/imports/previews/${PREVIEW_ID}/poster` && request.method === 'GET') {
-    return state.preview === null ? json({ error: { code: 'NOT_FOUND' } }, 404) : new Response(POSTER_BYTES, { headers: {
+  if (saved !== undefined && action === undefined && request.method === 'GET') {
+    if (cookieValue(request, 'import_expired') === '1') {return json({ error: { code: 'NOT_FOUND' } }, 404)}
+
+    return json({ preview: saved })
+  }
+
+  if (saved !== undefined && action === 'poster' && request.method === 'GET') {
+    return new Response(POSTER_BYTES, { headers: {
       'Content-Type': 'image/webp',
       'Cache-Control': 'private, no-store'
     } })
   }
 
-  if (url.pathname === `/api/catalog/imports/previews/${PREVIEW_ID}/apply` && request.method === 'POST') {
-    if (state.preview === null || cookieValue(request, 'import_conflict') === '1') {
+  if (action === 'apply' && request.method === 'POST') {
+    if (saved?.status !== 'ready' || cookieValue(request, 'import_conflict') === '1') {
       return json({
         status: 'blocked',
         operation: null,
@@ -498,6 +632,8 @@ async function handleImportRequest(request: Request, url: URL, authenticated: bo
         }
       }, 409)
     }
+
+    state.preview = saved
 
     const body: unknown = await request.json()
     const retry = isRecord(body) && body.retry === true
@@ -525,4 +661,4 @@ async function handleImportRequest(request: Request, url: URL, authenticated: bo
   return json({ error: { code: 'NOT_FOUND' } }, 404)
 }
 
-export { handleImportRequest, OPERATOR_ID, POSTER_ID, PREVIEW_ID }
+export { handleImportRequest, OPERATOR_ID, POSTER_ID, PREVIEW_ID, TARGET_PREVIEW_ID, CATALOG_ID, NEW_CATALOG_ID }

@@ -2,10 +2,11 @@
 import { randomUUID } from 'node:crypto'
 import { env } from 'node:process'
 import { createDatabase } from '@tv/database'
-import type { ImportSelection } from '@tv/database/import-preview'
+import type { ImportSelection, ImportPreviewData } from '@tv/database/import-preview'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
+import { findImportCatalogMatches } from '../matches.ts'
 import { inspectCatalogState, readCatalogState } from '../catalog-state.ts'
 import { deleteExpiredImportPreviews, PREVIEW_LIFETIME_MS } from '../repository.ts'
 import { createImportPreviewView } from '../review.ts'
@@ -74,9 +75,24 @@ async function createItem(type: 'movie' | 'series', identity: [string, string, s
 
 async function fingerprint(selection: ImportSelection): Promise<string> {
   return database.transaction(async (transaction) => {
-    const state = await readCatalogState(transaction, selection, [])
+    const candidates = await findImportCatalogMatches(transaction, selection, null)
+    const exact = candidates.find(candidate => candidate.kind === 'exact_source')
 
-    return inspectCatalogState(state, selection, []).fingerprint
+    const review: Pick<ImportPreviewData, 'card' | 'target' | 'candidates' | 'episodes'> = {
+      card: null,
+
+      target: exact === undefined ? { kind: 'new' } : {
+        kind: 'existing',
+        catalogItemId: exact.id
+      },
+
+      candidates,
+      episodes: []
+    }
+
+    const state = await readCatalogState(transaction, selection, review)
+
+    return inspectCatalogState(state, selection, review).fingerprint
   }, {
     isolationLevel: 'repeatable read',
     accessMode: 'read only'
@@ -341,7 +357,7 @@ describe('saved catalog import previews', () => {
     await expect(fingerprint(movieSelection)).resolves.toBe(linked)
     await createItem('movie', ['tmdb', 'movie', '9000005'])
     await expect(fingerprint(movieSelection)).resolves.toBe(linked)
-    await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title) VALUES ($1, \'en\', \'Manual\')', [itemId])
+    await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original) VALUES ($1, \'en\', \'Manual\', true)', [itemId])
     await client.query('INSERT INTO catalog_item_descriptions (catalog_item_id, locale, description) VALUES ($1, \'en\', \'\')', [itemId])
 
     const edited = await fingerprint(movieSelection)
@@ -362,9 +378,9 @@ describe('saved catalog import previews', () => {
 
     assertSavedResult(result)
 
-    const review = await createImportPreviewView(database, result.preview)
+    const review = createImportPreviewView(result.preview)
 
-    expect(review.matches).toStrictEqual([
+    expect(review.data.candidates).toStrictEqual([
       expect.objectContaining({
         id: exactId,
         kind: 'exact_source'
@@ -401,18 +417,25 @@ describe('saved catalog import previews', () => {
     assertSavedResult(result)
 
     // Act
-    const review = await createImportPreviewView(database, result.preview)
+    const review = createImportPreviewView(result.preview)
 
     // Assert
-    expect(review.matches).toStrictEqual([{
+    expect(review.data.candidates).toStrictEqual([{
       id: possibleId,
       title: 'Solaris',
       year: null,
       type: 'movie',
-      kind: 'possible_title'
+      kind: 'possible_title',
+
+      sources: [{
+        provider: 'tmdb',
+        entityType: 'movie',
+        externalId: '9000006'
+      }]
     }])
 
-    expect(review.data.additions.createItem).toBe(true)
+    expect(review.data.target).toStrictEqual({ kind: 'unresolved' })
+    expect(review.data.additions.createItem).toBe(false)
   })
 
   it('rejects forged operators and revoked access before contacting sources', async () => {

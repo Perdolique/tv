@@ -18,7 +18,7 @@
           </dl>
           <p :class="$style.savedAt">Read-only source data · Saved {{ savedDate }}</p>
         </section>
-        <div :class="$style.details"><ImportPreviewDetails :preview="preview" :matches-id="matchesId" /></div>
+        <div :class="$style.details"><ImportPreviewDetails :preview="preview" :matches-id="matchesId" :selecting-target="selectingTarget" :target-controls-disabled="targetControlsDisabled" :target-error="targetError" @choose-target="selectTarget" /></div>
         <aside :class="$style.reviewPanel" aria-label="Saved poster and sources">
           <div :class="$style.sourcePanel">
             <figure :class="$style.savedPoster">
@@ -49,7 +49,7 @@
           <section :class="$style.confirmation" :aria-labelledby="confirmHeadingId">
             <h2 :id="confirmHeadingId" ref="confirmHeading" :class="$style.confirmHeading" tabindex="-1">Confirm import</h2>
             <p v-if="hasNewEpisodes" :class="$style.meta">{{ newEpisodeSummary }}</p>
-            <p v-if="hasPossibleMatches" :class="$style.duplicateNotice">Check the possible <a :href="matchesAnchor">catalog match</a> before creating a separate card.</p>
+            <p v-if="targetUnresolved" :class="$style.duplicateNotice">Choose a <NuxtLink :to="matchesAnchor">catalog match</NuxtLink> or confirm a separate card before importing.</p>
             <ul v-if="hasIssues" :class="$style.issues"><li v-for="issue in previewIssues" :key="issueKey(issue)">{{ issue.message }}</li></ul>
             <AppMessage v-if="showBlockedMessage" role="alert" tone="danger">This preview is blocked or expired. Create a new preview before importing.</AppMessage>
             <AppMessage v-else-if="alreadyCurrent" role="status">This catalog card is already up to date.</AppMessage>
@@ -64,8 +64,8 @@
               <AppButton v-if="operation.canRetry" :disabled="applying" variant="secondary" @click="apply(true)">Retry failed import</AppButton>
             </div>
             <div :class="$style.actions">
-              <AppButton v-if="canConfirm" :disabled="applying" @click="apply(retryRequested)">{{ confirmLabel }}</AppButton>
-              <NuxtLink v-if="blocked" :class="$style.link" to="/manage/imports">Create a new preview</NuxtLink>
+              <AppButton v-if="showConfirmButton" :disabled="confirmDisabled" @click="apply(retryRequested)">{{ confirmLabel }}</AppButton>
+              <NuxtLink v-if="showBlockedRecovery" :class="$style.link" to="/manage/imports">Create a new preview</NuxtLink>
               <NuxtLink :class="$style.historyLink" to="/manage/imports">Change selection</NuxtLink>
               <NuxtLink :class="$style.historyLink" to="/manage/imports/history">View shared history</NuxtLink>
             </div>
@@ -82,11 +82,19 @@
 </template>
 
 <script lang="ts" setup>
+  /* oxlint-disable eslint/max-lines -- Keep saved-preview navigation, target selection, and confirmation lifecycle together. */
   import { Icon } from '#components'
   import { definePageMeta } from '#app/composables/pages'
-  import { useHead, useRequestFetch, useResponseHeader, useRoute, navigateTo } from '#app'
-  import type { ImportIssue, ImportOperationView, ImportPreviewView } from '@tv/shared/catalog-import'
-  import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
+  import { useHead, useRequestFetch, useResponseHeader, useRoute, useRouter, navigateTo } from '#app'
+
+  import type {
+    ImportIssue,
+    ImportOperationView,
+    ImportPreviewView,
+    ImportTargetChoice
+  } from '@tv/shared/catalog-import'
+
+  import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from 'vue'
   import * as v from 'valibot'
   import ImportPageShell from '~/components/import/ImportPageShell.vue'
   import ImportPreviewDetails from '~/components/import/ImportPreviewDetails.vue'
@@ -103,12 +111,17 @@
     importPreviewResponseSchema
   } from '~/utils/catalog-import-response.ts'
 
-  definePageMeta({ middleware: ['authenticated', 'catalog-import'] })
+  definePageMeta({
+    key: 'catalog-import-preview',
+    middleware: ['authenticated', 'catalog-import']
+  })
+
   useHead({ title: 'Review preview · Import management · TV' })
 
   useResponseHeader('Cache-Control').value = 'private, no-store'
 
   const route = useRoute()
+  const router = useRouter()
   const requestFetch = useRequestFetch()
   const { canManage, deny, unauthorize } = useCatalogImportAccess()
   const preview = ref<ImportPreviewView | null>(null)
@@ -117,6 +130,9 @@
   const missing = ref(false)
   const loadError = ref('')
   const applyError = ref('')
+  const targetError = ref('')
+  const selectingTarget = ref(false)
+  let pageController: AbortController | null = null
   const conflicted = ref(false)
   const applying = ref(false)
   const refreshing = ref(false)
@@ -129,17 +145,10 @@
   const matchesAnchor = computed(() => `#${matchesId}`)
   const confirmHeadingId = useId()
   const retryRequested = computed(() => route.query.retry === '1')
+  const expired = computed(() => preview.value !== null && new Date(preview.value.expiresAt).getTime() <= Date.now())
+  const blocked = computed(() => conflicted.value || preview.value === null || preview.value.status === 'blocked' || expired.value)
 
-  const blocked = computed(() => {
-    if (conflicted.value || preview.value === null || preview.value.status === 'blocked') {return true}
-
-    const expiresAt = new Date(preview.value.expiresAt)
-    const expiresAtMilliseconds = expiresAt.getTime()
-
-    return expiresAtMilliseconds <= Date.now()
-  })
-
-  const alreadyCurrent = computed(() => preview.value !== null && !preview.value.data.additions.createItem
+  const alreadyCurrent = computed(() => preview.value !== null && preview.value.data.target.kind === 'existing'
     && preview.value.data.additions.episodeExternalIds.length === 0
     && preview.value.data.additions.sourceLinks.length === 0
     && preview.value.data.changes.every(change => change.action === 'unchanged' || change.action === 'preserve_manual' || change.action === 'retain_missing'))
@@ -161,9 +170,9 @@
   const canReload = computed(() => !missing.value)
   const cardTitle = computed(() => preview.value?.data.card?.originalTitle.value ?? 'Card unavailable')
   const releaseYear = computed(() => preview.value?.data.card?.releaseYear.value ?? 'Year unknown')
-  const savedDate = computed(() => preview.value === null ? '' : displayDate(preview.value.createdAt))
+  const savedDate = computed(() => preview.value === null ? '' : displayDate(preview.value.data.sourcesFetchedAt))
   const expiryDate = computed(() => preview.value === null ? '' : displayDate(preview.value.expiresAt))
-  const hasPossibleMatches = computed(() => preview.value?.data.additions.createItem && preview.value.matches.some(match => match.kind === 'possible_title'))
+  const targetUnresolved = computed(() => preview.value?.data.target.kind === 'unresolved')
   const progressStage = computed(() => operation.value ? 'import' as const : 'review' as const)
 
   const cardMetadata = computed(() => {
@@ -186,12 +195,16 @@
   const tvmazeUrl = computed(() => `https://www.tvmaze.com/shows/${tvmazeShowId.value}`)
   const tvmazeAbsentReason = computed(() => preview.value?.selection.type === 'series' && preview.value?.selection.tvmaze.status === 'verified_absent' ? preview.value?.selection.tvmaze.reason : null)
 
-  const plannedCardChange = computed(() => preview.value?.data.additions.createItem
-    ? 'A new catalog card will be created.'
-    : 'An existing catalog card will be updated.')
+  const plannedCardChange = computed(() => {
+    if (targetUnresolved.value) {return 'Choose the catalog card before confirming.'}
+
+    return preview.value?.data.additions.createItem
+      ? 'A new catalog card will be created.'
+      : 'An existing catalog card will be updated.'
+  })
 
   const newEpisodeCount = computed(() => preview.value?.data.additions.episodeExternalIds.length ?? 0)
-  const hasNewEpisodes = computed(() => newEpisodeCount.value > 0)
+  const hasNewEpisodes = computed(() => !targetUnresolved.value && newEpisodeCount.value > 0)
 
   const newEpisodeSummary = computed(() => {
     const label = newEpisodeCount.value === 1 ? 'episode record' : 'episode records'
@@ -203,11 +216,18 @@
   const previewIssues = computed(() => {
     if (preview.value === null) {return []}
 
-    return [...preview.value.data.errors, ...preview.value.data.warnings]
+    const errors = preview.value.data.errors.filter(issue => issue.code !== 'target_required')
+
+    return [...errors, ...preview.value.data.warnings]
   })
 
   const hasIssues = computed(() => previewIssues.value.length > 0)
-  const showBlockedMessage = computed(() => blocked.value && !applyError.value)
+
+  const hasNonTargetBlocker = computed(() => conflicted.value || expired.value
+    || (preview.value?.data.errors.some(issue => issue.code !== 'target_required') ?? false))
+
+  const showBlockedRecovery = computed(() => blocked.value && (!targetUnresolved.value || hasNonTargetBlocker.value))
+  const showBlockedMessage = computed(() => showBlockedRecovery.value && !applyError.value)
 
   const existingCardLocation = computed(() => {
     const catalogItemId = preview.value?.data.additions.catalogItemId
@@ -226,13 +246,17 @@
   const workflowStatus = computed(() => {
     if (operation.value) {return operationLabel.value}
 
+    if (hasNonTargetBlocker.value) {return 'Blocked'}
+
+    if (targetUnresolved.value) {return 'Choose a card'}
+
     return blocked.value ? 'Blocked' : 'Requires review'
   })
 
   const workflowTone = computed<StatusChipTone>(() => {
     if (operation.value?.status === 'succeeded') {return 'success'}
 
-    if (operation.value?.status === 'failed' || blocked.value) {return 'danger'}
+    if (operation.value?.status === 'failed' || showBlockedRecovery.value) {return 'danger'}
 
     return 'warning'
   })
@@ -258,12 +282,24 @@
 
   const isPending = computed(() => operation.value?.status === 'pending')
   const refreshLabel = computed(() => refreshing.value ? 'Checking…' : 'Refresh status')
-  const canConfirm = computed(() => !blocked.value && operation.value === null)
+  const showConfirmButton = computed(() => operation.value === null && (!blocked.value || targetUnresolved.value))
+  const confirmDisabled = computed(() => applying.value || selectingTarget.value || blocked.value || targetUnresolved.value)
+
+  const targetControlsDisabled = computed(() => {
+    if (!canManage.value || applying.value || selectingTarget.value || operation.value !== null || preview.value === null) {return true}
+
+    const expiresAt = new Date(preview.value.expiresAt)
+    const expiry = expiresAt.getTime()
+
+    return expiry <= Date.now()
+  })
 
   const confirmLabel = computed(() => {
     if (applying.value) {return 'Importing…'}
 
-    return retryRequested.value ? 'Retry failed import' : 'Confirm import'
+    if (retryRequested.value) {return 'Retry failed import'}
+
+    return preview.value?.data.target.kind === 'existing' ? 'Update catalog card' : 'Create catalog card'
   })
 
   function issueKey(issue: ImportIssue): string {
@@ -295,6 +331,20 @@
   async function loadPreview(): Promise<void> {
     if (!canManage.value) {return}
 
+    pageController?.abort()
+
+    const controller = new globalThis.AbortController()
+
+    pageController = controller
+    preview.value = null
+    operation.value = null
+    applyError.value = ''
+    targetError.value = ''
+    applying.value = false
+    refreshing.value = false
+    selectingTarget.value = false
+    conflicted.value = false
+    announcement.value = ''
     loading.value = true
     loadError.value = ''
     missing.value = false
@@ -302,9 +352,13 @@
     try {
       const previewId = String(route.params.id)
       const previewUrl = `/api/catalog/imports/previews/${previewId}`
-      const body = await requestFetch(previewUrl, { retry: 0 })
 
-      if (!canManage.value) {return}
+      const body = await requestFetch(previewUrl, {
+        retry: 0,
+        signal: controller.signal
+      })
+
+      if (!canManage.value || controller.signal.aborted) {return}
 
       const response = v.parse(importPreviewResponseSchema, body)
 
@@ -312,15 +366,21 @@
       conflicted.value = false
       announcement.value = 'Saved preview loaded.'
     } catch (error) {
+      if (controller.signal.aborted) {return}
+
       missing.value = importRequestStatus(error) === 404
       loadError.value = missing.value ? 'This preview is unavailable or expired.' : handleFailure(error, 'We couldn’t load the preview. Try again.')
     } finally {
-      loading.value = false
+      if (!controller.signal.aborted) {loading.value = false}
     }
   }
 
   async function apply(retry: boolean): Promise<void> {
-    if (!canManage.value || blocked.value || preview.value === null || applying.value) {return}
+    if (!canManage.value || blocked.value || preview.value === null || applying.value || selectingTarget.value || targetUnresolved.value) {return}
+
+    const controller = pageController
+
+    if (controller === null) {return}
 
     applying.value = true
     applyError.value = ''
@@ -331,10 +391,11 @@
       const body = await requestFetch(applyUrl, {
         method: 'POST',
         body: { retry },
+        signal: controller.signal,
         retry: 0
       })
 
-      if (!canManage.value) {return}
+      if (!canManage.value || controller.signal.aborted) {return}
 
       const response = v.parse(importApplyResponseSchema, body)
 
@@ -344,6 +405,8 @@
       await nextTick()
       outcomeHeading.value?.focus()
     } catch (error) {
+      if (controller.signal.aborted) {return}
+
       const status = importRequestStatus(error)
 
       conflicted.value = status === 409
@@ -354,21 +417,29 @@
       await nextTick()
       confirmHeading.value?.focus()
     } finally {
-      applying.value = false
+      if (!controller.signal.aborted) {applying.value = false}
     }
   }
 
   async function refreshOperation(): Promise<void> {
     if (!canManage.value || operation.value === null || refreshing.value) {return}
 
+    const controller = pageController
+
+    if (controller === null) {return}
+
     refreshing.value = true
     applyError.value = ''
 
     try {
       const operationUrl = `/api/catalog/imports/operations/${operation.value.id}`
-      const body = await requestFetch(operationUrl, { retry: 0 })
 
-      if (!canManage.value) {return}
+      const body = await requestFetch(operationUrl, {
+        retry: 0,
+        signal: controller.signal
+      })
+
+      if (!canManage.value || controller.signal.aborted) {return}
 
       const response = v.parse(importOperationResponseSchema, body)
 
@@ -378,16 +449,74 @@
       await nextTick()
       outcomeHeading.value?.focus()
     } catch (error) {
+      if (controller.signal.aborted) {return}
+
       applyError.value = handleFailure(error, 'We couldn’t refresh the status. Try again.')
     } finally {
-      refreshing.value = false
+      if (!controller.signal.aborted) {refreshing.value = false}
     }
   }
+
+  async function selectTarget(target: ImportTargetChoice, trigger: HTMLButtonElement): Promise<void> {
+    if (targetControlsDisabled.value || preview.value === null || pageController === null) {return}
+
+    const controller = pageController
+    const targetUrl = `/api/catalog/imports/previews/${preview.value.id}/target`
+
+    selectingTarget.value = true
+    targetError.value = ''
+
+    try {
+      const body = await requestFetch(targetUrl, {
+        method: 'POST',
+        body: target,
+        retry: 0,
+        signal: controller.signal
+      })
+
+      if (controller.signal.aborted || !canManage.value) {return}
+
+      const response = v.parse(importPreviewResponseSchema, body)
+      const location = `/manage/imports/previews/${response.preview.id}`
+
+      // This UI action must also navigate while an earlier anchor navigation checks access.
+      await router.push(location)
+    } catch (error) {
+      if (controller.signal.aborted) {return}
+
+      const status = importRequestStatus(error)
+
+      targetError.value = status === 404 || status === 409
+        ? 'This preview or target is unavailable. Create a new preview.'
+        : handleFailure(error, 'We couldn’t save this choice. Try choosing the card again.')
+    } finally {
+      if (!controller.signal.aborted) {
+        selectingTarget.value = false
+
+        if (targetError.value && canManage.value) {
+          await nextTick()
+
+          if (trigger.isConnected && !trigger.disabled) {trigger.focus()}
+        }
+      }
+    }
+  }
+
+  watch(() => route.params.id, async () => {
+    await loadPreview()
+    await nextTick()
+    confirmHeading.value?.focus()
+  })
+
+  onBeforeUnmount(() => pageController?.abort())
 
   watch(canManage, (allowed) => {
     if (allowed && preview.value === null && !loading.value) {
       void loadPreview()
     } else if (!allowed) {
+      pageController?.abort()
+
+      loading.value = false
       preview.value = null
       operation.value = null
     }

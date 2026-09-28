@@ -31,9 +31,10 @@ function createCatalogImportPreviewsTable(operators: typeof users) {
     index('catalog_import_previews_expires_at_index').on(table.expiresAt),
     check('catalog_import_previews_status', sql`${table.status} IN ('ready', 'blocked')`),
     check('catalog_import_previews_fingerprint', sql`${table.catalogFingerprint} ~ '^[0-9a-f]{64}$'`),
-    check('catalog_import_previews_lifetime', sql`${table.expiresAt} = ${table.createdAt} + interval '24 hours'`),
+    check('catalog_import_previews_lifetime', sql`${table.expiresAt} > ${table.createdAt} AND ${table.expiresAt} <= ${table.createdAt} + interval '24 hours'`),
     check('catalog_import_previews_poster_size', sql`octet_length(${table.posterBytes}) BETWEEN 1 AND 1048576`),
-    check('catalog_import_previews_poster_pair', sql`(${table.posterBytes} IS NULL) = (${table.data}->>'poster' IS NULL)`)
+    check('catalog_import_previews_poster_pair', sql`(${table.posterBytes} IS NULL) = (${table.data}->>'poster' IS NULL)`),
+    check('catalog_import_previews_version', sql`(${table.data}->>'version') IS NOT DISTINCT FROM '3'`)
   ])
 }
 

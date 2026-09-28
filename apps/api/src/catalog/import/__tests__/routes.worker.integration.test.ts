@@ -43,6 +43,10 @@ const protectedRequests = [
   },
   {
     method: 'POST',
+    path: `/api/catalog/imports/previews/${PREVIEW_ID}/target`
+  },
+  {
+    method: 'POST',
     path: `/api/catalog/imports/previews/${PREVIEW_ID}/apply`
   },
   {
@@ -70,7 +74,8 @@ async function requestImport(app: ReturnType<typeof createCatalogApp>, spec: typ
 describe('catalog import HTTP access', () => {
   it.each([
     '/api/catalog/imports/previews',
-    `/api/catalog/imports/previews/${PREVIEW_ID}/apply`
+    `/api/catalog/imports/previews/${PREVIEW_ID}/apply`,
+    `/api/catalog/imports/previews/${PREVIEW_ID}/target`
   ])('bounds JSON request bytes before parsing %s', async (path) => {
     // Arrange
     const client = new Client({ connectionString: env.DATABASE.connectionString })

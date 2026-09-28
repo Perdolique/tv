@@ -4,7 +4,6 @@ import { findRootCause, serializeError } from '@tv/shared/errors'
 const FAILURES = {
   preview_unavailable: 'This preview is unavailable or has expired. Review the import again.',
   preview_not_ready: 'This preview has issues and cannot be applied.',
-  preview_version: 'This preview needs to be reviewed again.',
   preview_changed: 'This preview is no longer valid. Review the import again.',
   catalog_changed: 'The catalog changed after this preview. Review the import again.',
   access_revoked: 'You no longer have access to catalog imports.',

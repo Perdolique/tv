@@ -92,8 +92,31 @@ const issueSchema = v.object({
   message: v.string()
 })
 
+const catalogMatchSchema = v.object({
+  id: uuid,
+  title: v.string(),
+  year: v.nullable(nonnegativeInteger),
+  type: v.picklist(['movie', 'series']),
+  kind: v.picklist(['exact_source', 'possible_title']),
+  sources: v.array(sourceIdentitySchema)
+})
+
 const previewDataSchema = v.object({
-  version: v.literal(2),
+  version: v.literal(3),
+
+  target: v.variant('kind', [
+    v.object({ kind: v.literal('unresolved') }),
+    v.object({ kind: v.literal('new') }),
+    v.object({
+    kind: v.literal('existing'),
+    catalogItemId: uuid
+  })
+  ]),
+
+  candidates: v.array(catalogMatchSchema),
+  sourcesFetchedAt: dateTime,
+  sourceErrors: v.array(issueSchema),
+  sourceWarnings: v.array(issueSchema),
 
   card: v.nullable(v.object({
     identity: sourceIdentitySchema,
@@ -177,15 +200,7 @@ const importPreviewResponseSchema = v.object({
     data: previewDataSchema,
     createdAt: dateTime,
     expiresAt: dateTime,
-    posterUrl: v.nullable(v.string()),
-
-    matches: v.array(v.object({
-      id: uuid,
-      title: v.string(),
-      year: v.nullable(nonnegativeInteger),
-      type: v.picklist(['movie', 'series']),
-      kind: v.picklist(['exact_source', 'possible_title'])
-    }))
+    posterUrl: v.nullable(v.string())
   })
 }) satisfies v.GenericSchema<ImportPreviewResponse>
 

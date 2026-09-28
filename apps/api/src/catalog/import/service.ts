@@ -11,8 +11,8 @@ import { CatalogHttpError } from '../errors.ts'
 
 // oxlint-disable-next-line import/no-relative-parent-imports -- Imports reuse the catalog access and session boundaries.
 import { hasCatalogImportPermission } from '../permissions.ts'
-import { inspectCatalogState, readCatalogState } from './catalog-state.ts'
-import { planImportChanges } from './changes.ts'
+import { findImportCatalogMatches } from './matches.ts'
+import { reviewSavedSources } from './preview-plan.ts'
 import { preparePoster, type PreparedPoster } from './poster.ts'
 import { findImportPreview, PREVIEW_LIFETIME_MS, type StoredPreview } from './repository.ts'
 import { selectionSchema } from './selection.ts'
@@ -79,7 +79,7 @@ function recordExternalIdEvidence(data: ImportPreviewData): void {
     if (first !== null && second !== null && first === second) {
       data.evidence.matchingIds.push(key)
     } else if (first !== null && second !== null) {
-      data.errors.push({
+      data.sourceErrors.push({
         code: 'external_id_conflict',
         message: `TMDB and TVMaze have conflicting ${key} IDs.`
       })
@@ -100,7 +100,12 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
   const selection = parsed.output
 
   const data: ImportPreviewData = {
-    version: 2,
+    version: 3,
+    target: { kind: 'unresolved' },
+    candidates: [],
+    sourcesFetchedAt: '',
+    sourceErrors: [],
+    sourceWarnings: [],
     card: null,
     episodes: [],
 
@@ -138,31 +143,31 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
       data.episodes = tvmaze.episodes
       data.evidence.tvmaze = tvmaze.evidence
 
-      data.errors.push(...tvmaze.errors)
+      data.sourceErrors.push(...tvmaze.errors)
       recordExternalIdEvidence(data)
 
       if (data.evidence.matchingIds.length === 0) {
-        data.warnings.push({
+        data.sourceWarnings.push({
           code: 'explicit_match',
           message: 'No shared external ID confirms this explicitly selected show. Review its identity.'
         })
       }
 
-      if (data.episodes.length === 0 && data.errors.length === 0) {
-        data.warnings.push({
+      if (data.episodes.length === 0 && data.sourceErrors.length === 0) {
+        data.sourceWarnings.push({
           code: 'episodes_empty',
           message: 'The selected show has no regular episodes.'
         })
       }
     } else if (selection.type === 'series') {
-      data.warnings.push({
+      data.sourceWarnings.push({
         code: 'show_verified_absent',
         message: 'The operator verified that no matching TVMaze show exists.'
       })
     }
 
     if (tmdb.card.releaseYear.value === null) {
-      data.warnings.push({
+      data.sourceWarnings.push({
         code: 'year_missing',
         message: 'The source release year is missing.'
       })
@@ -172,7 +177,7 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
       const available = tmdb.card.translations.some(translation => translation.language === language && translation.title.value !== null)
 
       if (language !== tmdb.card.originalLanguage.value && !available) {
-        data.warnings.push({
+        data.sourceWarnings.push({
           code: `translation_${language}_missing`,
           message: `The ${language} title translation is missing.`
         })
@@ -180,7 +185,7 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
     }
 
     if (tmdb.card.posterPath.value === null) {
-      data.warnings.push({
+      data.sourceWarnings.push({
         code: 'poster_missing',
         message: 'The source has no poster.'
       })
@@ -208,36 +213,38 @@ async function createImportPreview(session: ImportSession, input: unknown, depen
       }
     }
 
-    data.errors.push(issue)
+    data.sourceErrors.push(issue)
   }
 
+  const sourcesFetchedAt = dependencies.now?.() ?? new Date()
+
+  data.sourcesFetchedAt = sourcesFetchedAt.toISOString()
+
   const savedResult: PreviewResult = await session.database.transaction(async (transaction) => {
-    const state = await readCatalogState(transaction, selection, data.episodes)
-    const inspection = inspectCatalogState(state, selection, data.episodes)
+    data.candidates = await findImportCatalogMatches(transaction, selection, data.card)
 
-    const changePlan = planImportChanges(state, {
-      card: data.card,
-      episodes: data.episodes,
-      catalogItemId: inspection.additions.catalogItemId,
-      posterHash: data.poster?.sha256 ?? null
-    })
+    const exact = data.candidates.find(candidate => candidate.kind === 'exact_source')
 
-    data.additions = inspection.additions
-    data.changes = changePlan.changes
+    if (exact !== undefined) {
+      data.target = {
+        kind: 'existing',
+        catalogItemId: exact.id
+      }
+    } else if (data.candidates.length === 0) {
+      data.target = { kind: 'new' }
+    }
 
-    data.errors.push(...inspection.errors, ...changePlan.errors)
-    data.warnings.push(...changePlan.warnings)
-
+    const reviewed = await reviewSavedSources(transaction, selection, data)
     const now = dependencies.now?.() ?? new Date()
     const expiresAt = new Date(now.getTime() + PREVIEW_LIFETIME_MS)
-    const status = data.errors.length === 0 ? 'ready' : 'blocked'
+    const status = reviewed.data.errors.length === 0 ? 'ready' : 'blocked'
 
     const rows = await transaction.insert(catalogImportPreviews).values({
       operatorId: session.user.id,
       selection,
-      data,
+      data: reviewed.data,
       status,
-      catalogFingerprint: inspection.fingerprint,
+      catalogFingerprint: reviewed.fingerprint,
       posterBytes: poster?.bytes ?? null,
       createdAt: now,
       expiresAt

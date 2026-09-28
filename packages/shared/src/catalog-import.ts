@@ -149,9 +149,17 @@ interface ImportPoster {
   byteLength: number;
 }
 
+type ImportTargetChoice = { kind: 'new' } | { kind: 'existing'; catalogItemId: string }
+type ImportTarget = { kind: 'unresolved' } | ImportTargetChoice
+
 // Storage and HTTP share normalized, reviewed data. Provider response dumps do not belong here.
 interface ImportPreviewData {
-  version: 2;
+  version: 3;
+  target: ImportTarget;
+  candidates: ImportCatalogMatch[];
+  sourcesFetchedAt: string;
+  sourceErrors: ImportIssue[];
+  sourceWarnings: ImportIssue[];
   card: ImportCard | null;
   episodes: ImportEpisode[];
   evidence: ImportEvidence;
@@ -168,6 +176,7 @@ interface ImportCatalogMatch {
   year: number | null;
   type: ImportTitleType;
   kind: 'exact_source' | 'possible_title';
+  sources: ImportSourceIdentity[];
 }
 
 interface ImportPreviewView {
@@ -178,7 +187,6 @@ interface ImportPreviewView {
   createdAt: string;
   expiresAt: string;
   posterUrl: string | null;
-  matches: ImportCatalogMatch[];
 }
 
 interface ImportPreviewResponse {
@@ -256,6 +264,8 @@ export type {
   ImportShowSearchResponse,
   ImportSourceFailureResponse,
   ImportSourceIdentity,
+  ImportTarget,
+  ImportTargetChoice,
   ImportTranslation,
   ImportValue
 }

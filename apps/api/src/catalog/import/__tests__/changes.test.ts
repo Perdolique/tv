@@ -19,6 +19,8 @@ describe('import field change planning', () => {
     const appliedPosterPath = '/api/posters/old.webp'
 
     const state: CatalogState = {
+      candidateKeys: [],
+
       items: [{
         id: 'item',
         type: 'movie',

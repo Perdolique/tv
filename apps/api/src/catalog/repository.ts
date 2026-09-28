@@ -21,7 +21,7 @@ import type {
 } from './types.ts'
 
 async function findTitleRowsForMatchingCatalogItems(
-  database: Database,
+  database: Pick<Database, 'select' | 'selectDistinct'>,
   query: string
 ): Promise<CatalogTitleRow[]> {
   const escapedQuery = escapeLikePattern(query)
