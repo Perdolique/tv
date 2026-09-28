@@ -479,7 +479,7 @@ describe('saved catalog import application', () => {
     await expect(catalogRows()).resolves.toStrictEqual(before)
   })
 
-  it('blocks old, expired and changed previews and rechecks access before writing', async () => {
+  it('blocks expired, removed and changed previews and rechecks access before writing', async () => {
     const expired = await savedPreview()
     const expiry = new Date(expired.expiresAt)
 
@@ -488,11 +488,11 @@ describe('saved catalog import application', () => {
       issue: { code: 'preview_unavailable' }
     })
 
-    await firstClient.query(`UPDATE catalog_import_previews SET data = jsonb_set(data, '{version}', '1') WHERE id = $1`, [expired.id])
+    await firstClient.query('DELETE FROM catalog_import_previews WHERE id = $1', [expired.id])
 
     await expect(applyImportPreview(session, expired.id, applyOptions())).resolves.toMatchObject({
       status: 'blocked',
-      issue: { code: 'preview_version' }
+      issue: { code: 'preview_unavailable' }
     })
 
     const stale = await savedPreview()

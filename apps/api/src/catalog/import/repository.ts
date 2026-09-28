@@ -30,8 +30,9 @@ async function findImportPreview(database: Pick<Database, 'select'>, lookup: Pre
     .limit(1)
 
   const [preview] = rows
+  const version: unknown = preview?.data.version
 
-  if (preview === undefined) {
+  if (preview === undefined || version !== 3) {
     return null
   }
 

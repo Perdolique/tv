@@ -153,18 +153,12 @@ function readyPreview(preview: StoredPreview | null): preview is ReadyStoredPrev
 
   const version: unknown = preview.data.version
 
-  return version === 2 && preview.data.card !== null && preview.data.errors.length === 0
+  return version === 3 && preview.data.target.kind !== 'unresolved' && preview.data.card !== null && preview.data.errors.length === 0
 }
 
 function previewFailure(preview: StoredPreview | null): FailureCode {
   if (preview === null) {
     return 'preview_unavailable'
-  }
-
-  const version: unknown = preview.data.version
-
-  if (version !== 2) {
-    return 'preview_version'
   }
 
   return 'preview_not_ready'
@@ -209,8 +203,8 @@ async function applyPending({ session, preview, operation, posterPath, now }: Pe
       throw new ImportApplyFailureError('preview_changed')
     }
 
-    const state = await readCatalogState(transaction, current.selection, current.data.episodes)
-    const inspection = inspectCatalogState(state, current.selection, current.data.episodes)
+    const state = await readCatalogState(transaction, current.selection, current.data)
+    const inspection = inspectCatalogState(state, current.selection, current.data)
 
     const plan = planImportChanges(state, {
       card: current.data.card,

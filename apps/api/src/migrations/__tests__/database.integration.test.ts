@@ -590,3 +590,155 @@ describe('edgerunners sequel data migration', () => {
     })
   })
 })
+
+async function readPreservedCatalog(client: Client, tables: string[]) {
+  const snapshots: unknown[] = []
+
+  for (const table of tables) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- One PostgreSQL client executes one query at a time.
+    const result = await client.query(`SELECT to_jsonb(t) AS data FROM ${table} t ORDER BY to_jsonb(t)::text`)
+
+    snapshots.push(result.rows)
+  }
+
+  return snapshots
+}
+
+describe('preview v3 reset migration', () => {
+  it('removes saved preview bytes, ends pending attempts, and preserves catalog and completed history', async () => {
+    await withDatabase(async (fixture) => {
+      await migrateBefore(fixture, '20260927182307_import_target_v3')
+      await fixture.client.query('INSERT INTO users (id, email) VALUES ($1, \'preview-reset@example.com\')', [firstUserId])
+
+      const previewIds = [randomUUID(), randomUUID(), randomUUID()]
+
+      const selection = JSON.stringify({
+        type: 'movie',
+        tmdbId: 603
+      })
+
+      const result = JSON.stringify({
+        catalogItemId: '10000000-0000-7000-8000-000000000001',
+        createdItem: false,
+        createdEpisodes: 0,
+        linkedSources: 1,
+        changedFields: 0,
+        updatedFields: 0,
+        preservedFields: 1,
+        posterPath: '/api/posters/published.webp'
+      })
+
+      await fixture.client.query(`
+        INSERT INTO catalog_import_previews (id, operator_id, status, selection, data, catalog_fingerprint, poster_bytes, created_at, expires_at)
+        SELECT id, $1, 'ready', $2, '{"version":2,"poster":{"byteLength":3}}', repeat('a', 64), decode('010203', 'hex'), now(), now() + interval '24 hours'
+        FROM unnest($3::uuid[]) AS id
+      `, [firstUserId, selection, previewIds])
+
+      await fixture.client.query(`
+        INSERT INTO catalog_import_operations (preview_id, operator_id, selection, title, status, started_at, lease_expires_at)
+        VALUES ($1, $2, $3, 'Pending import', 'pending', now(), now() + interval '5 minutes')
+      `, [previewIds[0], firstUserId, selection])
+
+      await fixture.client.query(`
+        INSERT INTO catalog_import_operations (preview_id, operator_id, selection, title, status, started_at, finished_at, result, poster_id)
+        VALUES ($1, $2, $3, 'Completed import', 'succeeded', now(), now(), $4, 'published')
+      `, [previewIds[1], firstUserId, selection, result])
+
+      await fixture.client.query(`
+        INSERT INTO catalog_import_operations (preview_id, operator_id, selection, title, status, started_at, finished_at, failure_code, failure_message, retryable)
+        VALUES ($1, $2, $3, 'Failed import', 'failed', now(), now(), 'apply_failed', 'Try again.', true)
+      `, [previewIds[2], firstUserId, selection])
+
+      await fixture.client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) SELECT $1, id FROM catalog_items LIMIT 1', [firstUserId])
+      await fixture.client.query('INSERT INTO catalog_movie_watches (user_id, catalog_item_id) SELECT $1, id FROM catalog_items WHERE type = \'movie\' LIMIT 1', [firstUserId])
+      await fixture.client.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) SELECT $1, id FROM catalog_episodes LIMIT 1', [firstUserId])
+
+      const catalogTables = ['catalog_items', 'catalog_item_titles', 'catalog_item_descriptions', 'catalog_episodes', 'catalog_external_links', 'catalog_import_fields', 'catalog_releases', 'catalog_item_follows', 'catalog_movie_watches', 'catalog_episode_watches']
+      const before = await readPreservedCatalog(fixture.client, catalogTables)
+      const finished = await fixture.client.query('SELECT * FROM catalog_import_operations WHERE status <> \'pending\' ORDER BY id')
+
+      await migrate(fixture.database, { migrationsFolder })
+
+      const previews = await fixture.client.query('SELECT * FROM catalog_import_previews')
+      const pending = await fixture.client.query<{ finished_at: Date }>('SELECT * FROM catalog_import_operations WHERE preview_id = $1', [previewIds[0]])
+      const afterFinished = await fixture.client.query('SELECT * FROM catalog_import_operations WHERE preview_id <> $1 ORDER BY id', [previewIds[0]])
+      const after = await readPreservedCatalog(fixture.client, catalogTables)
+
+      expect(previews.rows).toStrictEqual([])
+
+      expect(pending.rows).toMatchObject([{
+        status: 'failed',
+        failure_code: 'preview_unavailable',
+        retryable: false,
+        lease_expires_at: null
+      }])
+
+      expect(pending.rows[0]?.finished_at).toBeInstanceOf(Date)
+      expect(afterFinished.rows).toStrictEqual(finished.rows)
+      expect(after).toStrictEqual(before)
+    })
+  })
+
+  it('removes late v2 previews and rejects old Worker preview writes', async () => {
+    await withDatabase(async (fixture) => {
+      await migrateBefore(fixture, '20260928070454_import_preview_v3_only')
+      await fixture.client.query('INSERT INTO users (id, email) VALUES ($1, \'late-preview@example.com\')', [firstUserId])
+
+      const previewId = randomUUID()
+
+      const selection = JSON.stringify({
+        type: 'movie',
+        tmdbId: 603
+      })
+
+      const insertPreview = `
+        INSERT INTO catalog_import_previews (id, operator_id, status, selection, data, catalog_fingerprint, created_at, expires_at)
+        VALUES ($1, $2, 'ready', $3, $4, repeat('a', 64), now(), now() + interval '24 hours')
+      `
+
+      await fixture.client.query(insertPreview, [previewId, firstUserId, selection, JSON.stringify({
+        version: 2,
+        poster: null
+      })])
+
+      await fixture.client.query(`
+        INSERT INTO catalog_import_operations (preview_id, operator_id, selection, title, status, started_at, lease_expires_at)
+        VALUES ($1, $2, $3, 'Late preview', 'pending', now(), now() + interval '5 minutes')
+      `, [previewId, firstUserId, selection])
+
+      await migrate(fixture.database, { migrationsFolder })
+
+      const previews = await fixture.client.query('SELECT id FROM catalog_import_previews WHERE id = $1', [previewId])
+      const operations = await fixture.client.query('SELECT status, failure_code, retryable FROM catalog_import_operations WHERE preview_id = $1', [previewId])
+
+      expect(previews.rows).toStrictEqual([])
+
+      expect(operations.rows).toStrictEqual([{
+        status: 'failed',
+        failure_code: 'preview_unavailable',
+        retryable: false
+      }])
+
+      const oldPreview = fixture.client.query(insertPreview, [randomUUID(), firstUserId, selection, JSON.stringify({
+        version: 2,
+        poster: null
+      })])
+
+      await expect(oldPreview).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'catalog_import_previews_version'
+      })
+
+      const newPreviewId = randomUUID()
+
+      await fixture.client.query(insertPreview, [newPreviewId, firstUserId, selection, JSON.stringify({
+        version: 3,
+        poster: null
+      })])
+
+      const newPreview = await fixture.client.query('SELECT id FROM catalog_import_previews WHERE id = $1', [newPreviewId])
+
+      expect(newPreview.rows).toStrictEqual([{ id: newPreviewId }])
+    })
+  })
+})

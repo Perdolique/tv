@@ -19,6 +19,7 @@ import { createImportPreviewView } from './review.ts'
 import { parseImportSearchPage, parseImportSearchQuery, searchTmdb, searchTvmaze } from './search.ts'
 import { createImportPreview, openImportPreview, SOURCE_MESSAGES } from './service.ts'
 import { ImportSourceError } from './source-http.ts'
+import { selectImportTarget } from './target.ts'
 
 const titleTypeSchema = v.picklist(['movie', 'series'])
 const applyBodySchema = v.strictObject({ retry: v.optional(v.boolean()) })
@@ -164,7 +165,7 @@ function registerCatalogImportRoutes(app: Hono<CatalogEnvironment>, dependencies
         return context.json(result, 503)
       }
 
-      const preview = await createImportPreviewView(session.database, result.preview)
+      const preview = createImportPreviewView(result.preview)
 
       return context.json({ preview }, 201)
     }
@@ -174,15 +175,38 @@ function registerCatalogImportRoutes(app: Hono<CatalogEnvironment>, dependencies
     context,
     dependencies.connectDatabase,
     async (session) => {
-      const saved = await openImportPreview(session, context.req.param('id'))
+      const id = context.req.param('id')
+      const saved = await openImportPreview(session, id)
 
       if (saved === null) {
         throw new CatalogHttpError('NOT_FOUND', 404)
       }
 
-      const preview = await createImportPreviewView(session.database, saved)
+      const preview = createImportPreviewView(saved)
 
       return context.json({ preview })
+    }
+  ))
+
+  app.post('/api/catalog/imports/previews/:id/target', async (context) => withCatalogImportAccess(
+    context,
+    dependencies.connectDatabase,
+    async (session) => {
+      await importBodyLimit(context, async () => {
+        // Continue only after the access and body-size checks.
+      })
+
+      const input: unknown = await context.req.json().catch(() => null)
+      const previewId = context.req.param('id')
+
+      const saved = await selectImportTarget(session, {
+        previewId,
+        input
+      })
+
+      const preview = createImportPreviewView(saved)
+
+      return context.json({ preview }, 201)
     }
   ))
 
@@ -190,7 +214,8 @@ function registerCatalogImportRoutes(app: Hono<CatalogEnvironment>, dependencies
     context,
     dependencies.connectDatabase,
     async (session) => {
-      const saved = await openImportPreview(session, context.req.param('id'))
+      const id = context.req.param('id')
+      const saved = await openImportPreview(session, id)
 
       if (saved?.posterBytes === null || saved?.posterBytes === undefined) {
         throw new CatalogHttpError('NOT_FOUND', 404)
@@ -223,7 +248,9 @@ function registerCatalogImportRoutes(app: Hono<CatalogEnvironment>, dependencies
         throw new CatalogHttpError('INVALID_REQUEST', 400)
       }
 
-      const result = await applyImportPreview(session, context.req.param('id'), {
+      const id = context.req.param('id')
+
+      const result = await applyImportPreview(session, id, {
         hosted: context.env.IMAGES.hosted,
         namespace: imageNamespace(context.env.WEB_ORIGIN),
         retry: parsed.output.retry ?? false
@@ -268,7 +295,8 @@ function registerCatalogImportRoutes(app: Hono<CatalogEnvironment>, dependencies
     context,
     dependencies.connectDatabase,
     async (session) => {
-      const operation = await findImportOperationView(session, context.req.param('id'))
+      const id = context.req.param('id')
+      const operation = await findImportOperationView(session, id)
 
       if (operation === null) {
         throw new CatalogHttpError('NOT_FOUND', 404)

@@ -1,11 +1,39 @@
+import type { ImportCatalogMatch, ImportPreviewData } from '@tv/shared/catalog-import'
 import { describe, expect, it } from 'vitest'
 import { inspectCatalogState, type CatalogState } from '../catalog-state.ts'
 import { normalizeTvmaze } from '../sources.ts'
 import { showResponse } from '../../../testing/import-fixtures.ts'
 
+const candidate: ImportCatalogMatch = {
+  id: 'item',
+  title: 'Title',
+  year: null,
+  type: 'movie',
+  kind: 'exact_source',
+  sources: []
+}
+
+const existingReview = {
+  card: null,
+
+  target: {
+    kind: 'existing',
+    catalogItemId: 'item'
+  },
+
+  candidates: [candidate]
+} satisfies Pick<ImportPreviewData, 'card' | 'target' | 'candidates'>
+
+const newReview = {
+  card: null,
+  target: { kind: 'new' as const },
+  candidates: []
+}
+
 describe('import catalog-state contract', () => {
   it('does not depend on the JSONB key order of a saved selection', () => {
     const state: CatalogState = {
+      candidateKeys: [],
       items: [],
       titles: [],
       descriptions: [],
@@ -22,7 +50,10 @@ describe('import catalog-state contract', () => {
         status: 'selected',
         id: 2
       }
-    }, [])
+    }, {
+      ...newReview,
+      episodes: []
+    })
 
     const second = inspectCatalogState(state, {
       tvmaze: {
@@ -32,13 +63,18 @@ describe('import catalog-state contract', () => {
 
       tmdbId: 1,
       type: 'series'
-    }, [])
+    }, {
+      ...newReview,
+      episodes: []
+    })
 
     expect(first.fingerprint).toBe(second.fingerprint)
   })
 
   it('blocks an incompatible catalog type even if stored links are inconsistent', () => {
     const state: CatalogState = {
+      candidateKeys: ['exact_source:item'],
+
       items: [{
         id: 'item',
         type: 'series',
@@ -63,7 +99,10 @@ describe('import catalog-state contract', () => {
     const result = inspectCatalogState(state, {
       type: 'movie',
       tmdbId: 603
-    }, [])
+    }, {
+      ...existingReview,
+      episodes: []
+    })
 
     expect(result.errors).toStrictEqual([{
       code: 'title_type_conflict',
@@ -94,6 +133,8 @@ describe('import catalog-state contract', () => {
     }
 
     const state: CatalogState = {
+      candidateKeys: ['exact_source:item'],
+
       items: [{
         id: 'item',
         type: 'series',
@@ -124,11 +165,17 @@ describe('import catalog-state contract', () => {
       ]
     }
 
-    const first = inspectCatalogState(state, selection, source.episodes)
+    const first = inspectCatalogState(state, selection, {
+      ...existingReview,
+      episodes: source.episodes
+    })
 
     episode.sourceTitle = 'Manual edit'
 
-    const changed = inspectCatalogState(state, selection, source.episodes)
+    const changed = inspectCatalogState(state, selection, {
+      ...existingReview,
+      episodes: source.episodes
+    })
 
     expect(first.errors).toStrictEqual([])
     expect(first.additions.episodeExternalIds).toStrictEqual(['910002'])
@@ -136,7 +183,10 @@ describe('import catalog-state contract', () => {
 
     episode.episodeNumber = 3
 
-    const relocated = inspectCatalogState(state, selection, source.episodes)
+    const relocated = inspectCatalogState(state, selection, {
+      ...existingReview,
+      episodes: source.episodes
+    })
 
     expect(relocated.errors.map(problem => problem.code)).toContain('episode_coordinates_changed')
   })

@@ -6,7 +6,7 @@ import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie, expectNoHorizontalOverflow } from '../helpers.ts'
 import { waitForHydration } from '../catalog/helpers.ts'
 import { dune } from '../catalog/details.fixtures.ts'
-import { PREVIEW_ID } from './worker.ts'
+import { PREVIEW_ID, TARGET_PREVIEW_ID, CATALOG_ID, NEW_CATALOG_ID } from './worker.ts'
 
 async function asOperator(context: BrowserContext): Promise<void> {
   const caseId = randomUUID()
@@ -152,7 +152,7 @@ async function selectMovie(page: Page): Promise<void> {
   await expect(choose).toHaveAttribute('aria-pressed', 'true')
 }
 
-async function findMovie(page: Page): Promise<void> {
+async function reviewMovie(page: Page): Promise<void> {
   await selectMovie(page)
   await page.getByRole('button', { name: 'Review import' }).click()
 
@@ -160,6 +160,11 @@ async function findMovie(page: Page): Promise<void> {
   const previewUrl = new RegExp(previewPattern, 'u')
 
   await expect(page).toHaveURL(previewUrl)
+}
+
+async function chooseSeparateCard(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Create a separate card' }).click()
+  await expect(page).toHaveURL(`/manage/imports/previews/${TARGET_PREVIEW_ID}`)
 }
 
 test('imports a movie through a saved review and shows the result in shared history', async ({ page, context }) => {
@@ -172,11 +177,12 @@ test('imports a movie through a saved review and shows the result in shared hist
     exact: true
   })).toBeVisible()
 
-  await findMovie(page)
+  await reviewMovie(page)
   await expect(page.getByRole('heading', { name: 'Planned changes' })).toBeVisible()
   await expect(page.getByRole('img', { name: 'The Return poster' })).toBeVisible()
   await expect(page.getByText('Possible name match')).toBeVisible()
-  await expect(page.getByText('Name matches are hints.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeDisabled()
+  await expect(page.getByText('No linked sources')).toBeVisible()
 
   const matches = page.getByRole('region', {
     name: 'Catalog matches',
@@ -192,9 +198,26 @@ test('imports a movie through a saved review and shows the result in shared hist
 
   expect(matchesId).toBeTruthy()
   await expect(matchLink).toHaveAttribute('href', `#${matchesId}`)
-  await matchLink.click()
-  await expect(matches).toBeInViewport()
-  await page.getByRole('button', { name: 'Confirm import' }).focus()
+
+  const anchorNavigation = await holdFirstResponse(page, '**/api/catalog/imports/access')
+
+  try {
+    await matchLink.click()
+
+    await anchorNavigation.started
+
+    await page.getByRole('button', { name: 'Create a separate card' }).press('Enter')
+    await expect(page).toHaveURL(`/manage/imports/previews/${TARGET_PREVIEW_ID}`)
+  } finally {
+    await anchorNavigation.release()
+  }
+
+  await expect(page.getByRole('heading', {
+    name: 'Confirm import',
+    exact: true
+  })).toBeFocused()
+
+  await page.getByRole('button', { name: 'Create catalog card' }).focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: 'Import complete' })).toBeFocused()
   await expect(page.getByRole('link', { name: 'Open catalog card' })).toBeVisible()
@@ -309,7 +332,7 @@ test('selects the exact TVMaze show and reviews regular episodes before a series
   await test.step('review regular episodes and confirm the import', async () => {
     await page.getByText('Season 1', { exact: true }).click()
     await expect(page.getByText('Pilot', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Confirm import' }).click()
+    await page.getByRole('button', { name: 'Create catalog card' }).click()
     await expect(page.getByRole('heading', { name: 'Import complete' })).toBeVisible()
   })
 })
@@ -468,7 +491,7 @@ test('requires a fresh TVMaze search before recording a missing match', async ({
   await expect(page.getByRole('heading', { name: /^Episodes/u })).toHaveCount(0)
   await expect(page.getByText('Matching source IDs:')).toHaveCount(0)
   await expect(page.getByText(/episode records? will be added/u)).toHaveCount(0)
-  await page.getByRole('button', { name: 'Confirm import' }).click()
+  await page.getByRole('button', { name: 'Create catalog card' }).click()
   await expect(page.getByText('Created catalog card · 0 new episodes · 1 changed field.')).toBeVisible()
 })
 
@@ -477,8 +500,9 @@ test('keeps a failed import in history and requires an explicit retry', async ({
   await addCookie(context, 'import_fail_once', '1')
   await page.goto('/manage/imports')
   await waitForHydration(page)
-  await findMovie(page)
-  await page.getByRole('button', { name: 'Confirm import' }).focus()
+  await reviewMovie(page)
+  await chooseSeparateCard(page)
+  await page.getByRole('button', { name: 'Create catalog card' }).focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: 'Import failed' })).toBeFocused()
   await page.getByRole('button', { name: 'Retry failed import' }).focus()
@@ -491,8 +515,9 @@ test('refreshes a pending import without submitting it again', async ({ page, co
   await addCookie(context, 'import_pending', '1')
   await page.goto('/manage/imports')
   await waitForHydration(page)
-  await findMovie(page)
-  await page.getByRole('button', { name: 'Confirm import' }).focus()
+  await reviewMovie(page)
+  await chooseSeparateCard(page)
+  await page.getByRole('button', { name: 'Create catalog card' }).focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: 'Import pending' })).toBeFocused()
   await page.getByRole('button', { name: 'Refresh status' }).focus()
@@ -646,7 +671,7 @@ sourceFailureTest('clears the pagination cursor when the same first-page search 
 })
 
 const conflictTest = test.extend({ expectedHttpErrors: { values: [{
-  pathname: `/api/catalog/imports/previews/${PREVIEW_ID}/apply`,
+  pathname: `/api/catalog/imports/previews/${TARGET_PREVIEW_ID}/apply`,
   status: 409
 }] } })
 
@@ -655,12 +680,13 @@ conflictTest('stops confirmation when the catalog changed after review', async (
   await asOperator(context)
   await page.goto('/manage/imports')
   await waitForHydration(page)
-  await findMovie(page)
+  await reviewMovie(page)
+  await chooseSeparateCard(page)
   await addCookie(context, 'import_conflict', '1')
-  await page.getByRole('button', { name: 'Confirm import' }).focus()
+  await page.getByRole('button', { name: 'Create catalog card' }).focus()
   await page.keyboard.press('Enter')
   await expect(page.getByText('This preview changed or expired. Create a new preview.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Confirm import' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toHaveCount(0)
 
   await expect(page.getByRole('heading', {
     name: 'Confirm import',
@@ -714,9 +740,9 @@ test('shows blocked and expired previews and offers a new review', async ({ page
   await addCookie(context, 'import_blocked', '1')
   await page.goto('/manage/imports')
   await waitForHydration(page)
-  await findMovie(page)
+  await reviewMovie(page)
   await expect(page.getByText('This preview is blocked or expired.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Confirm import' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toHaveCount(0)
   await addCookie(context, 'import_expired', '1')
   await page.reload()
   await expect(page.getByText('This preview is unavailable or expired.')).toBeVisible()
@@ -745,6 +771,9 @@ test('renders a hosted public poster and source credits on an imported catalog c
 })
 
 for (const viewport of [{
+  width: 320,
+  height: 844
+}, {
   width: 390,
   height: 844
 }, {
@@ -758,6 +787,7 @@ for (const viewport of [{
   for (const theme of ['light', 'dark'] as const) {
     test(`keeps import controls usable at ${viewport.width}×${viewport.height} in ${theme} theme`, async ({ page, context }) => {
       await asOperator(context)
+      await addCookie(context, 'import_long_title', '1')
       await page.setViewportSize(viewport)
       await page.emulateMedia({ colorScheme: theme })
       await page.goto('/')
@@ -849,6 +879,27 @@ for (const viewport of [{
       await expect(page.getByRole('heading', { name: 'Planned changes' })).toBeVisible()
       await expect(page.getByText('Read-only source data')).toBeVisible()
       await expect(page.getByText('Saved poster', { exact: true })).toBeVisible()
+
+      const matches = page.getByRole('region', {
+        name: 'Catalog matches',
+        exact: true
+      })
+
+      const useCard = matches.getByRole('button', { name: 'Use this card' })
+
+      await useCard.focus()
+      await expect(useCard).toBeFocused()
+
+      const choiceBounds = await bounds(useCard)
+      const titleBounds = await bounds(matches.getByRole('link'))
+
+      expect(choiceBounds.x).toBeGreaterThanOrEqual(0)
+      expect(choiceBounds.x + choiceBounds.width).toBeLessThanOrEqual(viewport.width)
+      expect(choiceBounds.height).toBeGreaterThanOrEqual(44)
+      expect(titleBounds.x + titleBounds.width).toBeLessThanOrEqual(viewport.width)
+      await expectNoHorizontalOverflow(page)
+      await page.getByRole('button', { name: 'Create a separate card' }).press('Enter')
+      await expect(page).toHaveURL(`/manage/imports/previews/${TARGET_PREVIEW_ID}`)
       await page.evaluate(() => { globalThis.scrollTo(0, 0) })
 
       const confirm = await bounds(page.getByRole('region', { name: 'Confirm import' }))
@@ -859,7 +910,7 @@ for (const viewport of [{
       }))
 
       const changes = await bounds(page.getByRole('heading', { name: 'Planned changes' }))
-      const action = await bounds(page.getByRole('button', { name: 'Confirm import' }))
+      const action = await bounds(page.getByRole('button', { name: 'Create catalog card' }))
       const hasRail = viewport.width >= 1024
 
       expect(confirm.x + confirm.width).toBeLessThanOrEqual(viewport.width)
@@ -868,7 +919,7 @@ for (const viewport of [{
       expect(action.height).toBeGreaterThanOrEqual(44)
       expectNoOverlap(hasRail, card, confirm)
       await expectNoHorizontalOverflow(page)
-      await page.getByRole('button', { name: 'Confirm import' }).focus()
+      await page.getByRole('button', { name: 'Create catalog card' }).focus()
       await page.keyboard.press('Enter')
       await expect(page.getByRole('heading', { name: 'Import complete' })).toBeFocused()
       await page.getByRole('link', { name: 'View shared history' }).click()
@@ -900,7 +951,7 @@ test('keeps a long series review compact and opens seasons with the keyboard', a
   await page.getByRole('button', { name: 'Review import' }).press('Enter')
   await expect(page.getByRole('heading', { name: 'Episodes (40)' })).toBeVisible()
   await page.evaluate(() => { globalThis.scrollTo(0, 0) })
-  await expect(page.getByRole('button', { name: 'Confirm import' })).toBeInViewport()
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeInViewport()
   await expect(page.getByText('Pilot', { exact: true })).not.toBeVisible()
   await page.locator('summary').filter({ hasText: 'Season 1' }).focus()
   await page.keyboard.press('Enter')
@@ -909,4 +960,264 @@ test('keeps a long series review compact and opens seasons with the keyboard', a
   await page.keyboard.press('Enter')
   await expect(page.getByText('Pilot', { exact: true })).not.toBeVisible()
   await expectNoHorizontalOverflow(page)
+})
+
+test('selects an existing card with the keyboard and records an update in history', async ({ page, context }) => {
+  await asOperator(context)
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await reviewMovie(page)
+
+  const matches = page.getByRole('region', {
+    name: 'Catalog matches',
+    exact: true
+  })
+
+  const useCard = matches.getByRole('button', { name: 'Use this card' })
+  const originalUrl = page.url()
+  const targetRequest = page.waitForRequest(`**/api/catalog/imports/previews/${PREVIEW_ID}/target`)
+
+  await expect(matches.getByRole('link', { name: 'The Return' })).toHaveAttribute('href', `/titles/${CATALOG_ID}`)
+  await expect(matches).toContainText('2003 · Movie')
+  await useCard.focus()
+  await page.keyboard.press('Enter')
+
+  const request = await targetRequest
+
+  expect(request.postDataJSON()).toStrictEqual({
+    kind: 'existing',
+    catalogItemId: CATALOG_ID
+  })
+
+  await expect(page).toHaveURL(`/manage/imports/previews/${TARGET_PREVIEW_ID}`)
+
+  await expect(page.getByRole('heading', {
+    name: 'Confirm import',
+    exact: true
+  })).toBeFocused()
+
+  await expect(page.getByText('Selected for update')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Update catalog card' })).toBeEnabled()
+  await page.locator('summary').filter({ hasText: 'Kept as they are' }).press('Enter')
+
+  const keptTitle = page.getByRole('listitem').filter({ has: page.getByText('Keep manual edit', { exact: true }) })
+  const currentValue = keptTitle.locator('dl > div').filter({ hasText: /^Current/u }).locator('dd')
+  const savedSourceValue = keptTitle.locator('dl > div').filter({ hasText: /^Saved source/u }).locator('dd')
+
+  await expect(keptTitle.getByText('Keep manual edit', { exact: true })).toBeVisible()
+  await expect(keptTitle.locator('dt')).toHaveText(['Current', 'Saved source'])
+  await expect(currentValue).toHaveText('Manual catalog title')
+  await expect(savedSourceValue).toHaveText('The Return')
+  await expect(page.getByRole('heading', { name: 'Source links to add' })).toBeVisible()
+  await page.getByRole('button', { name: 'Update catalog card' }).press('Enter')
+  await expect(page.getByRole('heading', { name: 'Import complete' })).toBeFocused()
+  await expect(page.getByText('Updated catalog card ·')).toBeVisible()
+
+  await expect(page.getByRole('link', {
+    name: 'Open catalog card',
+    exact: true
+  })).toHaveAttribute('href', `/titles/${CATALOG_ID}`)
+
+  await page.getByRole('link', { name: 'View shared history' }).click()
+  await expect(page.getByRole('list', { name: 'Import operations' })).toContainText('Updated')
+  await expect(page.getByRole('list', { name: 'Import operations' }).getByRole('link', { name: 'Open catalog card' })).toHaveAttribute('href', `/titles/${CATALOG_ID}`)
+  await page.goto(originalUrl)
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeDisabled()
+  await expect(page.getByText('Selected for update')).toHaveCount(0)
+})
+
+test('explains source errors while a matching card still needs a target choice', async ({ page, context }) => {
+  await asOperator(context)
+  await addCookie(context, 'import_source_error', '1')
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await reviewMovie(page)
+  await expect(page.getByText('Choose a catalog card to see planned changes.')).toBeVisible()
+  await expect(page.getByText('Choose a catalog match or confirm a separate card before importing.')).toBeVisible()
+  await expect(page.getByText('The source returned invalid or incomplete data.')).toBeVisible()
+  await expect(page.getByText('Blocked', { exact: true })).toBeVisible()
+  await expect(page.getByText('This preview is blocked or expired. Create a new preview before importing.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Use this card' }).click()
+  await expect(page).toHaveURL(`/manage/imports/previews/${TARGET_PREVIEW_ID}`)
+  await expect(page.getByText('The source returned invalid or incomplete data.')).toBeVisible()
+  await expect(page.getByText('Blocked', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Update catalog card' })).toHaveCount(0)
+})
+
+test('keeps a series target preview blocked when an episode conflicts with the catalog', async ({ page, context }) => {
+  await asOperator(context)
+  await addCookie(context, 'import_series_candidate', '1')
+  await addCookie(context, 'import_episode_conflict', '1')
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await page.getByRole('radio', { name: 'Series' }).check()
+  await page.getByRole('searchbox', { name: 'Title name' }).fill('The Bridge')
+  await page.getByRole('button', { name: 'Search titles' }).click()
+  await page.getByRole('list', { name: 'TMDB search results' }).getByRole('button', { name: 'Use this' }).click()
+  await page.getByRole('list', { name: 'TVMaze show candidates' }).getByRole('listitem').filter({ hasText: 'TVMaze #100' }).getByRole('button', { name: 'Use this' }).click()
+  await page.getByRole('button', { name: 'Review import' }).click()
+  await expect(page).toHaveURL(`/manage/imports/previews/${PREVIEW_ID}`)
+  await expect(page.getByText('Choose a catalog match or confirm a separate card before importing.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeDisabled()
+
+  const targetResponse = page.waitForResponse(`**/api/catalog/imports/previews/${PREVIEW_ID}/target`)
+
+  await page.getByRole('button', { name: 'Use this card' }).click()
+
+  const response = await targetResponse
+
+  expect(response.status()).toBe(201)
+  expect(response.request().method()).toBe('POST')
+  await expect(page).toHaveURL(`/manage/imports/previews/${TARGET_PREVIEW_ID}`)
+  await expect(page.getByText('Episode coordinates belong to a different local episode.')).toBeVisible()
+  await expect(page.getByText('Blocked', { exact: true })).toBeVisible()
+  await expect(page.getByText('This preview is blocked or expired. Create a new preview before importing.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Update catalog card' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Create a new preview' })).toBeVisible()
+})
+
+const targetFailureTest = test.extend({ expectedHttpErrors: { values: [{
+  pathname: `/api/catalog/imports/previews/${PREVIEW_ID}/target`,
+  status: 503
+}] } })
+
+// oxlint-disable-next-line vitest/require-hook -- A Playwright test with an expected service failure.
+targetFailureTest('keeps target controls usable after failure and clears the previous result when switching preview URLs', async ({ page, context }) => {
+  await asOperator(context)
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await reviewMovie(page)
+
+  await page.route(`**/api/catalog/imports/previews/${PREVIEW_ID}/target`, async route => {
+    await route.fulfill({
+      status: 503,
+      json: { error: { code: 'SERVICE_UNAVAILABLE' } }
+    })
+  }, { times: 1 })
+
+  const useCard = page.getByRole('button', { name: 'Use this card' })
+
+  await useCard.press('Enter')
+  await expect(page.getByRole('alert').filter({ hasText: 'Try choosing the card again.' })).toBeVisible()
+  await expect(useCard).toBeEnabled()
+  await expect(useCard).toBeFocused()
+  await expect(page).toHaveURL(`/manage/imports/previews/${PREVIEW_ID}`)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(`/manage/imports/previews/${TARGET_PREVIEW_ID}`)
+  await page.getByRole('button', { name: 'Update catalog card' }).click()
+  await expect(page.getByRole('heading', { name: 'Import complete' })).toBeVisible()
+  await page.goBack()
+  await expect(page).toHaveURL(`/manage/imports/previews/${PREVIEW_ID}`)
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeDisabled()
+  await expect(page.getByRole('heading', { name: 'Import complete' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Create a separate card' }).click()
+  await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Create catalog card' }).click()
+
+  await expect(page.getByRole('link', {
+    name: 'Open catalog card',
+    exact: true
+  })).toHaveAttribute('href', `/titles/${NEW_CATALOG_ID}`)
+})
+
+const targetDeniedTest = test.extend({ expectedHttpErrors: { values: [{
+  pathname: `/api/catalog/imports/previews/${PREVIEW_ID}/target`,
+  status: 403
+}] } })
+
+// oxlint-disable-next-line vitest/require-hook -- A Playwright test with an expected access failure.
+targetDeniedTest('clears saved source data when access is revoked during target selection', async ({ page, context }) => {
+  await asOperator(context)
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await reviewMovie(page)
+  await expect(page.getByRole('heading', { name: 'Catalog matches' })).toBeVisible()
+  await context.clearCookies({ name: 'catalog_manager' })
+  await page.getByRole('button', { name: 'Use this card' }).click()
+  await expect(page.getByRole('heading', { name: 'Access denied' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Catalog matches' })).toHaveCount(0)
+  await expect(page.getByText('Read-only source data')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Use this card' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Update catalog card' })).toHaveCount(0)
+})
+
+test('cancels an abandoned target request and ignores its late preview', async ({ page, context }) => {
+  await asOperator(context)
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await reviewMovie(page)
+
+  const pending = await holdFirstResponse(page, `**/api/catalog/imports/previews/${PREVIEW_ID}/target`)
+
+  try {
+    await page.getByRole('button', { name: 'Use this card' }).click()
+
+    const request = await pending.started
+    const failure = observeRequestFailure(page, request)
+
+    await expect(page.getByText('Saving a new preview for this choice…')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create a separate card' })).toBeDisabled()
+
+    await page.getByRole('link', {
+      name: 'Change selection',
+      exact: true
+    }).click()
+
+    await expect(page).toHaveURL('/manage/imports')
+    await expect.poll(failure).toBe('net::ERR_ABORTED')
+  } finally {
+    await pending.release()
+  }
+
+  await expect(page).toHaveURL('/manage/imports')
+  await expect(page.getByRole('heading', { name: 'Review import' })).toHaveCount(0)
+})
+
+test('cancels confirmation when returning to the original preview and discards the old outcome', async ({ page, context }) => {
+  await asOperator(context)
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await reviewMovie(page)
+  await chooseSeparateCard(page)
+
+  const pending = await holdFirstResponse(page, `**/api/catalog/imports/previews/${TARGET_PREVIEW_ID}/apply`)
+
+  try {
+    await page.getByRole('button', { name: 'Create catalog card' }).click()
+
+    const request = await pending.started
+    const failure = observeRequestFailure(page, request)
+
+    await page.goBack()
+    await expect(page).toHaveURL(`/manage/imports/previews/${PREVIEW_ID}`)
+    await expect.poll(failure).toBe('net::ERR_ABORTED')
+    await expect(page.getByRole('button', { name: 'Create catalog card' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Use this card' })).toBeEnabled()
+  } finally {
+    await pending.release()
+  }
+
+  await expect(page.getByRole('heading', { name: 'Import complete' })).toHaveCount(0)
+  await expect(page.getByText('Selected for update')).toHaveCount(0)
+})
+
+test('locks a source-linked card and shows its saved source IDs', async ({ page, context }) => {
+  await asOperator(context)
+  await addCookie(context, 'import_exact', '1')
+  await page.goto('/manage/imports')
+  await waitForHydration(page)
+  await reviewMovie(page)
+
+  const matches = page.getByRole('region', {
+    name: 'Catalog matches',
+    exact: true
+  })
+
+  await expect(matches).toContainText('Linked by source ID')
+  await expect(matches).toContainText('TMDB movie #603')
+  await expect(matches.getByRole('link', { name: 'The Return' })).toHaveAttribute('href', `/titles/${CATALOG_ID}`)
+  await expect(page.getByRole('button', { name: 'Use this card' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create a separate card' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Update catalog card' })).toBeEnabled()
 })

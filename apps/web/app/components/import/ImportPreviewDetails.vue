@@ -11,34 +11,47 @@
       </details>
     </section>
 
-    <section :id="matchesId" :class="$style.section" :aria-labelledby="matchesHeadingId">
+    <section :id="matchesId" :class="$style.section" :aria-labelledby="matchesHeadingId" :aria-busy="selectingTarget">
       <h2 :id="matchesHeadingId" :class="$style.heading">Catalog matches</h2>
       <p v-if="hasNoMatches" :class="$style.meta">No catalog matches found.</p>
       <ul v-else :class="$style.matches">
-        <li v-for="match in preview.matches" :key="match.id" :class="$style.match">
-          <div>
-            <p :class="$style.meta">{{ matchLabel(match) }}</p>
-            <NuxtLink :class="$style.matchTitle" :to="matchLocation(match)">{{ match.title }}</NuxtLink>
-            <p :class="$style.meta">{{ matchMetadata(match) }}</p>
+        <li v-for="match in matches" :key="match.id" :class="$style.match">
+          <div :class="$style.matchInfo">
+            <p :class="$style.meta">{{ match.label }}</p>
+            <NuxtLink :class="$style.matchTitle" :to="match.location">{{ match.title }}</NuxtLink>
+            <p :class="$style.meta">{{ match.metadata }}</p>
+            <p :class="$style.meta">{{ match.sourcesLabel }}</p>
+            <p v-if="match.selected" :class="$style.selected">Selected for update</p>
           </div>
-          <Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-up-right-01" />
+          <AppButton v-if="canChooseTarget" :disabled="targetControlsDisabled || match.selected" variant="secondary" @click="chooseExisting(match.id, $event)">Use this card</AppButton>
         </li>
       </ul>
-      <p v-if="hasPossibleMatches" :class="$style.meta">Name matches are hints. If a match is the same title, stop here to avoid a duplicate. Linking an unlinked card is not available yet.</p>
+      <p v-if="canChooseTarget" :class="$style.meta">Choose the same title above. If these are different works, create a separate card.</p>
+      <AppButton v-if="canChooseTarget" :disabled="targetControlsDisabled || newTargetSelected" variant="secondary" @click="chooseNew($event)">Create a separate card</AppButton>
+      <p v-if="newTargetSelected" :class="$style.meta">A separate catalog card is selected.</p>
+      <p v-if="selectingTarget" :class="$style.meta" role="status">Saving a new preview for this choice…</p>
+      <AppMessage v-if="targetError" role="alert" tone="danger">{{ targetError }}</AppMessage>
     </section>
 
     <section :class="$style.section" :aria-labelledby="changesHeadingId">
       <h2 :id="changesHeadingId" :class="$style.heading">Planned changes</h2>
-      <p v-if="hasNoChanges" :class="$style.meta">No field changes are planned.</p>
-      <details v-for="group in changeGroups" :key="group.label" :class="$style.disclosure" :open="group.open">
-        <summary :class="$style.summary"><span>{{ group.label }}</span><span :class="$style.meta">{{ countLabel(group.changes.length, 'field') }}</span></summary>
-        <ul :class="$style.changes">
-          <li v-for="change in group.changes" :key="change.key" :class="$style.change">
-            <div :class="$style.changeHeading"><h3 :class="$style.fieldName">{{ change.fieldLabel }}</h3><AppStatusChip :tone="change.tone">{{ change.actionLabel }}</AppStatusChip></div>
-            <dl :class="$style.values"><div><dt>Current</dt><dd>{{ change.before }}</dd></div><div><dt>Saved source</dt><dd>{{ change.sourceValue }}</dd></div></dl>
-          </li>
-        </ul>
-      </details>
+      <div v-if="hasNewSourceLinks" :class="$style.section">
+        <h3 :class="$style.fieldName">Source links to add</h3>
+        <ul :class="$style.sourceLinks"><li v-for="source in newSourceLinks" :key="source">{{ source }}</li></ul>
+      </div>
+      <p v-if="targetUnresolved" :class="$style.meta">Choose a catalog card to see planned changes.</p>
+      <template v-else>
+        <p v-if="hasNoChanges" :class="$style.meta">No field changes are planned.</p>
+        <details v-for="group in changeGroups" :key="group.label" :class="$style.disclosure" :open="group.open">
+          <summary :class="$style.summary"><span>{{ group.label }}</span><span :class="$style.meta">{{ countLabel(group.changes.length, 'field') }}</span></summary>
+          <ul :class="$style.changes">
+            <li v-for="change in group.changes" :key="change.key" :class="$style.change">
+              <div :class="$style.changeHeading"><h3 :class="$style.fieldName">{{ change.fieldLabel }}</h3><AppStatusChip :tone="change.tone">{{ change.actionLabel }}</AppStatusChip></div>
+              <dl :class="$style.values"><div><dt>Current</dt><dd>{{ change.before }}</dd></div><div><dt>Saved source</dt><dd>{{ change.sourceValue }}</dd></div></dl>
+            </li>
+          </ul>
+        </details>
+      </template>
     </section>
 
     <section v-if="hasEpisodes" :class="$style.section" :aria-labelledby="episodesHeadingId">
@@ -58,9 +71,10 @@
 </template>
 
 <script lang="ts" setup>
-  import { Icon } from '#components'
-  import type { ImportCatalogMatch, ImportChange, ImportEpisode, ImportPreviewView } from '@tv/shared/catalog-import'
+  import type { ImportChange, ImportEpisode, ImportPreviewView, ImportTargetChoice } from '@tv/shared/catalog-import'
   import { computed, useId } from 'vue'
+  import AppButton from '~/components/ui/AppButton.vue'
+  import AppMessage from '~/components/ui/AppMessage.vue'
   import AppStatusChip, { type StatusChipTone } from '~/components/ui/AppStatusChip.vue'
 
   interface ChangeRow {
@@ -75,17 +89,75 @@
   interface Props {
     preview: ImportPreviewView;
     matchesId: string;
+    selectingTarget: boolean;
+    targetControlsDisabled: boolean;
+    targetError: string;
+  }
+
+  interface Emits {
+    chooseTarget: [target: ImportTargetChoice, trigger: HTMLButtonElement];
   }
 
   const { preview } = defineProps<Props>()
+  const emit = defineEmits<Emits>()
   const matchesHeadingId = useId()
   const translationsHeadingId = useId()
   const episodesHeadingId = useId()
   const changesHeadingId = useId()
-  const hasNoMatches = computed(() => preview.matches.length === 0)
-  const hasPossibleMatches = computed(() => preview.data.additions.createItem && preview.matches.some(match => match.kind === 'possible_title'))
+  const hasNoMatches = computed(() => preview.data.candidates.length === 0)
+  const canChooseTarget = computed(() => preview.data.candidates.length > 0 && !preview.data.candidates.some(match => match.kind === 'exact_source'))
+  const newTargetSelected = computed(() => preview.data.target.kind === 'new' && canChooseTarget.value)
+  const targetUnresolved = computed(() => preview.data.target.kind === 'unresolved')
+
+  const matches = computed(() => {
+    const rows = preview.data.candidates.map(match => {
+      const label = match.kind === 'exact_source' ? 'Linked by source ID' : 'Possible name match'
+      const location = `/titles/${match.id}`
+      const year = match.year ?? 'Year unknown'
+      const type = match.type === 'movie' ? 'Movie' : 'Series'
+      const metadata = `${year} · ${type}`
+
+      const sourceLabels = match.sources.map(source => {
+        const provider = source.provider === 'tmdb' ? 'TMDB' : 'TVMaze'
+        const sourceLabel = `${provider} ${source.entityType} #${source.externalId}`
+
+        return sourceLabel
+      })
+
+      const sourcesLabel = sourceLabels.join(' · ') || 'No linked sources'
+      const selected = preview.data.target.kind === 'existing' && preview.data.target.catalogItemId === match.id
+
+      return {
+        id: match.id,
+        title: match.title,
+        label,
+        location,
+        metadata,
+        sourcesLabel,
+        selected
+      }
+    })
+
+    return rows
+  })
+
   const hasEpisodes = computed(() => preview.data.episodes.length > 0)
   const episodesHeading = computed(() => `Episodes (${preview.data.episodes.length})`)
+
+  const newSourceLinks = computed(() => {
+    const titleLinks = preview.data.additions.sourceLinks.filter(source => source.entityType !== 'episode')
+
+    const labels = titleLinks.map(source => {
+      const provider = source.provider === 'tmdb' ? 'TMDB' : 'TVMaze'
+      const label = `${provider} ${source.entityType} #${source.externalId}`
+
+      return label
+    })
+
+    return labels
+  })
+
+  const hasNewSourceLinks = computed(() => preview.data.target.kind !== 'unresolved' && newSourceLinks.value.length > 0)
   const hasNoChanges = computed(() => preview.data.changes.length === 0)
 
   const seasons = computed(() => {
@@ -109,6 +181,25 @@
     return groupedSeasons
   })
 
+  function chooseExisting(catalogItemId: string, event: MouseEvent): void {
+    const trigger = event.currentTarget
+
+    if (!(trigger instanceof globalThis.HTMLButtonElement)) {return}
+
+    emit('chooseTarget', {
+      kind: 'existing',
+      catalogItemId
+    }, trigger)
+  }
+
+  function chooseNew(event: MouseEvent): void {
+    const trigger = event.currentTarget
+
+    if (!(trigger instanceof globalThis.HTMLButtonElement)) {return}
+
+    emit('chooseTarget', { kind: 'new' }, trigger)
+  }
+
   function countLabel(count: number, noun: string): string {
     const label = count === 1 ? noun : `${noun}s`
     const formatted = `${count} ${label}`
@@ -118,26 +209,6 @@
 
   function availableText(value: string | null): string {
     return value ?? 'Not available'
-  }
-
-  function matchLabel(match: ImportCatalogMatch): string {
-    const label = match.kind === 'exact_source' ? 'Linked by source ID' : 'Possible name match'
-
-    return label
-  }
-
-  function matchLocation(match: ImportCatalogMatch): string {
-    const location = `/titles/${match.id}`
-
-    return location
-  }
-
-  function matchMetadata(match: ImportCatalogMatch): string {
-    const year = match.year ?? 'Year unknown'
-    const type = match.type === 'movie' ? 'Movie' : 'Series'
-    const metadata = `${year} · ${type}`
-
-    return metadata
   }
 
   function fieldLabel(change: ImportChange): string {
@@ -254,9 +325,11 @@
     .section { scroll-margin-block-start: var(--space-6); display: grid; gap: var(--space-4); min-inline-size: 0; }
     .heading { font-size: 1.375rem; line-height: 1.3; font-weight: 600; }
     .meta { color: var(--color-text-secondary); font-size: .875rem; font-weight: 400; }
+    .sourceLinks { padding-inline-start: var(--space-5); font-size: .875rem; }
     .matches { display: grid; gap: var(--space-3); padding: 0; list-style: none; }
-    .match { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
-    .match :global(svg) { inline-size: 1.25rem; block-size: 1.25rem; flex-shrink: 0; color: var(--color-text-secondary); }
+    .match { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+    .matchInfo { min-inline-size: 0; flex: 1 1 12rem; }
+    .selected { font-size: .875rem; font-weight: 600; }
     .matchTitle { display: inline-block; padding-block: var(--space-1); color: var(--color-text-primary); font-weight: 600; text-underline-offset: .2em; }
     .disclosure { min-inline-size: 0; border-block-end: 1px solid var(--color-border); }
     .summary { padding-block: var(--space-3); cursor: pointer; font-weight: 600; }
