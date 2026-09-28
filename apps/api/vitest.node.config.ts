@@ -9,6 +9,7 @@ export default defineConfig({
 
     exclude: [
       'src/__tests__/index.test.ts',
+      'src/__tests__/scheduled.test.ts',
       'src/**/*.integration.test.ts'
     ]
   }

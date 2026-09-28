@@ -9,10 +9,9 @@
 - Agents may start local development servers when needed. Before handing work back, stop every long-running process you started for the task, including its child processes. Then confirm that all ports used by those processes are free.
 - Keep a process running only when the user asks. Do not stop a process that the user started or that was already running before the task without the user's approval.
 
-## UI implementation
+## Web application
 
-- Inspect the relevant images in `apps/web/designs` and read `apps/web/DESIGN.md` before changing UI, styling, themes, or responsive behavior.
-- The images are the visual source of truth. Follow their composition and controls in each theme and breakpoint; update conflicting rules in `DESIGN.md`. Keep accessibility and delivered product behavior, and omit controls for features that are not implemented.
+- For work in `apps/web`, read and follow [apps/web/AGENTS.md](apps/web/AGENTS.md).
 
 ## Verification
 

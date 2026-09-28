@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { createAuthApp } from './auth/routes.ts'
 import { createCatalogApp } from './catalog/routes.ts'
-import { scheduled } from './catalog/import/scheduled.ts'
+import { scheduled } from './scheduled.ts'
 
 const app = new Hono<{ Bindings: CloudflareBindings }>()
 const authApp = createAuthApp()
