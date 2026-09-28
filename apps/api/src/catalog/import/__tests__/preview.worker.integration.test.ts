@@ -10,7 +10,7 @@ import { largePosterPng, movieResponse, smallPosterPng } from '../../../testing/
 import { preparePoster, sha256 } from '../poster.ts'
 import { applyImportPreview } from '../apply-service.ts'
 import { hostedPosterId } from '../hosted-poster.ts'
-import { scheduled } from '../scheduled.ts'
+import worker from '../../../index.ts'
 import { createImportPreview, openImportPreview, type ImportPreviewResult, type ImportSession } from '../service.ts'
 
 const client = new Client({ connectionString: env.DATABASE.connectionString })
@@ -394,7 +394,7 @@ describe('import preview Worker runtime', () => {
     expect(JSON.stringify(log.mock.calls)).toContain('HTTP 404')
   })
 
-  it('runs the scheduled cleanup against the Worker database without removing a live preview', async () => {
+  it('runs both cleanups through the Worker entrypoint without removing live records', async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json(movieResponse()))
       .mockResolvedValueOnce(Response.json(movieResponse()))
@@ -431,10 +431,26 @@ describe('import preview Worker runtime', () => {
       noRetry: vi.fn<() => void>()
     }
 
-    await scheduled(controller, env)
+    const expiredHash = randomUUID().replaceAll('-', '').padStart(64, '0')
+    const liveHash = randomUUID().replaceAll('-', '').padStart(64, '0')
+    const tokenHashes = [expiredHash, liveHash]
 
-    const rows = await client.query<{ id: string }>('SELECT id FROM catalog_import_previews WHERE operator_id = $1', [user.id])
+    try {
+      await client.query(`
+        INSERT INTO email_verification_tokens (token_hash, email, redirect_to, expires_at)
+        VALUES ($1, 'scheduled@example.com', '/', now() - interval '1 hour'),
+          ($2, 'scheduled@example.com', '/', now() + interval '1 hour')
+      `, tokenHashes)
 
-    expect(rows.rows).toStrictEqual([{ id: live.preview.id }])
+      await worker.scheduled(controller, env)
+
+      const rows = await client.query<{ id: string }>('SELECT id FROM catalog_import_previews WHERE operator_id = $1', [user.id])
+      const tokens = await client.query('SELECT token_hash FROM email_verification_tokens WHERE token_hash = ANY($1::text[])', [tokenHashes])
+
+      expect(rows.rows).toStrictEqual([{ id: live.preview.id }])
+      expect(tokens.rows).toStrictEqual([{ token_hash: liveHash }])
+    } finally {
+      await client.query('DELETE FROM email_verification_tokens WHERE token_hash = ANY($1::text[])', [tokenHashes])
+    }
   })
 })

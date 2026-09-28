@@ -3,6 +3,36 @@ import { emailVerificationTokens, passwordCredentials, sessions, users } from '@
 import { and, eq, gt, lte, sql } from 'drizzle-orm'
 import type { AuthUser } from './types.ts'
 
+const CLEANUP_BATCH_SIZE = 100
+
+async function deleteExpiredVerificationTokens(
+  database: Database,
+  now: Date
+): Promise<number> {
+  let deleted = 0
+  let batchDeleted = CLEANUP_BATCH_SIZE
+
+  while (batchDeleted === CLEANUP_BATCH_SIZE) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- Commit each bounded batch before selecting the next one.
+    const rows = await database.execute(sql`
+      WITH expired AS (
+        SELECT ${emailVerificationTokens.tokenHash} FROM ${emailVerificationTokens}
+        WHERE ${lte(emailVerificationTokens.expiresAt, now)}
+        ORDER BY ${emailVerificationTokens.expiresAt}, ${emailVerificationTokens.tokenHash}
+        LIMIT ${CLEANUP_BATCH_SIZE} FOR UPDATE SKIP LOCKED
+      )
+      DELETE FROM ${emailVerificationTokens} USING expired
+      WHERE ${emailVerificationTokens.tokenHash} = expired.token_hash
+      RETURNING 1
+    `)
+
+    batchDeleted = rows.rows.length
+    deleted += batchDeleted
+  }
+
+  return deleted
+}
+
 interface PasswordCredential {
   passwordHash: string;
   user: AuthUser;
@@ -276,6 +306,7 @@ export type { PasswordCredential }
 export {
   completeRegistration,
   createSession,
+  deleteExpiredVerificationTokens,
   deleteVerificationToken,
   deleteSession,
   findPasswordCredential,

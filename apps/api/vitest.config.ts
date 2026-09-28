@@ -59,7 +59,8 @@ export default defineConfig({
     },
 
     include: [
-      'src/__tests__/index.test.ts'
+      'src/__tests__/index.test.ts',
+      'src/__tests__/scheduled.test.ts'
     ]
   }
 })
