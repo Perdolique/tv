@@ -638,6 +638,50 @@ function getCookieValue(request: Request, name: string): string | undefined {
   return cookie?.slice(prefix.length)
 }
 
+async function handleCatalogRating(request: Request, url: URL): Promise<Response> {
+  if (!hasAuthenticatedCatalogSession(request)) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401)
+  }
+
+  const id = url.pathname.split('/').at(4)
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
+  const cookieName = `tv_rating_${account}_${item.id}`
+
+  if (request.method === 'DELETE') {
+    return json({ score: null }, 200, { 'Set-Cookie': `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax` })
+  }
+
+  if (request.method === 'PUT') {
+    const input: unknown = await request.json()
+
+    if (!isRecord(input) || typeof input.score !== 'number' || !Number.isInteger(input.score) || input.score < 1 || input.score > 10) {
+      return json({ error: {
+        code: 'INVALID_REQUEST',
+        message: 'Choose a score from 1 to 10.'
+      } }, 400)
+    }
+
+    return json({ score: input.score }, 200, { 'Set-Cookie': `${cookieName}=${input.score}; Path=/; SameSite=Lax` })
+  }
+
+  const value = getCookieValue(request, cookieName)
+  const score = value === undefined ? null : Number(value)
+
+  return json({ score })
+}
+
 function getWatchedCookieName(request: Request): string {
   return hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
     ? LONG_EMAIL_WATCHED_COOKIE_NAME
@@ -1083,6 +1127,10 @@ export default {
       && url.pathname.endsWith('/watched')
     ) {
       return handleCatalogWatched(request, url)
+    }
+
+    if (['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating')) {
+      return handleCatalogRating(request, url)
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/')) {

@@ -15,15 +15,22 @@
         <AppMessage role="alert" tone="danger">The title is temporarily unavailable. Try again.</AppMessage>
         <AppButton ref="retryButton" @click="retry">Try again</AppButton>
       </section>
-      <article v-else-if="item" :class="$style.details">
+      <article v-else-if="item" :class="$style.details" :data-type="item.type">
         <CatalogPoster :key="posterKey" :poster-url="item.posterUrl" :title="item.title" />
         <div :class="$style.information">
           <p :class="$style.metadata">{{ metadata }}</p>
           <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
           <p v-if="showOriginalTitle" :class="$style.originalTitle" :lang="item.originalTitleLocale">{{ item.originalTitle }}</p>
           <div :class="$style.personalActions">
+            <section :class="$style.personalAction" aria-label="Rating action">
+              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="primary" :to="signInLocation">Rate</NuxtLink>
+              <AppButton v-else ref="ratingButton" :class="$style.actionButton" :disabled="!canRate" :aria-controls="ratingPanelId" :aria-expanded="isRatingEditorOpen" @click="openRating">
+                <Icon aria-hidden="true" mode="svg" name="hugeicons:star" />
+                Rate
+              </AppButton>
+            </section>
             <section :class="$style.personalAction" aria-label="Follow action">
-              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="primary" :to="signInLocation">Follow</NuxtLink>
+              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Follow</NuxtLink>
               <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Follow unavailable</AppButton>
               <template v-else-if="isAuthenticated && followStatus === 'error'">
                 <AppMessage role="alert" tone="danger">We couldn’t check your follow status. Try again.</AppMessage>
@@ -36,7 +43,7 @@
                   :aria-pressed="followed"
                   :class="$style.actionButton"
                   :disabled="isSaving"
-                  :variant="followed ? 'secondary' : 'primary'"
+                  variant="secondary"
                   @click="toggleFollow"
                 >
                   <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="follow">
@@ -77,12 +84,23 @@
               <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking watched status…</AppButton>
             </section>
           </div>
-          <section v-if="isMovie" :class="$style.overview" :aria-labelledby="overviewId">
-            <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
-            <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
-            <p v-else :class="$style.supportingText">No description available yet.</p>
-          </section>
         </div>
+        <CatalogRating
+          :id="ratingPanelId"
+          ref="ratingPanel"
+          :class="$style.ratingPanel"
+          :account-id="accountId"
+          :catalog-item-id="item.id"
+          :has-session-error="hasSessionError"
+          :is-anonymous="isAnonymous"
+          @focus-action="restoreRatingFocus"
+          @unauthorized="handleRatingUnauthorized"
+        />
+        <section v-if="isMovie" :class="[$style.overview, $style.movieOverview]" :aria-labelledby="overviewId">
+          <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
+          <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
+          <p v-else :class="$style.supportingText">No description available yet.</p>
+        </section>
         <section v-if="isSeries" :class="$style.seriesContent" aria-label="Series details">
           <div :class="$style.tabs" role="tablist" aria-label="Series information">
             <button
@@ -175,6 +193,7 @@
 </template>
 
 <script lang="ts" setup>
+  /* oxlint-disable eslint/max-lines -- The title page coordinates metadata and independent personal actions. */
   import { definePageMeta } from '#app/composables/pages'
   import { navigateTo, useHead, useNuxtApp, useRequestEvent, useResponseHeader, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
@@ -184,6 +203,7 @@
   import AppMessage from '~/components/ui/AppMessage.vue'
   import AppShell from '~/components/app/AppShell.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
+  import CatalogRating from '~/components/catalog/CatalogRating.vue'
   import CatalogEpisodeList from '~/components/catalog/CatalogEpisodeList.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCatalogDetails } from '~/composables/use-catalog-details.ts'
@@ -236,6 +256,11 @@
     watched
   } = useCatalogWatched(watchedCatalogItemId, accountId)
 
+  const ratingPanel = useTemplateRef<InstanceType<typeof CatalogRating>>('ratingPanel')
+  const ratingButton = useTemplateRef('ratingButton')
+  const ratingPanelId = useId()
+  const canRate = computed(() => ratingPanel.value?.canEdit === true)
+  const isRatingEditorOpen = computed(() => ratingPanel.value?.isEditing === true)
   const heading = useTemplateRef('heading')
   const retryButton = useTemplateRef('retryButton')
   const followButton = useTemplateRef('followButton')
@@ -400,6 +425,30 @@
     setResponseStatus(event, status)
   }
 
+  async function openRating(): Promise<void> {
+    if (canRate.value) {
+      await ratingPanel.value?.open()
+    }
+  }
+
+  async function restoreRatingFocus(): Promise<void> {
+    await nextTick()
+
+    if (isAnonymous.value) {
+      heading.value?.focus()
+    } else {
+      ratingButton.value?.focus()
+    }
+  }
+
+  async function handleRatingUnauthorized(reason: 'load' | 'mutation'): Promise<void> {
+    setAnonymous()
+
+    if (reason === 'mutation') {
+      await navigateTo(signInLocation.value, { replace: true })
+    }
+  }
+
   function canRestoreActionFocus(focusOwner: Element | null): boolean {
     const { activeElement } = globalThis.document
 
@@ -560,6 +609,7 @@
 
   @layer components {
     .component {
+      container-type: inline-size;
       max-inline-size: 76rem;
       margin-inline: auto;
       padding: var(--space-6) var(--layout-page-mobile) var(--space-12);
@@ -578,7 +628,8 @@
       gap: var(--space-8);
       > :first-child { max-inline-size: 16rem; }
     }
-    .information { padding-block: var(--space-2); }
+    .information { min-inline-size: 0; padding-block: var(--space-2); }
+    .ratingPanel { grid-column: 1 / -1; }
     .heading {
       margin-block: var(--space-2) var(--space-3);
       font-size: 1.75rem;
@@ -678,6 +729,7 @@
       padding-block-start: var(--space-6);
       border-block-start: 1px solid var(--color-border);
     }
+    .movieOverview { grid-column: 1 / -1; margin-block-start: 0; }
     .seriesContent {
       display: grid;
       grid-column: 1 / -1;
@@ -764,12 +816,23 @@
     }
     @media (width >= 40rem) {
       .component { padding-inline: var(--layout-page-compact); }
-      .details, .loading { grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr); }
       .heading { font-size: 2.25rem; line-height: 1.17; }
     }
     @media (width >= 64rem) {
       .component { padding: var(--space-8) var(--layout-page-wide) var(--space-16); }
+    }
+    @container (width >= 32rem) {
+      .details, .loading { grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr); }
+      .details[data-type='movie'] > :first-child { grid-row: 1 / 3; }
+      .movieOverview { grid-column: 2; grid-row: 2; }
+    }
+    @container (width >= 52rem) {
       .details, .loading { grid-template-columns: 17rem minmax(0, 1fr); gap: var(--space-10); > :first-child { max-inline-size: none; } }
+    }
+    @container (width >= 64rem) {
+      .details { grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr) minmax(17rem, 20rem); }
+      .ratingPanel { grid-column: 3; grid-row: 1 / 3; }
+      .seriesContent { grid-column: 1 / 3; }
     }
   }
 </style>

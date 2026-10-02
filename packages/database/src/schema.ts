@@ -193,6 +193,19 @@ const catalogItemFollows = pgTable('catalog_item_follows', {
     .on(table.userId, table.followedAt.desc())
 ])
 
+// Ratings are current opinions, not viewing records. Their IDs stay stable on updates.
+// Adding future viewing links must leave existing ratings unlinked.
+const catalogItemRatings = pgTable('catalog_item_ratings', {
+  id: uuid().default(sql`uuidv7()`).primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  score: integer().notNull()
+}, (table) => [
+  check('catalog_item_ratings_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
+  uniqueIndex('catalog_item_ratings_user_item_unique').on(table.userId, table.catalogItemId),
+  index('catalog_item_ratings_item_index').on(table.catalogItemId)
+])
+
 const catalogMovieWatches = pgTable('catalog_movie_watches', {
   userId:
     uuid('user_id')
@@ -346,6 +359,7 @@ export {
   catalogImportFields,
   catalogImportPreviews,
   catalogItemFollows,
+  catalogItemRatings,
   catalogItemDescriptions,
   catalogMovieWatches,
   catalogItemTitles,

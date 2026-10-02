@@ -38,6 +38,10 @@ interface CatalogWatchedResponse {
   watched: boolean;
 }
 
+interface CatalogRatingResponse {
+  score: number | null;
+}
+
 interface CatalogEpisode {
   airDate: string | null;
   episodeNumber: number;
@@ -129,6 +133,7 @@ export type {
   CatalogErrorCode,
   CatalogErrorEnvelope,
   CatalogFollowResponse,
+  CatalogRatingResponse,
   CatalogReleaseItem,
   CatalogReleasesResponse,
   CatalogSearchItem,
