@@ -59,7 +59,8 @@ async function readElementBounds(locator: Locator): Promise<ElementBounds> {
 
 async function expectNoHorizontalClipping(page: Page, locator: Locator): Promise<void> {
   const mainOverflow = await page.getByRole('main').evaluate((main) => (
-    main.scrollWidth - main.clientWidth
+    // Backgrounds may fill the reserved scrollbar space, but must stay inside the viewport.
+    main.scrollWidth - globalThis.innerWidth
   ))
 
   const documentOverflow = await page.evaluate(() => (

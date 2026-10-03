@@ -20,7 +20,8 @@ for (const item of [dune, chernobyl]) {
   test(`rates ${item.type}, preserves the score across sessions and removes it`, async ({ context, page }) => {
     const path = `/titles/${item.id}`
     const panel = page.getByRole('region', { name: 'Your rating' })
-    const rate = page.getByRole('button', { name: /^(?:Rate|\d+ \/ 10)$/u })
+    const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
+    const scoreCard = page.getByRole('region', { name: 'Personal score' })
 
     await test.step('save the first score', async () => {
       await page.goto(path)
@@ -39,9 +40,14 @@ for (const item of [dune, chernobyl]) {
         exact: true
       }).click()
 
-      await expect(panel.getByText('7 / 10', { exact: true })).toBeVisible()
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 7 out of 10',
+        exact: true
+      })).toHaveText('Rate')
+
       await expect(rate).toBeFocused()
       await expect(panel.getByRole('status')).toHaveText('Rating saved.')
+      await expect(scoreCard).toContainText('7 out of 10')
     })
 
     await test.step('close without changing the score and save a correction immediately', async () => {
@@ -52,7 +58,11 @@ for (const item of [dune, chernobyl]) {
         exact: true
       }).click()
 
-      await expect(panel.getByText('7 / 10', { exact: true })).toBeVisible()
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 7 out of 10',
+        exact: true
+      })).toHaveText('Rate')
+
       await rate.click()
 
       await expect(panel.getByRole('button', {
@@ -65,12 +75,22 @@ for (const item of [dune, chernobyl]) {
         exact: true
       }).click()
 
-      await expect(panel.getByText('9 / 10', { exact: true })).toBeVisible()
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 9 out of 10',
+        exact: true
+      })).toHaveText('Rate')
+
+      await expect(scoreCard).toContainText('9 out of 10')
     })
 
     await test.step('reload and isolate scores across sessions', async () => {
       await page.reload()
-      await expect(panel.getByText('9 / 10', { exact: true })).toBeVisible()
+
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 9 out of 10',
+        exact: true
+      })).toHaveText('Rate')
+
       await context.clearCookies({ name: 'tv_session' })
       await page.reload()
 
@@ -79,7 +99,12 @@ for (const item of [dune, chernobyl]) {
         exact: true
       })).toBeVisible()
 
-      await expect(panel.getByText('9 / 10', { exact: true })).toHaveCount(0)
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 9 out of 10',
+        exact: true
+      })).toHaveCount(0)
+
+      await expect(scoreCard).toHaveText(/^Your rating\s*—\s*$/u)
 
       await context.addCookies([{
         name: 'tv_session',
@@ -101,7 +126,11 @@ for (const item of [dune, chernobyl]) {
       }])
 
       await page.reload()
-      await expect(panel.getByText('9 / 10', { exact: true })).toBeVisible()
+
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 9 out of 10',
+        exact: true
+      })).toHaveText('Rate')
     })
 
     await test.step('remove the restored account score', async () => {
@@ -114,6 +143,7 @@ for (const item of [dune, chernobyl]) {
       })).toBeVisible()
 
       await expect(rate).toBeFocused()
+      await expect(scoreCard).toHaveText(/^Your rating\s*—\s*$/u)
     })
 
     await expect(page.getByRole('button', {
@@ -123,7 +153,7 @@ for (const item of [dune, chernobyl]) {
   })
 }
 
-for (const [width, nextWidth] of [[400, 640], [1440, 390]] as const) {
+for (const [width, nextWidth, pendingOverflowY] of [[400, 640, 'visible'], [1440, 390, 'hidden']] as const) {
   test(`shows loading and blocks overlapping writes and dismissal at ${width}px`, async ({ page }) => {
     await page.setViewportSize({
       width,
@@ -133,7 +163,7 @@ for (const [width, nextWidth] of [[400, 640], [1440, 390]] as const) {
     const read = Promise.withResolvers<boolean>()
     const write = Promise.withResolvers<boolean>()
     const panel = page.getByRole('region', { name: 'Your rating' })
-    const rate = page.getByRole('button', { name: /^(?:Rate|\d+ \/ 10)$/u })
+    const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
 
     await page.route(ratingRoute, async route => {
       await read.promise
@@ -150,9 +180,9 @@ for (const [width, nextWidth] of [[400, 640], [1440, 390]] as const) {
       await test.step('load the rating without moving the personal actions', async () => {
         await page.goto(titlePath)
         await waitForHydration(page)
-        await expect(panel.getByText('Loading rating…')).toBeVisible()
+        await expect(page.getByRole('region', { name: 'Personal score' })).toContainText('Loading…')
 
-        const ratingAction = panel.getByRole('button', { name: 'Loading rating…' })
+        const ratingAction = panel.getByRole('button', { name: 'Rate, loading rating…' })
 
         const follow = page.getByRole('button', {
           name: 'Follow',
@@ -222,19 +252,25 @@ for (const [width, nextWidth] of [[400, 640], [1440, 390]] as const) {
 
         await expect(panel.getByRole('dialog')).toBeVisible()
         await expect(chosenScore).toBeDisabled()
+        await expect(page.locator('html')).toHaveCSS('overflow-y', pendingOverflowY)
       })
 
       await test.step('finish the write and restore focus and scrolling', async () => {
         write.resolve(true)
-        await expect(panel.getByText('8 / 10', { exact: true })).toBeVisible()
+
+        await expect(panel.getByRole('button', {
+          name: 'Rate, your rating: 8 out of 10',
+          exact: true
+        })).toHaveText('Rate')
+
         await expect(rate).toBeFocused()
         await expect(panel.getByRole('dialog')).toHaveCount(0)
-        await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden')
+        await expect(page.locator('html')).not.toHaveCSS('overflow', 'hidden')
 
         await expect(page.getByRole('button', {
-          name: 'Watched',
+          name: 'Mark as watched',
           exact: true
-        })).toHaveAttribute('aria-pressed', 'false')
+        })).toBeVisible()
       })
     } finally {
       read.resolve(true)

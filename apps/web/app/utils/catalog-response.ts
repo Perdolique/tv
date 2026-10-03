@@ -4,6 +4,7 @@ import type {
   CatalogEpisodesResponse,
   CatalogFollowResponse,
   CatalogRatingResponse,
+  CatalogRatingSummaryResponse,
   CatalogReleasesResponse,
   CatalogSearchResponse,
   CatalogUpcomingReleasesResponse,
@@ -61,6 +62,14 @@ const catalogWatchedResponseSchema = v.strictObject({
 const catalogRatingResponseSchema = v.strictObject({
   score: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10)))
 }) satisfies v.GenericSchema<CatalogRatingResponse>
+
+const catalogRatingSummaryResponseSchema = v.pipe(
+  v.strictObject({
+    averageScore: v.nullable(v.pipe(v.number(), v.finite(), v.minValue(1), v.maxValue(10))),
+    ratingCount: v.pipe(v.number(), v.safeInteger(), v.minValue(0))
+  }),
+  v.check(summary => (summary.ratingCount === 0) === (summary.averageScore === null))
+) satisfies v.GenericSchema<CatalogRatingSummaryResponse>
 
 const catalogWatchlistResponseSchema = v.object({
   items: v.array(v.object({
@@ -162,6 +171,7 @@ export {
   catalogEpisodeWatchesResponseSchema,
   catalogFollowResponseSchema,
   catalogRatingResponseSchema,
+  catalogRatingSummaryResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
   catalogViewingHistoryResponseSchema,

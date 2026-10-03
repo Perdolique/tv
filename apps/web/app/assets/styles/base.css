@@ -1,6 +1,7 @@
 @layer base {
   html {
     min-block-size: 100%;
+    overflow-x: clip;
     background: var(--color-canvas);
     color: var(--color-text-primary);
     font-family: var(--font-sans);
@@ -12,6 +13,7 @@
   }
 
   body {
+    overflow-x: clip;
     font-size: 1rem;
     line-height: 1.5;
     overflow-wrap: anywhere;

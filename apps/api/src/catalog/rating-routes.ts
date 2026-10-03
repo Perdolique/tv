@@ -3,8 +3,14 @@ import { bodyLimit } from 'hono/body-limit'
 import * as v from 'valibot'
 import { validateCatalogItemId } from './details.ts'
 import { CatalogHttpError } from './errors.ts'
-import { findCatalogItemRating, setCatalogItemRating } from './ratings-repository.ts'
-import { withCatalogSession, type CatalogDependencies, type CatalogEnvironment } from './session.ts'
+import { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating } from './ratings-repository.ts'
+
+import {
+  withCatalogDatabase,
+  withCatalogSession,
+  type CatalogDependencies,
+  type CatalogEnvironment
+} from './session.ts'
 
 const ratingBodySchema = v.strictObject({
   score: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10))
@@ -16,6 +22,23 @@ const ratingBodyLimit = bodyLimit({
 })
 
 function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies: CatalogDependencies): void {
+  app.get('/api/catalog/items/:id/rating-summary', async (context) => {
+    const rawId = context.req.param('id')
+    const id = validateCatalogItemId(rawId)
+
+    const summary = await withCatalogDatabase(context, dependencies.connectDatabase, async database => {
+      const result = await findCatalogItemRatingSummary(database, id)
+
+      if (result === null) {
+        throw new CatalogHttpError('NOT_FOUND', 404)
+      }
+
+      return result
+    })
+
+    return context.json(summary)
+  })
+
   app.get('/api/catalog/items/:id/rating', async (context) => {
     const rating = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
       const rawId = context.req.param('id')

@@ -322,7 +322,8 @@ test('keeps slow and missing poster states inside their cards', async ({ page, c
     exact: true
   }).click()
 
-  await expect(page.getByText('Loading poster…')).toBeVisible()
+  await expect(page.getByText('Loading poster…')).toHaveCount(0)
+  await expect(page.getByAltText('Dune poster').locator('..')).toHaveAttribute('aria-busy', 'true')
   await expect(page.getByAltText('Dune poster')).toBeVisible()
   await expect(page.getByText('No poster available')).toHaveCount(3)
 })

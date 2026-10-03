@@ -85,7 +85,12 @@ for (const [width, expectedWidth, expectedAccountDisplay] of [
     const bounds = await navigation.boundingBox()
     const accountEmail = page.getByText('Signed in as')
 
-    expect(bounds?.width).toBe(expectedWidth)
+    // oxlint-disable-next-line vitest/no-conditional-in-test -- Each named viewport has a fixed navigation mode.
+    const navigationWidth = width < 640
+      ? await page.getByRole('banner').evaluate(element => element.getBoundingClientRect().width)
+      : expectedWidth
+
+    expect(bounds?.width).toBe(navigationWidth)
     await expect(accountEmail).toHaveCSS('display', expectedAccountDisplay)
 
     await expect(page.getByRole('link', {

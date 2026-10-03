@@ -185,6 +185,8 @@
       .component[data-focused='true'] :is(.accountBar, .mobileNavigation) { display: none; }
     }
     .accountBar, .guestBar {
+      position: relative;
+      isolation: isolate;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
@@ -193,6 +195,16 @@
       border-block-end: 1px solid var(--color-border);
       background: var(--color-surface);
     }
+    .accountBar::before, .guestBar::before, .mobileNavigation::before {
+      position: absolute;
+      inset-inline-start: 0;
+      z-index: -1;
+      inline-size: 100vi;
+      border-block: inherit;
+      background: inherit;
+      content: '';
+    }
+    .accountBar::before, .guestBar::before { inset-block: 0 -1px; }
     .accountBar { gap: var(--space-3); }
     .guestBar { gap: var(--space-4); }
     .wordmark {
@@ -270,7 +282,8 @@
     .mobileNavigation {
       position: fixed;
       inset-block-end: 0;
-      inset-inline: 0;
+      inset-inline-start: 0;
+      inline-size: anchor-size(--app-page inline);
       z-index: 2;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -281,6 +294,7 @@
       background: var(--color-surface);
       box-shadow: var(--shadow-card);
     }
+    .mobileNavigation::before { inset-block: -1px 0; box-shadow: inherit; }
     .desktopNavigation { display: none; }
     .navigationLink {
       display: flex;
@@ -318,6 +332,7 @@
       font-weight: 800;
     }
     @media (width >= 40rem) {
+      .accountBar::before { display: none; }
       .component[data-authenticated='true'] {
         padding-block-end: 0;
         padding-inline-start: var(--layout-sidebar-compact);

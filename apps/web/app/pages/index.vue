@@ -202,6 +202,8 @@
 
   @layer components {
     .component {
+      position: relative;
+      isolation: isolate;
       display: grid;
       place-items: center;
       min-block-size: 100svh;
@@ -209,10 +211,21 @@
       background:
         radial-gradient(circle at top, var(--color-surface-muted), transparent 52%),
         var(--color-canvas);
+      background-size: 100vi 100%;
+    }
+
+    .component::before {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      inline-size: 100vi;
+      background: inherit;
+      content: '';
     }
 
     .component[data-authenticated='true'] {
       display: block;
+      place-items: normal;
       padding: 0;
       background: var(--color-canvas);
     }
@@ -299,6 +312,8 @@
 
     .primaryLink,
     .secondaryLink {
+      display: grid;
+      place-items: center;
       min-block-size: 3.5rem;
       padding: var(--space-3) var(--space-6);
       border-radius: var(--radius-md);

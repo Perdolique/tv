@@ -82,7 +82,12 @@ for (const [width, expectedNavigationWidth] of [[320, 320], [639, 639], [640, 80
     const watchlistLabel = navigation.getByRole('link', { name: 'Watchlist' }).locator('span').last()
     const longTitle = page.getByRole('heading', { name: watchlistItems[1].title })
 
-    expect(await getWidth(navigation)).toBe(expectedNavigationWidth)
+    // oxlint-disable-next-line vitest/no-conditional-in-test -- Each named viewport has a fixed navigation mode.
+    const navigationWidth = width < 640
+      ? await getWidth(page.getByRole('banner'))
+      : expectedNavigationWidth
+
+    expect(await getWidth(navigation)).toBe(navigationWidth)
     expect(await getTextLineCount(watchlistLabel)).toBe(1)
     expect(await getVisibleLineCount(longTitle)).toBeLessThanOrEqual(2)
     await expect(longTitle).toBeVisible()

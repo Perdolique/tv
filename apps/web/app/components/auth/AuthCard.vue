@@ -82,9 +82,21 @@
   @layer components {
     .component {
       position: relative;
+      isolation: isolate;
       min-block-size: 100svh;
       background: var(--color-canvas);
     }
+
+    .component::before, .marketing::before {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      inline-size: 100vi;
+      background: inherit;
+      content: '';
+    }
+
+    .marketing::before { display: none; }
 
     .navigation {
       display: flex;
@@ -228,6 +240,8 @@
       }
 
       .marketing {
+        position: relative;
+        isolation: isolate;
         align-content: center;
         align-self: stretch;
         grid-column: 2;
@@ -238,6 +252,8 @@
         background: var(--color-surface-muted);
         text-align: start;
       }
+
+      .marketing::before { display: block; inline-size: calc(100vi - 100%); }
 
       .featureList {
         display: grid;
