@@ -69,7 +69,11 @@ test.describe('rating failures', () => {
 
       await expect(panel.getByRole('status')).toBeEmpty()
       await page.keyboard.press('Enter')
-      await expect(panel.getByText('7 / 10', { exact: true })).toBeVisible()
+
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 7 out of 10',
+        exact: true
+      })).toHaveText('Rate')
     } finally {
       release()
     }
@@ -77,7 +81,7 @@ test.describe('rating failures', () => {
 
   test('keeps the confirmed score after failed removal and allows retry', async ({ page }) => {
     const panel = page.getByRole('region', { name: 'Your rating' })
-    const rate = page.getByRole('button', { name: /^(?:Rate|\d+ \/ 10)$/u })
+    const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
     const remove = panel.getByRole('button', { name: 'Remove rating' })
 
     await page.goto(titlePath)
@@ -88,7 +92,11 @@ test.describe('rating failures', () => {
       exact: true
     }).click()
 
-    await expect(panel.getByText('7 / 10', { exact: true })).toBeVisible()
+    await expect(panel.getByRole('button', {
+      name: 'Rate, your rating: 7 out of 10',
+      exact: true
+    })).toHaveText('Rate')
+
     await rate.click()
 
     const release = await holdRatingFailure(page)
@@ -100,7 +108,12 @@ test.describe('rating failures', () => {
       release()
       await expect(panel.getByRole('alert')).toContainText('Try again')
       await expect(remove).toBeFocused()
-      await expect(panel.getByText('7 / 10', { exact: true })).toBeVisible()
+
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 7 out of 10',
+        exact: true
+      })).toHaveText('Rate')
+
       await expect(panel.getByRole('status')).toBeEmpty()
       await page.keyboard.press('Enter')
 
@@ -181,7 +194,8 @@ test.describe('rating failures', () => {
       try {
         await retry.focus()
         await page.keyboard.press('Enter')
-        await expect(panel.getByText('Loading rating…')).toBeVisible()
+        await expect(panel.getByRole('button', { name: 'Rate, loading rating…' })).toBeDisabled()
+        await expect(page.getByRole('region', { name: 'Personal score' })).toContainText('Loading…')
         await expect(retry).toHaveCount(0)
         release()
         await expect(panel.getByRole('alert')).toContainText('load your rating')

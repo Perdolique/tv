@@ -1,18 +1,17 @@
 <template>
   <section :class="$style.component" aria-labelledby="episodes-heading">
+    <h2 id="episodes-heading" :class="$style.accessible">Episodes</h2>
     <div :class="$style.header">
-      <div>
-        <h2 id="episodes-heading" :class="$style.heading">Episodes</h2>
-        <p v-if="showWatchedStatus" :class="$style.watchedCount" role="status">{{ watchedStatusLabel }}</p>
-      </div>
+      <h3 v-if="episodes.length > 0" :class="hasSeasonSelector ? $style.accessible : $style.seasonHeading">Season {{ selectedSeason }}</h3>
       <label v-if="hasSeasonSelector" :class="$style.seasonField">
-        <span :class="$style.seasonLabel">Season</span>
+        <span :class="$style.accessible">Season</span>
         <select v-model.number="selectedSeason" :class="$style.seasonSelect">
           <option v-for="seasonNumber in seasonNumbers" :key="seasonNumber" :value="seasonNumber">
             Season {{ seasonNumber }}
           </option>
         </select>
       </label>
+      <p v-if="showWatchedStatus" :class="$style.watchedCount" role="status">{{ watchedStatusLabel }}</p>
     </div>
 
     <div v-if="isEpisodesLoading" :class="$style.loading" aria-busy="true" aria-label="Loading episodes">
@@ -31,43 +30,43 @@
         <AppButton variant="secondary" @click="emit('retryWatched')">Retry watched status</AppButton>
       </div>
 
-      <h3 :class="$style.seasonHeading">Season {{ selectedSeason }}</h3>
       <ul :class="$style.episodeList">
         <li v-for="episode in selectedEpisodes" :key="episode.id" :class="$style.episode">
+          <p :class="$style.episodeNumber"><span :class="$style.accessible">Season {{ episode.seasonNumber }}, </span>E{{ episode.episodeNumber }}</p>
           <div :class="$style.episodeCopy">
-            <p :class="$style.episodeNumber">S{{ episode.seasonNumber }} · E{{ episode.episodeNumber }}</p>
-            <h4 :class="$style.episodeTitle">{{ episodeTitle(episode) }}</h4>
+            <h4 :id="`episode-${episode.id}`" :class="$style.episodeTitle">{{ episodeTitle(episode) }}</h4>
             <p v-if="episode.airDate !== null" :class="$style.airDate">
               <time :datetime="episode.airDate">{{ formatAirDate(episode.airDate) }}</time>
             </p>
           </div>
 
-          <NuxtLink v-if="isAnonymous" :class="$style.signInLink" :to="signInLocation">
-            Sign in to mark watched
+          <NuxtLink v-if="isAnonymous" :class="$style.signInLink" :to="signInLocation" :aria-describedby="`episode-${episode.id}`" aria-label="Sign in to mark watched">
+            <span :class="$style.accessible">Sign in to mark watched</span>
           </NuxtLink>
           <AppButton
             v-else-if="hasSessionError"
             :class="$style.watchedButton"
+            :aria-describedby="`episode-${episode.id}`"
+            aria-label="Watched unavailable"
             disabled
             variant="secondary"
           >
-            Watched unavailable
+            <span :class="$style.accessible">Watched unavailable</span>
           </AppButton>
           <AppButton
             v-else
             :aria-busy="episodeAriaBusy(episode.id)"
+            :aria-describedby="`episode-${episode.id}`"
             :aria-pressed="isEpisodeWatched(episode.id)"
             :class="$style.watchedButton"
             :disabled="isWatchedDisabled"
+            aria-label="Watched"
             variant="secondary"
             @click="emit('toggleWatched', episode.id)"
           >
-            <span aria-hidden="true" :class="$style.watchedIndicator">
-              <Icon :name="episodeWatchedIcon(episode.id)" />
-            </span>
-            Watched
+            <Icon v-if="isEpisodeWatched(episode.id)" aria-hidden="true" mode="svg" name="hugeicons:tick-02" />
           </AppButton>
-          <AppMessage v-if="saveErrorFor(episode.id) !== ''" role="alert" tone="danger">
+          <AppMessage v-if="saveErrorFor(episode.id) !== ''" :class="$style.episodeError" role="alert" tone="danger">
             {{ saveErrorFor(episode.id) }}
           </AppMessage>
         </li>
@@ -182,11 +181,6 @@
     return isBusy || undefined
   }
 
-  function episodeWatchedIcon(episodeId: string): string {
-    const isWatched = isEpisodeWatched(episodeId)
-
-    return isWatched ? 'hugeicons:checkmark-circle-02' : 'hugeicons:circle'
-  }
 </script>
 
 <style module>
@@ -197,15 +191,13 @@
     .header {
       display: flex;
       flex-wrap: wrap;
-      align-items: end;
+      align-items: center;
       justify-content: space-between;
       gap: var(--space-4);
     }
-    .heading { font-size: 1.375rem; font-weight: 600; }
     .watchedCount, .supportingText, .airDate, .credit { color: var(--color-text-secondary); }
-    .watchedCount { margin-block-start: var(--space-1); font-size: 0.875rem; }
+    .watchedCount { font-size: 0.875rem; }
     .seasonField { display: grid; gap: var(--space-1); }
-    .seasonLabel { font-size: 0.875rem; font-weight: 600; }
     .seasonSelect {
       min-block-size: 2.75rem;
       padding-inline: var(--space-3);
@@ -219,46 +211,45 @@
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-3);
     }
+    .episodeList { gap: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); list-style: none; }
     .skeleton {
       min-block-size: 10rem;
       border-radius: var(--radius-md);
       background: var(--color-surface-muted);
     }
     .message, .privateError { display: grid; justify-items: start; gap: var(--space-3); }
-    .seasonHeading { font-size: 1.125rem; font-weight: 600; }
+    .seasonHeading { display: flex; align-items: center; min-block-size: 2.75rem; font-size: 1rem; font-weight: 600; }
     .episode {
       display: grid;
-      align-content: space-between;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
       gap: var(--space-4);
+      min-block-size: 6rem;
       padding: var(--space-4);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: var(--color-surface);
     }
+    .episode + .episode { border-block-start: 1px solid var(--color-border); }
     .episodeCopy { min-inline-size: 0; }
     .episodeNumber {
-      color: var(--color-text-secondary);
-      font-size: 0.875rem;
+      font-size: 1.125rem;
+      font-weight: 600;
       font-variant-numeric: tabular-nums;
     }
-    .episodeTitle { margin-block-start: var(--space-1); font-size: 1rem; font-weight: 600; }
+    .episodeTitle { font-size: 1rem; font-weight: 600; }
     .airDate { margin-block-start: var(--space-2); font-size: 0.875rem; }
-    .watchedButton, .signInLink { min-block-size: 2.75rem; }
+    .watchedButton, .signInLink { inline-size: 2.75rem; min-block-size: 2.75rem; padding: 0; border-radius: var(--radius-sm); }
     .watchedButton[aria-pressed='true'], .watchedButton[aria-pressed='true']:disabled {
       border-color: var(--color-accent);
       background: var(--color-surface-selected);
-      color: var(--color-text-primary);
+      color: var(--color-accent);
     }
-    .watchedIndicator { display: inline-flex; inline-size: 1.25rem; block-size: 1.25rem; color: var(--color-accent); }
+    .episodeError { grid-column: 1 / -1; }
+    .accessible { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     .signInLink {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding-inline: var(--space-3);
       border: 1px solid var(--color-border-strong);
-      border-radius: var(--radius-md);
       color: var(--color-text-primary);
-      font-weight: 600;
       text-align: center;
       text-decoration: none;
     }
@@ -269,6 +260,8 @@
     }
     @media (width >= 40rem) {
       .loading, .episodeList { grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+      .episodeList { gap: var(--space-3); border: 0; background: transparent; }
+      .episode { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
     }
   }
 </style>

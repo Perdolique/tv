@@ -7,6 +7,7 @@ import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 const token = createSessionToken()
 const userId = '79000000-0000-4000-8000-000000000001'
 const otherUserId = '79000000-0000-4000-8000-000000000002'
+const thirdUserId = '79000000-0000-4000-8000-000000000003'
 const cookie = `__Host-tv_session=${token}`
 
 async function withClient<Result>(run: (client: Client) => Promise<Result>): Promise<Result> {
@@ -65,13 +66,25 @@ async function expectScore(response: Response, score: number | null): Promise<vo
   await expect(response.json()).resolves.toStrictEqual({ score })
 }
 
+async function expectSummary(response: Response, averageScore: number | null, ratingCount: number): Promise<void> {
+  expect(response.status).toBe(200)
+  expect(response.headers.get('cache-control')).toBe('no-store')
+
+  const body: unknown = await response.json()
+
+  expect(body).toStrictEqual({
+    averageScore,
+    ratingCount
+  })
+}
+
 describe('catalog rating Worker contract', () => {
   beforeEach(async () => {
     const hash = await hashSessionToken(token)
 
     await withClient(async client => {
-      await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherUserId]])
-      await client.query('INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4)', [userId, 'ratings@example.com', otherUserId, 'other-ratings@example.com'])
+      await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherUserId, thirdUserId]])
+      await client.query('INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4), ($5, $6)', [userId, 'ratings@example.com', otherUserId, 'other-ratings@example.com', thirdUserId, 'third-ratings@example.com'])
       await client.query('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval \'30 days\')', [userId, hash])
     })
   })
@@ -130,6 +143,90 @@ describe('catalog rating Worker contract', () => {
       expect(follows.rows).toHaveLength(1)
       expect(movies.rows).toHaveLength(0)
       expect(episodes.rows).toHaveLength(0)
+    })
+  })
+
+  // oxlint-disable-next-line vitest/expect-expect -- expectSummary asserts the complete HTTP and JSON contract.
+  it.each(['Dead Man', 'Spartacus'])('publicly reads current averages after real writes for %s', async title => {
+    const id = await itemId(title)
+    const summaryUrl = `https://tv-api.test/api/catalog/items/${id}/rating-summary`
+    const anonymous = new Request(summaryUrl)
+    const invalidSession = new Request(summaryUrl, { headers: { Cookie: '__Host-tv_session=invalid' } })
+    const empty = await exports.default.fetch(anonymous)
+
+    await expectSummary(empty, null, 0)
+    await request(id, 'PUT', { input: { score: 6 } })
+
+    const oneVote = await exports.default.fetch(invalidSession)
+
+    await expectSummary(oneVote, 6, 1)
+
+    await withClient(async client => {
+      await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 6), ($3, $2, 9)', [otherUserId, id, thirdUserId])
+    })
+
+    const threeVotesRequest = new Request(summaryUrl)
+    const threeVotes = await exports.default.fetch(threeVotesRequest)
+
+    await expectSummary(threeVotes, 7, 3)
+    await request(id, 'PUT', { input: { score: 7 } })
+    await request(id, 'PUT', { input: { score: 7 } })
+
+    const correctedRequest = new Request(summaryUrl)
+    const corrected = await exports.default.fetch(correctedRequest)
+
+    await expectSummary(corrected, 22 / 3, 3)
+    await request(id, 'DELETE')
+
+    const removedRequest = new Request(summaryUrl)
+    const removed = await exports.default.fetch(removedRequest)
+
+    await expectSummary(removed, 7.5, 2)
+
+    await withClient(async client => {
+      await client.query('DELETE FROM catalog_item_ratings WHERE catalog_item_id = $1', [id])
+    })
+
+    const noVotesRequest = new Request(summaryUrl)
+    const noVotes = await exports.default.fetch(noVotesRequest)
+
+    await expectSummary(noVotes, null, 0)
+  })
+
+  it.each([['invalid', 400], ['79000000-0000-4000-8000-999999999999', 404]])('rejects the public summary target %s', async (id, status) => {
+    const summaryRequest = new Request(`https://tv-api.test/api/catalog/items/${id}/rating-summary`)
+    const response = await exports.default.fetch(summaryRequest)
+
+    expect(response.status).toBe(status)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('returns a safe summary failure and keeps its database diagnostic', async () => {
+    const id = await itemId('Dead Man')
+    const log = vi.spyOn(console, 'error').mockReturnValue()
+
+    await withClient(async client => {
+      await client.query('ALTER TABLE catalog_item_ratings RENAME TO unavailable_test_ratings')
+
+      try {
+        const summaryRequest = new Request(`https://tv-api.test/api/catalog/items/${id}/rating-summary`)
+        const response = await exports.default.fetch(summaryRequest)
+        const body: unknown = await response.json()
+        const loggedCalls = JSON.stringify(log.mock.calls)
+
+        expect(response.status).toBe(503)
+        expect(response.headers.get('cache-control')).toBe('no-store')
+
+        expect(body).toStrictEqual({ error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'The catalog is temporarily unavailable.'
+        } })
+
+        expect(loggedCalls).toContain('catalog_item_ratings')
+        expect(loggedCalls).toContain('requestId')
+      } finally {
+        await client.query('ALTER TABLE unavailable_test_ratings RENAME TO catalog_item_ratings')
+      }
     })
   })
 

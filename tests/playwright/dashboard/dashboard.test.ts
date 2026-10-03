@@ -61,12 +61,11 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   await page.goto(`/titles/${dune.id}`)
 
   const movieButton = page.getByRole('button', {
-    name: 'Watched',
-    exact: true
+    name: /^(?:Mark as watched|Watched, mark as unwatched)$/u
   })
 
   await movieButton.click()
-  await expect(movieButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(movieButton).toHaveAccessibleName('Watched, mark as unwatched')
   await expect(movieButton).toBeEnabled()
   await page.goto(`/titles/${chernobyl.id}`)
 
@@ -100,7 +99,7 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   await expect(marks(page)).toHaveCount(2)
   await marks(page).last().getByRole('link').click()
   await movieButton.click()
-  await expect(movieButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(movieButton).toHaveAccessibleName('Mark as watched')
   await expect(movieButton).toBeEnabled()
 
   await page.getByRole('link', {
