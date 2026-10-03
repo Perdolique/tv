@@ -2,7 +2,9 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { expectNoHorizontalOverflow } from '../helpers.ts'
+import { appBaseUrl } from '../constants.ts'
 import { chernobyl } from './details.fixtures.ts'
+import { waitForHydration } from './helpers.ts'
 
 const chernobylPath = `/titles/${chernobyl.id}`
 
@@ -27,6 +29,9 @@ async function readGeometry(locator: Locator): Promise<EpisodeCardGeometry> {
 }
 
 async function expectEpisodeLayout(page: Page, expectedColumns: number): Promise<void> {
+  await waitForHydration(page)
+  await page.evaluate(async () => globalThis.document.fonts.ready)
+
   const cards = page.getByRole('listitem')
 
   await expect(cards).toHaveCount(5)
@@ -72,10 +77,22 @@ const referenceViewports = [
 
 for (const colorScheme of ['light', 'dark'] as const) {
   for (const viewport of referenceViewports) {
-    test(`episode grid at ${viewport.name} in ${colorScheme}`, async ({ page }) => {
+    test(`episode grid at ${viewport.name} in ${colorScheme}`, async ({ context, page }) => {
+      await context.addCookies([{
+        name: 'tv_session',
+        value: 'e2e-session',
+        url: appBaseUrl
+      }])
+
       await page.setViewportSize(viewport)
       await page.emulateMedia({ colorScheme })
       await page.goto(chernobylPath)
+
+      await expect(page.getByRole('button', {
+        name: 'Follow',
+        exact: true
+      })).toBeEnabled()
+
       await expectEpisodeLayout(page, viewport.columns)
 
       const episodesTab = page.getByRole('tab', { name: 'Episodes' })
@@ -87,6 +104,38 @@ for (const colorScheme of ['light', 'dark'] as const) {
       )
 
       expect(outlineStyle).not.toBe('none')
+
+      const card = page.getByRole('listitem').first()
+      const number = card.getByText('Season 1, E1', { exact: true })
+      const title = card.getByRole('heading', { name: '1:23:45' })
+
+      const watched = card.getByRole('button', {
+        name: 'Watched',
+        exact: true
+      })
+
+      const [numberBox, titleBox, watchedBox] = await Promise.all([
+        readGeometry(number), readGeometry(title), readGeometry(watched)
+      ])
+
+      expect(numberBox.left + numberBox.width).toBeLessThan(titleBox.left)
+      expect(titleBox.left + titleBox.width).toBeLessThan(watchedBox.left)
+      expect(watchedBox.width).toBeGreaterThanOrEqual(44)
+      expect(watchedBox.height).toBeGreaterThanOrEqual(44)
+      await expect(watched).toHaveAccessibleDescription('1:23:45')
+      await watched.click()
+      await expect(watched).toHaveAttribute('aria-pressed', 'true')
+      await expect(watched.locator('svg')).toBeVisible()
+
+      await page.getByRole('heading', {
+        name: 'Chernobyl',
+        exact: true
+      }).click()
+
+      await page.screenshot({
+        path: `/tmp/tv-pr85-reference-layout/series-${colorScheme}-${viewport.width}.png`,
+        fullPage: false
+      })
     })
   }
 }
@@ -108,7 +157,7 @@ const boundaryViewports = [
     height: 900,
     name: 'at tablet breakpoint',
     width: 640,
-    columns: 1
+    columns: 2
   },
   {
     height: 900,

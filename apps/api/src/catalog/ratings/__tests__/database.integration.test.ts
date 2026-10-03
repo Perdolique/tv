@@ -4,12 +4,13 @@ import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
-import { findCatalogItemRating, setCatalogItemRating } from '../../ratings-repository.ts'
+import { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating } from '../../ratings-repository.ts'
 
 const databaseUrl = env.TEST_DATABASE_URL
 const client = new Client({ connectionString: databaseUrl })
 const userId = randomUUID()
 const otherUserId = randomUUID()
+const thirdUserId = randomUUID()
 
 await client.connect()
 
@@ -57,17 +58,17 @@ describe('catalog rating persistence', () => {
   beforeAll(async () => {
     await assertDisposableTestDatabase(client)
 
-    await client.query('INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4)', [
-      userId, `${userId}@example.com`, otherUserId, `${otherUserId}@example.com`
+    await client.query('INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4), ($5, $6)', [
+      userId, `${userId}@example.com`, otherUserId, `${otherUserId}@example.com`, thirdUserId, `${thirdUserId}@example.com`
     ])
   })
 
   beforeEach(async () => {
-    await client.query('DELETE FROM catalog_item_ratings WHERE user_id = ANY($1::uuid[])', [[userId, otherUserId]])
+    await client.query('DELETE FROM catalog_item_ratings WHERE user_id = ANY($1::uuid[])', [[userId, otherUserId, thirdUserId]])
   })
 
   afterAll(async () => {
-    await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherUserId]])
+    await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherUserId, thirdUserId]])
     await client.end()
   })
 
@@ -131,6 +132,96 @@ describe('catalog rating persistence', () => {
     expect(restored).toHaveLength(1)
     expect(restored[0]?.id).not.toBe(first[0]?.id)
     expect(restored[0]?.score).toBe(9)
+  })
+
+  it.each([['Dead Man', 'Spartacus'], ['Spartacus', 'Dead Man']])('summarizes current votes for %s without mixing titles or deduplicating scores', async (title, otherTitle) => {
+    const id = await itemId(title)
+    const otherId = await itemId(otherTitle)
+    const database = createDatabase(client)
+
+    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
+      averageScore: null,
+      ratingCount: 0
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: id,
+      score: 6
+    })
+
+    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
+      averageScore: 6,
+      ratingCount: 1
+    })
+
+    await setCatalogItemRating(database, otherUserId, {
+      catalogItemId: id,
+      score: 6
+    })
+
+    await setCatalogItemRating(database, thirdUserId, {
+      catalogItemId: id,
+      score: 9
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: otherId,
+      score: 1
+    })
+
+    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
+      averageScore: 7,
+      ratingCount: 3
+    })
+
+    await expect(findCatalogItemRatingSummary(database, otherId)).resolves.toStrictEqual({
+      averageScore: 1,
+      ratingCount: 1
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: id,
+      score: 7
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: id,
+      score: 7
+    })
+
+    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
+      averageScore: 22 / 3,
+      ratingCount: 3
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: id,
+      score: null
+    })
+
+    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
+      averageScore: 7.5,
+      ratingCount: 2
+    })
+
+    await setCatalogItemRating(database, otherUserId, {
+      catalogItemId: id,
+      score: null
+    })
+
+    await setCatalogItemRating(database, thirdUserId, {
+      catalogItemId: id,
+      score: null
+    })
+
+    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
+      averageScore: null,
+      ratingCount: 0
+    })
+
+    const missingId = randomUUID()
+
+    await expect(findCatalogItemRatingSummary(database, missingId)).resolves.toBeNull()
   })
 
   it('enforces bounds, ownership, target references and uniqueness in PostgreSQL', async () => {

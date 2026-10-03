@@ -1,3 +1,4 @@
+import type { Database } from '@tv/database'
 import { findRootCause, serializeError } from '@tv/shared/errors'
 import type { Context } from 'hono'
 import type { RequestIdVariables } from 'hono/request-id'
@@ -135,6 +136,37 @@ async function withCatalogSession<Result>(
   return operationOutcome.result
 }
 
+// Public reads share cleanup and error translation, but never resolve an account.
+async function withCatalogDatabase<Result>(
+  context: CatalogContext,
+  connectDatabase: ConnectCatalogDatabase,
+  operation: (database: Database) => Promise<Result>
+): Promise<Result> {
+  let adapter: Awaited<ReturnType<ConnectCatalogDatabase>> | undefined = undefined
+
+  const operationOutcome = await captureCatalogOperation(async () => {
+    adapter = await connectDatabase(context.env.DATABASE.connectionString)
+
+    return operation(adapter.database)
+  })
+
+  const closeError = await closeCatalogAdapter(adapter)
+
+  if (operationOutcome.status === 'failure') {
+    if (closeError !== null) {
+      logCatalogServerError(context, closeError)
+    }
+
+    throw operationOutcome.error
+  }
+
+  if (closeError !== null) {
+    throw closeError
+  }
+
+  return operationOutcome.result
+}
+
 // Import handlers use this boundary so each request checks the current database grant.
 async function withCatalogImportAccess<Result>(
   context: CatalogContext,
@@ -155,6 +187,7 @@ async function withCatalogImportAccess<Result>(
 export {
   defaultCatalogDependencies,
   logCatalogServerError,
+  withCatalogDatabase,
   withCatalogImportAccess,
   withCatalogSession
 }

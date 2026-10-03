@@ -46,7 +46,7 @@ test('guest sees the five SSR episodes, returns from one row and confirms the wa
   expect(html).toContain('Vichnaya Pamyat')
   expect(html).toContain('Episode data from TVMaze')
   await expect(page.getByRole('tab', { name: 'Episodes' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByText(/^S1 · E[1-5]$/u)).toHaveCount(5)
+  await expect(page.getByText(/^Season 1, E[1-5]$/u)).toHaveCount(5)
 
   await expect(page.getByRole('link', {
     name: 'Episode data from TVMaze',
@@ -154,7 +154,7 @@ test('shows private watched loading feedback while keeping public episodes visib
     await expect(loading).toHaveAttribute('role', 'status')
     await expect(button).toBeDisabled()
     await expect(button).toHaveAttribute('aria-busy', 'true')
-    await expect(page.getByText(/^S1 · E[1-5]$/u)).toHaveCount(5)
+    await expect(page.getByText(/^Season 1, E[1-5]$/u)).toHaveCount(5)
     pending.resolve(true)
     await expect(loading).toHaveCount(0)
     await expect(button).toBeEnabled()
@@ -172,7 +172,7 @@ test('renders empty data and missing title, date and future-season variants', as
   await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(edgeCasesPath)
   await expect(page.getByRole('link', { name: 'Episode data from TVMaze' })).toHaveAttribute('href', 'https://www.tvmaze.com/')
-  await expect(page.getByText('S2 · E1', { exact: true })).toBeVisible()
+  await expect(page.getByText('Season 2, E1', { exact: true })).toBeVisible()
 
   const selector = page.getByRole('combobox', {
     name: 'Season',
@@ -198,8 +198,8 @@ test('renders empty data and missing title, date and future-season variants', as
 
   await expect(watchedButton(episodeCard(page, 'A future title'))).toBeEnabled()
   await selector.selectOption('1')
-  await expect(page.getByText('S1 · E1', { exact: true })).toBeVisible()
-  await expect(page.getByText('S1 · E2', { exact: true })).toBeVisible()
+  await expect(page.getByText('Season 1, E1', { exact: true })).toBeVisible()
+  await expect(page.getByText('Season 1, E2', { exact: true })).toBeVisible()
 
   await expect(page.getByRole('heading', {
     name: 'Season 1',

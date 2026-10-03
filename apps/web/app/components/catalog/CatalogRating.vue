@@ -1,8 +1,8 @@
 <template>
-  <section :class="$style.component" aria-label="Your rating">
+  <section :class="$style.component" :style="{ '--rating-anchor': anchorName }" aria-label="Your rating">
     <div ref="anchor" :class="$style.anchor">
       <NuxtLink v-if="isAnonymous" :class="$style.link" :to="signInLocation">
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:star" />
+        <Icon :class="$style.star" aria-hidden="true" mode="svg" name="hugeicons:star" />
         Rate
       </NuxtLink>
       <AppButton
@@ -11,14 +11,15 @@
         :class="$style.trigger"
         :disabled="isTriggerDisabled"
         :aria-busy="isBusy || undefined"
+        :aria-label="accessibleTriggerLabel"
         :aria-controls="controlledPanelId"
         :aria-expanded="isEditing"
         aria-haspopup="dialog"
+        type="button"
         @click="activate"
       >
-        <Icon aria-hidden="true" mode="svg" name="hugeicons:star" />
+        <Icon :class="$style.star" aria-hidden="true" mode="svg" name="hugeicons:star" />
         {{ triggerLabel }}
-        <Icon v-if="isLoaded" aria-hidden="true" mode="svg" name="hugeicons:arrow-down-01" />
       </AppButton>
     </div>
     <AppMessage v-if="hasLoadError" :class="$style.loadError" role="alert" tone="danger">We couldn’t load your rating. Try again.</AppMessage>
@@ -31,7 +32,6 @@
       :class="$style.panel"
       :data-presentation="presentation"
       :popover="popoverMode"
-      :style="panelPosition"
       :aria-labelledby="headingId"
       :aria-busy="isSaving"
       role="dialog"
@@ -73,54 +73,58 @@
 
 <script lang="ts" setup>
   import type { RouteLocationRaw } from 'vue-router'
-  import { onClickOutside, useElementBounding, useEventListener, useMediaQuery, useScrollLock } from '@vueuse/core'
-  import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch, type CSSProperties } from 'vue'
+  import { onClickOutside, useEventListener, useMediaQuery, useScrollLock } from '@vueuse/core'
+  import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
-  import { useCatalogRating } from '~/composables/use-catalog-rating.ts'
+  import type { RatingStatus } from '~/composables/use-catalog-rating.ts'
 
   interface Props {
     accountId: string | null;
     catalogItemId: string | null;
     hasSessionError: boolean;
     isAnonymous: boolean;
+    isSaving: boolean;
+    load: () => Promise<void>;
+    save: (nextScore: number | null) => Promise<boolean>;
+    saveError: string;
+    score: number | null;
     signInLocation: RouteLocationRaw;
+    status: RatingStatus;
   }
 
   interface Emits {
-    unauthorized: [reason: 'load' | 'mutation'];
+    clearError: [];
+    saved: [catalogItemId: string];
   }
 
-  const { accountId, catalogItemId, hasSessionError, isAnonymous } = defineProps<Props>()
+  const { accountId, catalogItemId, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const currentAccountId = computed(() => accountId)
   const itemId = computed(() => catalogItemId)
-  const { isSaving, load, save, saveError, score, status, unauthorized } = useCatalogRating(itemId, currentAccountId)
   const isEditing = ref(false)
   const isMobile = useMediaQuery('(width < 40rem)')
   const notice = ref('')
-  const position = ref<CSSProperties>({})
   const panelId = useId()
+  const anchorName = `--catalog-rating-${panelId}`
   const headingId = useId()
   const anchor = useTemplateRef('anchor')
   const trigger = useTemplateRef('trigger')
   const panel = useTemplateRef<HTMLElement>('panel')
   const body = computed(() => anchor.value?.ownerDocument.body)
   const scrollLocked = useScrollLock(body)
-  const bounds = useElementBounding(anchor)
   const options = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-  const isLoaded = computed(() => status.value === 'loaded')
-  const isLoading = computed(() => !isAnonymous && !hasSessionError && (status.value === 'loading' || status.value === 'idle'))
-  const hasLoadError = computed(() => !isAnonymous && !hasSessionError && status.value === 'error')
-  const hasScore = computed(() => score.value !== null)
-  const canEdit = computed(() => accountId !== null && !hasSessionError && isLoaded.value && !isSaving.value)
-  const isBusy = computed(() => isLoading.value || isSaving.value)
+  const isLoaded = computed(() => status === 'loaded')
+  const isLoading = computed(() => !isAnonymous && !hasSessionError && (status === 'loading' || status === 'idle'))
+  const hasLoadError = computed(() => !isAnonymous && !hasSessionError && status === 'error')
+  const hasScore = computed(() => score !== null)
+  const canEdit = computed(() => accountId !== null && !hasSessionError && isLoaded.value && !isSaving)
+  const isBusy = computed(() => isLoading.value || isSaving)
   const isTriggerDisabled = computed(() => !canEdit.value && !hasLoadError.value)
   const controlledPanelId = computed(() => isEditing.value ? panelId : undefined)
   const panelTag = computed(() => isMobile.value ? 'dialog' : 'div')
   const presentation = computed(() => isMobile.value ? 'sheet' : 'popover')
   const popoverMode = computed(() => isMobile.value ? undefined : 'manual')
-  const panelPosition = computed(() => isMobile.value ? undefined : position.value)
 
   const choices = computed(() => options.map(option => {
     const label = `${option} out of 10`
@@ -128,7 +132,7 @@
     return {
       score: option,
       label,
-      isSelected: option === score.value
+      isSelected: option === score
     }
   }))
 
@@ -143,44 +147,20 @@
       return 'Retry rating'
     }
 
-    if (isLoading.value) {
-      return 'Loading rating…'
-    }
-
-    return score.value === null ? 'Rate' : `${score.value} / 10`
+    return 'Rate'
   })
 
-  function updatePosition(): void {
-    const element = panel.value
-
-    if (!isEditing.value || isMobile.value || element === null) {
-      return
+  const accessibleTriggerLabel = computed(() => {
+    if (isLoading.value) {
+      return 'Rate, loading rating…'
     }
 
-    const gutter = 16
-    const gap = 8
-    const { innerWidth, innerHeight } = globalThis
-    const rectangle = element.getBoundingClientRect()
-    const availableBelow = innerHeight - bounds.bottom.value - gap - gutter
-    const availableAbove = bounds.top.value - gap - gutter
-    const showAbove = rectangle.height > availableBelow && availableAbove > availableBelow
-    const availableHeight = showAbove ? availableAbove : availableBelow
-    const maxHeight = Math.max(44, availableHeight)
-    const height = Math.min(element.scrollHeight, maxHeight)
-    const top = showAbove ? bounds.top.value - gap - height : bounds.bottom.value + gap
-    const minimumLeft = Math.max(gutter, bounds.left.value)
-    const maximumLeft = innerWidth - rectangle.width - gutter
-    const left = Math.min(minimumLeft, maximumLeft)
-    const maximumTop = innerHeight - height - gutter
-    const clampedTop = Math.min(top, maximumTop)
-    const visibleTop = Math.max(gutter, clampedTop)
-
-    position.value = {
-      left: `${left}px`,
-      top: `${visibleTop}px`,
-      maxHeight: `${maxHeight}px`
+    if (!isLoaded.value || hasSessionError || score === null) {
+      return triggerLabel.value
     }
-  }
+
+    return `Rate, your rating: ${score} out of 10`
+  })
 
   function focusChoice(): void {
     const selected = panel.value?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
@@ -203,21 +183,21 @@
       if (element.open) {
         element.close()
       }
-    } else if (element?.matches(':popover-open')) {
+    } else if (element.matches(':popover-open')) {
       element.hidePopover()
     }
   }
 
   function dismiss(): void {
-    if (!isEditing.value || isSaving.value) {
+    if (!isEditing.value || isSaving) {
       return
     }
 
     hidePanel()
 
     isEditing.value = false
-    saveError.value = ''
 
+    emit('clearError')
     trigger.value?.focus()
   }
 
@@ -272,12 +252,14 @@
       return
     }
 
-    saveError.value = ''
+    emit('clearError')
+
     notice.value = ''
     isEditing.value = true
   }
 
   async function persist(nextScore: number | null): Promise<void> {
+    const savedCatalogItemId = catalogItemId
     const mutationLabel = nextScore === null ? 'Remove rating' : `${nextScore} out of 10`
     const mutationSelector = `button[aria-label="${mutationLabel}"]`
     const focusOwner = globalThis.document.activeElement
@@ -296,7 +278,7 @@
     const restoreFocus = canRestoreFocus(focusOwner)
 
     if (!saved) {
-      const restoreEditorFocus = isEditing.value && saveError.value !== '' && restoreFocus && focusOwner instanceof globalThis.HTMLElement
+      const restoreEditorFocus = isEditing.value && saveError !== '' && restoreFocus && focusOwner instanceof globalThis.HTMLElement
 
       if (restoreEditorFocus) {
         const target = focusOwner.isConnected ? focusOwner : panel.value?.querySelector<HTMLButtonElement>(mutationSelector)
@@ -311,6 +293,10 @@
 
     isEditing.value = false
     notice.value = nextScore === null ? 'Rating removed.' : 'Rating saved.'
+
+    if (savedCatalogItemId !== null) {
+      emit('saved', savedCatalogItemId)
+    }
 
     if (restoreFocus) {
       trigger.value?.focus()
@@ -365,12 +351,6 @@
     notice.value = ''
   }, { flush: 'sync' })
 
-  watch(unauthorized, reason => {
-    if (reason !== null) {
-      emit('unauthorized', reason)
-    }
-  }, { flush: 'sync' })
-
   watch([isEditing, isMobile], () => {
     scrollLocked.value = isEditing.value && isMobile.value
 
@@ -386,13 +366,10 @@
       }
     } else if (!element.matches(':popover-open')) {
       element.showPopover()
-      updatePosition()
     }
 
     focusChoice()
   }, { flush: 'post' })
-
-  watch([bounds.left, bounds.bottom, bounds.top, hasScore, saveError, isSaving], updatePosition, { flush: 'post' })
 
   onClickOutside(panel, () => {
     if (!isMobile.value) {
@@ -401,7 +378,6 @@
   }, { ignore: [anchor] })
 
   useEventListener('keydown', handleKeydown)
-  useEventListener('resize', updatePosition)
   onBeforeUnmount(hidePanel)
 </script>
 
@@ -409,15 +385,33 @@
   @layer reset, vendor, tokens, base, components, utilities;
 
   @layer components {
-    .component { min-inline-size: 0; max-inline-size: 100%; }
-    .anchor { inline-size: fit-content; max-inline-size: 100%; }
-    .trigger, .link { inline-size: 13rem; max-inline-size: 100%; font-variant-numeric: tabular-nums; }
-    .link { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-block-size: 3.5rem; padding: var(--space-3) var(--space-6); border-radius: var(--radius-md); background: var(--color-accent-fill); color: var(--color-on-accent); font-weight: 700; text-decoration: none; }
-    .link :global(svg) { inline-size: 1.25rem; block-size: 1.25rem; }
+    .component { display: grid; align-content: start; gap: var(--space-2); min-inline-size: 0; }
+    .anchor { inline-size: 100%; }
+    .trigger, .link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      min-block-size: 3rem;
+      inline-size: 100%;
+      padding: var(--space-3) var(--space-5);
+      border: 0;
+      border-radius: var(--radius-md);
+      background: var(--color-accent-fill);
+      color: var(--color-on-accent);
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .trigger { anchor-name: var(--rating-anchor); }
+    .link:hover { filter: brightness(0.96); }
+    .star { flex: 0 0 auto; inline-size: 1.5rem; block-size: 1.5rem; }
     .loadError { max-inline-size: 18rem; margin-block-start: var(--space-3); }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .panel { position: fixed; padding: min(var(--space-4), 16px); margin: 0; overflow: auto; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-primary); }
-    .panel[data-presentation='popover'] { inset: auto; inline-size: min(20rem, calc(100vw - 2rem)); border-radius: var(--radius-lg); box-shadow: var(--shadow-float); }
+    /* Leave the 8px anchor gap and 16px viewport gutter inside the chosen position area. */
+    .panel[data-presentation='popover'] { position-anchor: var(--rating-anchor); position-area: block-end span-inline-end; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline; position-try-order: most-block-size; inset: auto; inline-size: min(20rem, calc(100vw - 2rem)); max-block-size: min(calc(100% - 24px), calc(100dvh - 2rem)); margin: 8px 16px; border-radius: var(--radius-lg); box-shadow: var(--shadow-float); }
     .panel[data-presentation='sheet'] { inset-block: auto 0; inset-inline: 0; inline-size: 100%; max-inline-size: none; max-block-size: calc(100dvh - 2rem); padding-block-end: max(var(--space-4), env(safe-area-inset-bottom)); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
     .panel[data-presentation='sheet']::backdrop { background: var(--color-backdrop); }
     .header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-block-end: var(--space-3); }
