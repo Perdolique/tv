@@ -646,7 +646,8 @@ async function handleCatalogRating(request: Request, url: URL): Promise<Response
     } }, 401)
   }
 
-  const id = url.pathname.split('/').at(4)
+  const segments = url.pathname.split('/')
+  const id = segments.at(4)
   const item = detailsItems.find(candidate => candidate.id === id)
 
   if (item === undefined) {
@@ -660,20 +661,26 @@ async function handleCatalogRating(request: Request, url: URL): Promise<Response
   const cookieName = `tv_rating_${account}_${item.id}`
 
   if (request.method === 'DELETE') {
-    return json({ score: null }, 200, { 'Set-Cookie': `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax` })
+    const removedCookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
+
+    return json({ score: null }, 200, { 'Set-Cookie': removedCookie })
   }
 
   if (request.method === 'PUT') {
     const input: unknown = await request.json()
+    const score = isRecord(input) ? input.score : undefined
+    const isInvalidScore = typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10
 
-    if (!isRecord(input) || typeof input.score !== 'number' || !Number.isInteger(input.score) || input.score < 1 || input.score > 10) {
+    if (isInvalidScore) {
       return json({ error: {
         code: 'INVALID_REQUEST',
         message: 'Choose a score from 1 to 10.'
       } }, 400)
     }
 
-    return json({ score: input.score }, 200, { 'Set-Cookie': `${cookieName}=${input.score}; Path=/; SameSite=Lax` })
+    const savedCookie = `${cookieName}=${score}; Path=/; SameSite=Lax`
+
+    return json({ score }, 200, { 'Set-Cookie': savedCookie })
   }
 
   const value = getCookieValue(request, cookieName)
@@ -1129,7 +1136,9 @@ export default {
       return handleCatalogWatched(request, url)
     }
 
-    if (['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating')) {
+    const isRatingRequest = ['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating')
+
+    if (isRatingRequest) {
       return handleCatalogRating(request, url)
     }
 

@@ -1,10 +1,10 @@
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { hashSessionToken } from '../../auth/session.ts'
+import { createSessionToken, hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
-const token = 'r'.repeat(43)
+const token = createSessionToken()
 const userId = '79000000-0000-4000-8000-000000000001'
 const otherUserId = '79000000-0000-4000-8000-000000000002'
 const cookie = `__Host-tv_session=${token}`
@@ -85,12 +85,23 @@ describe('catalog rating Worker contract', () => {
       await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [userId, id])
     })
 
-    await expectScore(await request(id), null)
-    await expectScore(await request(id, 'PUT', { input: { score: 1 } }), 1)
-    await expectScore(await request(id, 'PUT', { input: { score: 10 } }), 10)
-    await expectScore(await request(id, 'PUT', { input: { score: 10 } }), 10)
+    const unrated = await request(id)
 
-    const newToken = 'n'.repeat(43)
+    await expectScore(unrated, null)
+
+    const created = await request(id, 'PUT', { input: { score: 1 } })
+
+    await expectScore(created, 1)
+
+    const corrected = await request(id, 'PUT', { input: { score: 10 } })
+
+    await expectScore(corrected, 10)
+
+    const unchanged = await request(id, 'PUT', { input: { score: 10 } })
+
+    await expectScore(unchanged, 10)
+
+    const newToken = createSessionToken()
     const newHash = await hashSessionToken(newToken)
 
     await withClient(async client => {
@@ -99,10 +110,17 @@ describe('catalog rating Worker contract', () => {
     })
 
     const newCookie = `__Host-tv_session=${newToken}`
+    const reloaded = await request(id, 'GET', { session: newCookie })
 
-    await expectScore(await request(id, 'GET', { session: newCookie }), 10)
-    await expectScore(await request(id, 'DELETE', { session: newCookie }), null)
-    await expectScore(await request(id, 'DELETE', { session: newCookie }), null)
+    await expectScore(reloaded, 10)
+
+    const removed = await request(id, 'DELETE', { session: newCookie })
+
+    await expectScore(removed, null)
+
+    const alreadyRemoved = await request(id, 'DELETE', { session: newCookie })
+
+    await expectScore(alreadyRemoved, null)
 
     await withClient(async client => {
       const follows = await client.query('SELECT * FROM catalog_item_follows WHERE user_id = $1 AND catalog_item_id = $2', [userId, id])
@@ -137,7 +155,10 @@ describe('catalog rating Worker contract', () => {
     const invalid = await request(id, 'PUT', { input: { score } })
 
     expect(invalid.status).toBe(400)
-    await expectScore(await request(id), 7)
+
+    const preserved = await request(id)
+
+    await expectScore(preserved, 7)
   })
 
   it('isolates accounts and rejects a supplied owner', async () => {
@@ -147,7 +168,9 @@ describe('catalog rating Worker contract', () => {
       await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 4)', [otherUserId, id])
     })
 
-    await expectScore(await request(id), null)
+    const ownRating = await request(id)
+
+    await expectScore(ownRating, null)
 
     const spoofed = await request(id, 'PUT', { input: {
       score: 9,
@@ -155,8 +178,14 @@ describe('catalog rating Worker contract', () => {
     } })
 
     expect(spoofed.status).toBe(400)
-    await expectScore(await request(id, 'PUT', { input: { score: 8 } }), 8)
-    await expectScore(await request(id, 'DELETE'), null)
+
+    const saved = await request(id, 'PUT', { input: { score: 8 } })
+
+    await expectScore(saved, 8)
+
+    const removed = await request(id, 'DELETE')
+
+    await expectScore(removed, null)
 
     await withClient(async client => {
       const rows = await client.query('SELECT score FROM catalog_item_ratings WHERE user_id = $1 AND catalog_item_id = $2', [otherUserId, id])
@@ -192,16 +221,22 @@ describe('catalog rating Worker contract', () => {
     await request(id, 'PUT', { input: { score: 8 } })
 
     for (const method of ['PUT', 'DELETE']) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- The watched mark must be saved before it is removed.
-      const result = await exports.default.fetch(new Request(`https://tv-api.test/api/catalog/items/${id}/watched`, {
+      const requestUrl = `https://tv-api.test/api/catalog/items/${id}/watched`
+
+      const watchedRequest = new Request(requestUrl, {
         headers: { Cookie: cookie },
         method
-      }))
+      })
+
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Save the watched mark before removing it.
+      const result = await exports.default.fetch(watchedRequest)
 
       expect(result.status).toBe(200)
     }
 
-    await expectScore(await request(id), 8)
+    const stillRated = await request(id)
+
+    await expectScore(stillRated, 8)
   })
 
   it('keeps a failed write out of persistence and logs the technical cause without exposing it', async () => {
@@ -225,8 +260,14 @@ describe('catalog rating Worker contract', () => {
 
         expect(failed.status).toBe(503)
         expect(body).not.toContain('private rating database details')
-        expect(JSON.stringify(log.mock.calls)).toContain('private rating database details')
-        await expectScore(await request(id), 7)
+
+        const loggedCalls = JSON.stringify(log.mock.calls)
+
+        expect(loggedCalls).toContain('private rating database details')
+
+        const preserved = await request(id)
+
+        await expectScore(preserved, 7)
       } finally {
         await client.query('DROP TRIGGER reject_test_rating ON catalog_item_ratings')
         await client.query('DROP FUNCTION reject_test_rating()')

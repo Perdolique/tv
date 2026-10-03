@@ -22,13 +22,14 @@
           <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
           <p v-if="showOriginalTitle" :class="$style.originalTitle" :lang="item.originalTitleLocale">{{ item.originalTitle }}</p>
           <div :class="$style.personalActions">
-            <section :class="$style.personalAction" aria-label="Rating action">
-              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="primary" :to="signInLocation">Rate</NuxtLink>
-              <AppButton v-else ref="ratingButton" :class="$style.actionButton" :disabled="!canRate" :aria-controls="ratingPanelId" :aria-expanded="isRatingEditorOpen" @click="openRating">
-                <Icon aria-hidden="true" mode="svg" name="hugeicons:star" />
-                Rate
-              </AppButton>
-            </section>
+            <CatalogRating
+              :account-id="accountId"
+              :catalog-item-id="item.id"
+              :has-session-error="hasSessionError"
+              :is-anonymous="isAnonymous"
+              :sign-in-location="signInLocation"
+              @unauthorized="handleRatingUnauthorized"
+            />
             <section :class="$style.personalAction" aria-label="Follow action">
               <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Follow</NuxtLink>
               <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Follow unavailable</AppButton>
@@ -85,18 +86,7 @@
             </section>
           </div>
         </div>
-        <CatalogRating
-          :id="ratingPanelId"
-          ref="ratingPanel"
-          :class="$style.ratingPanel"
-          :account-id="accountId"
-          :catalog-item-id="item.id"
-          :has-session-error="hasSessionError"
-          :is-anonymous="isAnonymous"
-          @focus-action="restoreRatingFocus"
-          @unauthorized="handleRatingUnauthorized"
-        />
-        <section v-if="isMovie" :class="[$style.overview, $style.movieOverview]" :aria-labelledby="overviewId">
+        <section v-if="isMovie" :class="$style.movieOverview" :aria-labelledby="overviewId">
           <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
           <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
           <p v-else :class="$style.supportingText">No description available yet.</p>
@@ -256,11 +246,6 @@
     watched
   } = useCatalogWatched(watchedCatalogItemId, accountId)
 
-  const ratingPanel = useTemplateRef<InstanceType<typeof CatalogRating>>('ratingPanel')
-  const ratingButton = useTemplateRef('ratingButton')
-  const ratingPanelId = useId()
-  const canRate = computed(() => ratingPanel.value?.canEdit === true)
-  const isRatingEditorOpen = computed(() => ratingPanel.value?.isEditing === true)
   const heading = useTemplateRef('heading')
   const retryButton = useTemplateRef('retryButton')
   const followButton = useTemplateRef('followButton')
@@ -423,22 +408,6 @@
     }
 
     setResponseStatus(event, status)
-  }
-
-  async function openRating(): Promise<void> {
-    if (canRate.value) {
-      await ratingPanel.value?.open()
-    }
-  }
-
-  async function restoreRatingFocus(): Promise<void> {
-    await nextTick()
-
-    if (isAnonymous.value) {
-      heading.value?.focus()
-    } else {
-      ratingButton.value?.focus()
-    }
   }
 
   async function handleRatingUnauthorized(reason: 'load' | 'mutation'): Promise<void> {
@@ -628,8 +597,7 @@
       gap: var(--space-8);
       > :first-child { max-inline-size: 16rem; }
     }
-    .information { min-inline-size: 0; padding-block: var(--space-2); }
-    .ratingPanel { grid-column: 1 / -1; }
+    .information { padding-block: var(--space-2); }
     .heading {
       margin-block: var(--space-2) var(--space-3);
       font-size: 1.75rem;
@@ -713,10 +681,6 @@
         filter var(--duration-fast) var(--ease-standard),
         transform var(--duration-fast) var(--ease-standard);
     }
-    .actionLink[data-variant='primary'] {
-      background: var(--color-accent-fill);
-      color: var(--color-on-accent);
-    }
     .actionLink[data-variant='secondary'] {
       border: 1px solid var(--color-border-strong);
       background: var(--color-surface);
@@ -724,12 +688,10 @@
     }
     .actionLink:hover { filter: brightness(0.96); }
     .actionLink:active { transform: translateY(0.0625rem); }
-    .overview {
-      margin-block-start: var(--space-8);
+    .overview, .movieOverview {
       padding-block-start: var(--space-6);
       border-block-start: 1px solid var(--color-border);
     }
-    .movieOverview { grid-column: 1 / -1; margin-block-start: 0; }
     .seriesContent {
       display: grid;
       grid-column: 1 / -1;
@@ -764,7 +726,6 @@
     }
     .tabPanel { min-inline-size: 0; }
     .tabPanel .overview {
-      margin-block-start: 0;
       padding-block-start: 0;
       border-block-start: 0;
     }
@@ -829,10 +790,6 @@
     @container (width >= 52rem) {
       .details, .loading { grid-template-columns: 17rem minmax(0, 1fr); gap: var(--space-10); > :first-child { max-inline-size: none; } }
     }
-    @container (width >= 64rem) {
-      .details { grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr) minmax(17rem, 20rem); }
-      .ratingPanel { grid-column: 3; grid-row: 1 / 3; }
-      .seriesContent { grid-column: 1 / 3; }
-    }
+
   }
 </style>

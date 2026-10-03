@@ -18,7 +18,8 @@ const ratingBodyLimit = bodyLimit({
 function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies: CatalogDependencies): void {
   app.get('/api/catalog/items/:id/rating', async (context) => {
     const rating = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
-      const id = validateCatalogItemId(context.req.param('id'))
+      const rawId = context.req.param('id')
+      const id = validateCatalogItemId(rawId)
       const result = await findCatalogItemRating(session.database, session.user.id, id)
 
       if (result === null) {
@@ -33,8 +34,12 @@ function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies
 
   app.put('/api/catalog/items/:id/rating', async (context) => {
     const score = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
-      const id = validateCatalogItemId(context.req.param('id'))
-      const contentType = context.req.header('Content-Type')?.split(';', 1)[0]?.trim().toLowerCase()
+      const rawId = context.req.param('id')
+      const id = validateCatalogItemId(rawId)
+      const header = context.req.header('Content-Type')
+      const mediaType = header?.split(';', 1)[0]
+      const trimmedMediaType = mediaType?.trim()
+      const contentType = trimmedMediaType?.toLowerCase()
 
       if (contentType !== 'application/json') {
         throw new CatalogHttpError('INVALID_REQUEST', 400)
@@ -70,7 +75,8 @@ function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies
 
   app.delete('/api/catalog/items/:id/rating', async (context) => {
     await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
-      const id = validateCatalogItemId(context.req.param('id'))
+      const rawId = context.req.param('id')
+      const id = validateCatalogItemId(rawId)
 
       const exists = await setCatalogItemRating(session.database, session.user.id, {
         catalogItemId: id,

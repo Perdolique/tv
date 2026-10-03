@@ -8,14 +8,9 @@ import { catalogRatingResponseSchema } from '~/utils/catalog-response.ts'
 type RatingStatus = 'idle' | 'loading' | 'loaded' | 'error'
 type RatingUnauthorized = 'load' | 'mutation' | null
 
-interface CatalogRatingOptions {
-  automaticLoad?: boolean;
-}
-
 function useCatalogRating(
   catalogItemId: Readonly<Ref<string | null>>,
-  accountId: Readonly<Ref<string | null>>,
-  { automaticLoad = import.meta.client }: CatalogRatingOptions = {}
+  accountId: Readonly<Ref<string | null>>
 ) {
   const requestFetch = useRequestFetch()
   const status = ref<RatingStatus>('idle')
@@ -37,8 +32,9 @@ function useCatalogRating(
 
   async function load(): Promise<void> {
     const currentCatalogItemId = catalogItemId.value
+    const cannotLoad = accountId.value === null || currentCatalogItemId === null || isSaving.value
 
-    if (accountId.value === null || currentCatalogItemId === null || isSaving.value) {
+    if (cannotLoad) {
       return
     }
 
@@ -49,8 +45,11 @@ function useCatalogRating(
     unauthorized.value = null
 
     try {
+      const encodedId = encodeURIComponent(currentCatalogItemId)
+      const requestUrl = `/api/catalog/items/${encodedId}/rating`
+
       const response = await requestFetch(
-        `/api/catalog/items/${encodeURIComponent(currentCatalogItemId)}/rating`,
+        requestUrl,
         {
           retry: 0,
           signal: request.signal
@@ -78,7 +77,9 @@ function useCatalogRating(
         return
       }
 
-      if (isRecord(error) && error.statusCode === 401) {
+      const isUnauthorized = isRecord(error) && error.statusCode === 401
+
+      if (isUnauthorized) {
         unauthorized.value = 'load'
 
         return
@@ -97,8 +98,9 @@ function useCatalogRating(
 
   async function save(nextScore: number | null): Promise<boolean> {
     const currentCatalogItemId = catalogItemId.value
+    const cannotSave = accountId.value === null || currentCatalogItemId === null || status.value !== 'loaded' || isSaving.value
 
-    if (accountId.value === null || currentCatalogItemId === null || status.value !== 'loaded' || isSaving.value) {
+    if (cannotSave) {
       return false
     }
 
@@ -109,7 +111,8 @@ function useCatalogRating(
     unauthorized.value = null
 
     try {
-      const requestUrl = `/api/catalog/items/${encodeURIComponent(currentCatalogItemId)}/rating` as const
+      const encodedId = encodeURIComponent(currentCatalogItemId)
+      const requestUrl = `/api/catalog/items/${encodedId}/rating`
       const method = nextScore === null ? 'DELETE' : 'PUT'
       const body = nextScore === null ? undefined : { score: nextScore }
 
@@ -125,8 +128,9 @@ function useCatalogRating(
       }
 
       const parsed = v.safeParse(catalogRatingResponseSchema, response)
+      const isInvalidResponse = !parsed.success || parsed.output.score !== nextScore
 
-      if (!parsed.success || parsed.output.score !== nextScore) {
+      if (isInvalidResponse) {
         if (parsed.success) {
           globalThis.console.error('Catalog rating response did not match the requested score.')
         } else {
@@ -146,7 +150,9 @@ function useCatalogRating(
         return false
       }
 
-      if (isRecord(error) && error.statusCode === 401) {
+      const isUnauthorized = isRecord(error) && error.statusCode === 401
+
+      if (isUnauthorized) {
         unauthorized.value = 'mutation'
 
         return false
@@ -170,7 +176,9 @@ function useCatalogRating(
   watch([catalogItemId, accountId], ([currentCatalogItemId, currentAccountId]) => {
     reset()
 
-    if (automaticLoad && currentCatalogItemId !== null && currentAccountId !== null) {
+    const shouldLoad = !import.meta.env.SSR && currentCatalogItemId !== null && currentAccountId !== null
+
+    if (shouldLoad) {
       void load()
     }
   }, {

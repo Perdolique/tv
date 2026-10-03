@@ -16,11 +16,11 @@ vi.mock('#app', () => { return { useRequestFetch: () => harness.fetch } })
 const { useCatalogRating } = await import('../use-catalog-rating.ts')
 const scopes: ReturnType<typeof effectScope>[] = []
 
-function setup(accountId: string | null = 'account-one', automaticLoad = false) {
+function setup(accountId: string | null = 'account-one') {
   const scope = effectScope()
   const item = ref<string | null>('title-one')
   const account = ref<string | null>(accountId)
-  const rating = scope.run(() => useCatalogRating(item, account, { automaticLoad }))
+  const rating = scope.run(() => useCatalogRating(item, account))
 
   scopes.push(scope)
 
@@ -38,8 +38,11 @@ describe('catalog rating lifecycle', () => {
   beforeEach(() => { harness.fetch.mockReset() })
 
   afterEach(() => {
-    for (const scope of scopes.splice(0)) { scope.stop() }
+    const completedScopes = scopes.splice(0)
 
+    for (const scope of completedScopes) { scope.stop() }
+
+    vi.unstubAllEnvs()
     vi.restoreAllMocks()
   })
 
@@ -125,8 +128,9 @@ describe('catalog rating lifecycle', () => {
     })
 
     const { rating } = setup()
+    const error = new Error('unavailable')
 
-    harness.fetch.mockRejectedValueOnce(new Error('unavailable')).mockResolvedValueOnce({ score: null })
+    harness.fetch.mockRejectedValueOnce(error).mockResolvedValueOnce({ score: null })
     await rating.load()
     expect(rating.status.value).toBe('error')
     await expect(rating.save(7)).resolves.toBe(false)
@@ -207,15 +211,17 @@ describe('catalog rating lifecycle', () => {
     expect(state.rating.score.value).toBe(5)
   })
 
-  it('automatically reloads for a new account and ignores the cancelled read', async () => {
+  it.each(['account', 'item'] as const)('automatically reloads for a new %s and ignores the cancelled read', async changed => {
     const old = Promise.withResolvers<unknown>()
 
     harness.fetch.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ score: 4 })
+    vi.stubEnv('SSR', false)
 
-    const { account, rating } = setup('account-one', true)
+    const state = setup('account-one')
+    const { rating } = state
     const signal = harness.fetch.mock.calls[0]?.[1].signal
 
-    account.value = 'account-two'
+    state[changed].value = 'another'
 
     await vi.waitFor(() => { expect(rating.score.value).toBe(4) })
     old.resolve({ score: 10 })
@@ -224,6 +230,18 @@ describe('catalog rating lifecycle', () => {
 
     expect(signal?.aborted).toBe(true)
     expect(rating.score.value).toBe(4)
+  })
+
+  it('does not start automatic requests during SSR', () => {
+    vi.stubEnv('SSR', true)
+
+    const { account, item, rating } = setup()
+
+    account.value = 'account-two'
+    item.value = 'title-two'
+
+    expect(harness.fetch).not.toHaveBeenCalled()
+    expect(rating.status.value).toBe('idle')
   })
 
   it('ignores failures after disposal without reporting an error for another screen', async () => {
@@ -242,7 +260,10 @@ describe('catalog rating lifecycle', () => {
     const signal = harness.fetch.mock.calls[1]?.[1].signal
 
     scope.stop()
-    pending.reject(new Error('obsolete failure'))
+
+    const error = new Error('obsolete failure')
+
+    pending.reject(error)
     await expect(saving).resolves.toBe(false)
     expect(signal?.aborted).toBe(true)
     expect(log).not.toHaveBeenCalled()
