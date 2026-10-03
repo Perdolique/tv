@@ -638,6 +638,57 @@ function getCookieValue(request: Request, name: string): string | undefined {
   return cookie?.slice(prefix.length)
 }
 
+async function handleCatalogRating(request: Request, url: URL): Promise<Response> {
+  if (!hasAuthenticatedCatalogSession(request)) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401)
+  }
+
+  const segments = url.pathname.split('/')
+  const id = segments.at(4)
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
+  const cookieName = `tv_rating_${account}_${item.id}`
+
+  if (request.method === 'DELETE') {
+    const removedCookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
+
+    return json({ score: null }, 200, { 'Set-Cookie': removedCookie })
+  }
+
+  if (request.method === 'PUT') {
+    const input: unknown = await request.json()
+    const score = isRecord(input) ? input.score : undefined
+    const isInvalidScore = typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10
+
+    if (isInvalidScore) {
+      return json({ error: {
+        code: 'INVALID_REQUEST',
+        message: 'Choose a score from 1 to 10.'
+      } }, 400)
+    }
+
+    const savedCookie = `${cookieName}=${score}; Path=/; SameSite=Lax`
+
+    return json({ score }, 200, { 'Set-Cookie': savedCookie })
+  }
+
+  const value = getCookieValue(request, cookieName)
+  const score = value === undefined ? null : Number(value)
+
+  return json({ score })
+}
+
 function getWatchedCookieName(request: Request): string {
   return hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
     ? LONG_EMAIL_WATCHED_COOKIE_NAME
@@ -1083,6 +1134,12 @@ export default {
       && url.pathname.endsWith('/watched')
     ) {
       return handleCatalogWatched(request, url)
+    }
+
+    const isRatingRequest = ['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating')
+
+    if (isRatingRequest) {
+      return handleCatalogRating(request, url)
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/')) {

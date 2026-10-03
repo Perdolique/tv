@@ -116,7 +116,9 @@ async function expectInsideViewport(page: Page, locator: Locator): Promise<void>
   expect(box.x).toBeGreaterThanOrEqual(0)
   expect(box.y).toBeGreaterThanOrEqual(0)
   expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
-  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height)
+
+  // Browser scrolling rounds fractional CSS pixels to whole pixels.
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1)
 }
 
 async function expectNoOverlap(first: Locator, second: Locator): Promise<void> {
