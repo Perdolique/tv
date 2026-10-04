@@ -1,7 +1,7 @@
 <template>
   <div :class="$style.component" :aria-busy="isLoading" :data-compact="compact">
     <img v-if="hasImage" ref="image" :class="$style.image" :data-loaded="hasLoaded" :src="imageSource" :alt="alternative" width="480" height="720" decoding="async" :loading="loading" @load="imageLoaded" @error="imageFailed" />
-    <p v-if="showPlaceholder" :class="$style.placeholder">{{ placeholder }}</p>
+    <p v-if="showPlaceholder" :class="$style.placeholder">No poster available</p>
   </div>
 </template>
 
@@ -22,8 +22,7 @@
   const hasImage = computed(() => posterUrl !== null && !hasFailed.value)
   const imageSource = computed(() => posterUrl ?? undefined)
   const isLoading = computed(() => hasImage.value && !hasLoaded.value)
-  const showPlaceholder = computed(() => !hasLoaded.value || hasFailed.value)
-  const placeholder = computed(() => isLoading.value ? 'Loading poster…' : 'No poster available')
+  const showPlaceholder = computed(() => !hasImage.value)
   const alternative = computed(() => `${title} poster`)
 
   function imageLoaded(): void {

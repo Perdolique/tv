@@ -78,9 +78,15 @@ Mockup artwork and logos are illustrative, not production assets to extract from
 
 - Use semantic custom properties from [tokens.css](app/assets/styles/tokens.css). Keep raw theme colors in the token layer, so new components share the same visual system.
 - Follow the layer order in [app.css](app/assets/styles/app.css): `reset, vendor, tokens, base, components, utilities`. Put Vue styles in the `components` layer. Declare the full order before rules in lazy-loaded styles, which may load before the global entry.
-- Use native CSS for layout and themes. Use logical properties, shallow selectors, and the existing Baseline 2024 browser capability floor.
+- Use native CSS for layout and themes. Use logical properties and shallow selectors.
 - Support light, dark, and system preferences with `color-scheme` and `light-dark()`. Keep the preference in a cookie and apply it during SSR to avoid a theme flash. Artwork keeps its original colors.
 - Keep transitions short and mainly use opacity or transforms. Respect reduced motion and preserve usable forced colors.
+
+### Browser support
+
+[.browserslistrc](.browserslistrc) is the source of truth for supported browser families and versions. Resolve its queries with the current Browserslist data instead of using a fixed Baseline year. The file selects up to two latest releases from the main browser families, released within the last year and with CSS Anchor Positioning support.
+
+Use modern native features supported by these targets. Check the individual properties used by each feature. Position new or changed popovers with CSS Anchor Positioning. JavaScript handles their state, interaction and focus, not their geometry. Do not add compatibility or JavaScript positioning fallbacks for older versions or other browser families.
 
 ## Accessibility and verification
 

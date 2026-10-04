@@ -198,3 +198,4 @@ function useCatalogRating(
 }
 
 export { useCatalogRating }
+export type { RatingStatus }

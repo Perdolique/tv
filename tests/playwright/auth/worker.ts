@@ -638,6 +638,59 @@ function getCookieValue(request: Request, name: string): string | undefined {
   return cookie?.slice(prefix.length)
 }
 
+function handleCatalogRatingSummary(request: Request, url: URL): Response {
+  const id = url.pathname.split('/').at(-2)
+  const item = detailsItems.find(candidate => candidate.id === id)
+
+  if (item === undefined) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
+    } }, 404)
+  }
+
+  if (hasCookie(request, 'fail_rating_summary=1')) {
+    return json({ error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'private summary database details'
+    } }, 503, {
+      'Set-Cookie': 'fail_rating_summary=; Max-Age=0; Path=/; SameSite=Lax'
+    })
+  }
+
+  if (hasCookie(request, 'large_rating_summary=1')) {
+    const largeRatingCount = 1234
+    const largeAverageScore = 10_798 / largeRatingCount
+
+    return json({
+      averageScore: largeAverageScore,
+      ratingCount: largeRatingCount
+    })
+  }
+
+  const scores: number[] = []
+
+  for (const account of ['first', 'second']) {
+    const cookieName = `tv_rating_${account}_${item.id}`
+    const value = getCookieValue(request, cookieName)
+
+    if (value !== undefined) {
+      const score = Number(value)
+
+      scores.push(score)
+    }
+  }
+
+  const ratingCount = scores.length
+  const scoreSum = scores.reduce((sum, score) => sum + score, 0)
+  const averageScore = ratingCount === 0 ? null : scoreSum / ratingCount
+
+  return json({
+    averageScore,
+    ratingCount
+  })
+}
+
 async function handleCatalogRating(request: Request, url: URL): Promise<Response> {
   if (!hasAuthenticatedCatalogSession(request)) {
     return json({ error: {
@@ -1134,6 +1187,10 @@ export default {
       && url.pathname.endsWith('/watched')
     ) {
       return handleCatalogWatched(request, url)
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating-summary')) {
+      return handleCatalogRatingSummary(request, url)
     }
 
     const isRatingRequest = ['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating')

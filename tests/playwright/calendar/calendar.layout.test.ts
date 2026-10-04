@@ -165,7 +165,12 @@ for (const [width, expectedNavigationWidth] of [[320, 320], [639, 639], [640, 80
     const longTitle = page.getByRole('heading', { name: /A very long title/u })
     const navigationBounds = await navigation.boundingBox()
 
-    expect(navigationBounds?.width).toBe(expectedNavigationWidth)
+    // oxlint-disable-next-line vitest/no-conditional-in-test -- Each named viewport has a fixed navigation mode.
+    const navigationWidth = width < 640
+      ? await page.getByRole('banner').evaluate(element => element.getBoundingClientRect().width)
+      : expectedNavigationWidth
+
+    expect(navigationBounds?.width).toBe(navigationWidth)
     expect(await getVisibleLineCount(longTitle)).toBeLessThanOrEqual(2)
     await expect(longTitle).toBeVisible()
   })
@@ -233,7 +238,8 @@ test('keeps slow and missing posters inside release rows', async ({ page }) => {
   })
 
   await page.goto('/calendar?date=2026-09-12')
-  await expect(page.getByText('Loading poster…')).toBeVisible()
+  await expect(page.getByText('Loading poster…')).toHaveCount(0)
+  await expect(page.getByAltText('Dune poster').locator('..')).toHaveAttribute('aria-busy', 'true')
   await expect(page.getByAltText('Dune poster')).toHaveAttribute('loading', 'lazy')
   await expect(page.getByAltText('Dune poster')).toBeVisible()
   await page.goto('/calendar?date=2026-09-13')

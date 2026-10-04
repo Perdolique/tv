@@ -33,8 +33,7 @@ interface ActionPresentation {
 
 function watchedButton(page: Page): Locator {
   return page.getByRole('button', {
-    name: 'Watched',
-    exact: true
+    name: /^(?:Mark as watched|Watched, mark as unwatched)$/u
   })
 }
 
@@ -199,7 +198,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const watched = watchedButton(page)
 
       await expect(follow).toBeVisible()
-      await expect(watched).toHaveAttribute('aria-pressed', 'false')
+      await expect(watched).toHaveAccessibleName('Mark as watched')
       await expectInsideViewport(page, follow)
       await expectInsideViewport(page, watched)
       await expectNoOverlap(follow, watched)
@@ -222,7 +221,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.reload()
       await expect(follow).toBeVisible()
       await expect(follow).toHaveAttribute('aria-pressed', 'true')
-      await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+      await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
       await expectInsideViewport(page, follow)
       await expectInsideViewport(page, watchedButton(page))
       await expectNoOverlap(follow, watchedButton(page))
@@ -249,6 +248,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
       expect(selectedWatchedPresentation.backgroundColor).not.toBe(unselectedWatchedPresentation.backgroundColor)
       expect(selectedWatchedPresentation.borderColor).not.toBe(unselectedWatchedPresentation.borderColor)
+      expect(selectedWatchedPresentation.iconMarkup).not.toBe(unselectedWatchedPresentation.iconMarkup)
       expect(selectedFollowPresentation.iconMarkup).not.toBe(selectedWatchedPresentation.iconMarkup)
     })
   }
@@ -276,7 +276,7 @@ test('keeps selected catalog actions distinct in forced colors', async ({ contex
   const watched = watchedButton(page)
 
   await expect(follow).toHaveAttribute('aria-pressed', 'true')
-  await expect(watched).toHaveAttribute('aria-pressed', 'false')
+  await expect(watched).toHaveAccessibleName('Mark as watched')
 
   const [selectedFollowPresentation, unselectedWatchedPresentation] = await Promise.all([
     readActionPresentation(follow),
@@ -322,7 +322,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
         await watched.click()
         await expect(watched).toHaveAttribute('aria-busy', 'true')
-        await expect(watched).toHaveAttribute('aria-pressed', 'true')
+        await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
         await expect(progress).toHaveCSS('visibility', 'hidden')
         await expect(progress).toHaveCSS('opacity', '1', { timeout: 2000 })
 
@@ -433,23 +433,21 @@ test('reserves poster geometry during a slow image load', async ({ page }) => {
     await page.goto(dunePath, { waitUntil: 'domcontentloaded' })
     await waitForHydration(page)
 
-    const placeholder = page.getByText('Loading poster…', { exact: true })
-
-    await expect(placeholder).toBeVisible()
-
-    const before = await placeholder.boundingBox()
-
-    release.resolve(true)
-
     const poster = page.getByRole('img', { name: 'Dune poster' })
 
+    await expect(poster.locator('..')).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByText('Loading poster…', { exact: true })).toHaveCount(0)
+
+    const before = await poster.boundingBox()
+
+    release.resolve(true)
     await expect(poster).toHaveAttribute('data-loaded', 'true')
 
     const after = await poster.boundingBox()
 
     expect(before?.width).toBe(after?.width)
     expect(before?.height).toBe(after?.height)
-    await expect(placeholder).toHaveCount(0)
+    await expect(poster.locator('..')).toHaveAttribute('aria-busy', 'false')
   } finally {
     release.resolve(true)
   }
@@ -526,7 +524,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expect(watched).toBeFocused()
       expect(await watched.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)).not.toBe('none')
       await page.keyboard.press('Enter')
-      await expect(watched).toHaveAttribute('aria-pressed', 'true')
+      await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
       await expect(watched).toHaveAttribute('aria-busy', 'true')
 
       const progress = loadingIndicator(watched)

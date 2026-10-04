@@ -57,8 +57,7 @@ function observeWatchedMutationCount(page: Page): () => number {
 
 function watchedButton(page: Page): Locator {
   return page.getByRole('button', {
-    name: 'Watched',
-    exact: true
+    name: /^(?:Mark as watched|Watched, mark as unwatched)$/u
   })
 }
 
@@ -363,7 +362,7 @@ test('follows from the public title, persists across reload and sign-in, then un
   })
 })
 
-test('keeps catalog action labels stable and distinguishes their selected icons', async ({ context, page }) => {
+test('makes watched and unwatched actions clear while keeping Follow independent', async ({ context, page }) => {
   await context.addCookies([{
     name: 'tv_session',
     value: 'e2e-session',
@@ -386,25 +385,26 @@ test('keeps catalog action labels stable and distinguishes their selected icons'
   await expect(follow).toHaveAccessibleName('Follow')
   await expect(followIcon).toBeVisible()
   await expect(followIcon.locator('path')).toHaveCSS('fill', 'none')
-  await expect(watched).toHaveAttribute('aria-pressed', 'false')
-  await expect(watched).toHaveAccessibleName('Watched')
+  await expect(watched).toHaveAccessibleName('Mark as watched')
   await expect(watchedIcon).toBeVisible()
-  await expect(watchedIcon.locator('circle')).toHaveCount(1)
+  await expect(watched.getByText('Mark as watched', { exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(watched.getByText('Watched', { exact: true })).not.toBeVisible()
   await follow.click()
   await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await expect(follow).toHaveAccessibleName('Follow')
   await expect(followIcon.locator('path')).not.toHaveCSS('fill', 'none')
   await watched.click()
-  await expect(watched).toHaveAttribute('aria-pressed', 'true')
-  await expect(watched).toHaveAccessibleName('Watched')
-  await expect(watchedIcon.locator('circle')).toHaveCount(0)
-  await expect(watchedIcon.locator('path')).toHaveCount(2)
+  await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
+  await expect(watched.getByText('Watched', { exact: true })).toBeVisible()
+  await expect(watched.getByText('Mark as watched', { exact: true })).not.toBeVisible()
+  await expect(watched).not.toHaveAttribute('aria-pressed')
   await follow.click()
   await expect(follow).toHaveAttribute('aria-pressed', 'false')
   await expect(followIcon.locator('path')).toHaveCSS('fill', 'none')
   await watched.click()
-  await expect(watched).toHaveAttribute('aria-pressed', 'false')
-  await expect(watchedIcon.locator('circle')).toHaveCount(1)
+  await expect(watched).toHaveAccessibleName('Mark as watched')
+  await expect(watched.getByText('Mark as watched', { exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(watched.getByText('Watched', { exact: true })).not.toBeVisible()
 })
 
 test('marks a movie after sign-in, preserves the full return URL and restores the state across sessions', async ({ page }) => {
@@ -421,12 +421,12 @@ test('marks a movie after sign-in, preserves the full return URL and restores th
 
     await signIn(page)
     await expect(page).toHaveURL(`${appBaseUrl}${returnPath}`)
-    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+    await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
   })
 
   await test.step('mark the movie without following it and keep the state after reload', async () => {
     await watchedButton(page).click()
-    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+    await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
 
     await expect(page.getByRole('button', {
       name: 'Follow',
@@ -434,7 +434,7 @@ test('marks a movie after sign-in, preserves the full return URL and restores th
     })).toHaveAttribute('aria-pressed', 'false')
 
     await page.reload()
-    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+    await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
   })
 
   await test.step('sign out and restore the same account state', async () => {
@@ -450,14 +450,14 @@ test('marks a movie after sign-in, preserves the full return URL and restores th
 
     await signIn(page)
     await expect(page).toHaveURL(`${appBaseUrl}${returnPath}`)
-    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+    await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
   })
 
   await test.step('unmark and keep the saved state after reload', async () => {
     await watchedButton(page).click()
-    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+    await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
     await page.reload()
-    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+    await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
   })
 })
 
@@ -476,7 +476,7 @@ test('keeps watched state private to the signed-in account', async ({ context, p
   ])
 
   await page.goto(dunePath)
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
 
   await context.addCookies([{
     name: 'tv_session',
@@ -485,9 +485,9 @@ test('keeps watched state private to the signed-in account', async ({ context, p
   }])
 
   await page.reload()
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
   await watchedButton(page).click()
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
 })
 
 test('keeps Follow and Watched independent in both directions', async ({ context, page }) => {
@@ -507,18 +507,18 @@ test('keeps Follow and Watched independent in both directions', async ({ context
   await follow.click()
   await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await watchedButton(page).click()
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
   await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await watchedButton(page).click()
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
   await expect(follow).toHaveAttribute('aria-pressed', 'true')
   await watchedButton(page).click()
   await follow.click()
   await expect(follow).toHaveAttribute('aria-pressed', 'false')
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
   await follow.click()
   await expect(follow).toHaveAttribute('aria-pressed', 'true')
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
 })
 
 test('keeps separate watched marks for two movies', async ({ context, page }) => {
@@ -530,16 +530,16 @@ test('keeps separate watched marks for two movies', async ({ context, page }) =>
 
   await page.goto(dunePath)
   await watchedButton(page).click()
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
   await page.goto(arrivalPath)
   await watchedButton(page).click()
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
   await page.goto(dunePath)
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
   await watchedButton(page).click()
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+  await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
   await page.goto(arrivalPath)
-  await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
 })
 
 test('does not expose or request watched state for a series as a guest or account', async ({ context, page }) => {
@@ -617,14 +617,14 @@ test('keeps public title details visible while the initial watched status loads'
     await expect(page.getByText(dune.description, { exact: true })).toBeVisible()
 
     const checking = page.getByRole('button', {
-      name: 'Checking watched status…',
+      name: 'Mark as watched, loading status…',
       exact: true
     })
 
     await expect(checking).toHaveAttribute('aria-busy', 'true')
     await expect(checking).toBeDisabled()
     response.resolve(true)
-    await expect(watchedButton(page)).toHaveAttribute('aria-pressed', 'false')
+    await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
   } finally {
     response.resolve(true)
     await page.unrouteAll({ behavior: 'wait' })
@@ -691,9 +691,8 @@ test('delays in-button progress without changing personal action names', async (
     const watchedProgress = loadingIndicator(watched)
 
     await expect(watched).toHaveAttribute('aria-busy', 'true')
-    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
     await expect(watched).toBeDisabled()
-    await expect(watched).toHaveAccessibleName('Watched')
     await expect(watchedProgress).toHaveCSS('visibility', 'hidden')
 
     const watchedProgressDelays = await watchedProgress.evaluate(element => element.getAnimations().map(
@@ -808,7 +807,7 @@ test.describe('watched service recovery', () => {
 
     const watched = watchedButton(page)
 
-    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toHaveAccessibleName('Mark as watched')
     await expect(watched).toBeFocused()
 
     await context.addCookies([{
@@ -820,7 +819,7 @@ test.describe('watched service recovery', () => {
     const mutationRequestCount = observeWatchedMutationCount(page)
 
     await watched.click()
-    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
     await expect(watched).toHaveAttribute('aria-busy', 'true')
     await expect(watched).toBeDisabled()
     await expect(loadingIndicator(watched)).toHaveCSS('visibility', 'hidden')
@@ -828,13 +827,13 @@ test.describe('watched service recovery', () => {
     await page.keyboard.press('Enter')
     await expect(page.getByRole('alert')).toContainText('couldn’t update your watched status')
     await expect(page.getByText('private database connection details')).toHaveCount(0)
-    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toHaveAccessibleName('Mark as watched')
     await expect(watched).toBeEnabled()
     await expect(watched).toBeFocused()
     await expect(loadingIndicator(watched)).toHaveCSS('visibility', 'hidden')
     expect(mutationRequestCount()).toBe(1)
     await watched.click()
-    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
     await expect(watched).toBeEnabled()
     await expect(watched).toBeFocused()
     expect(mutationRequestCount()).toBe(2)
@@ -846,7 +845,7 @@ test.describe('watched service recovery', () => {
     }])
 
     await watched.click()
-    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toHaveAccessibleName('Mark as watched')
     await expect(watched).toHaveAttribute('aria-busy', 'true')
     await expect(watched).toBeDisabled()
     await page.keyboard.press('Enter')
@@ -858,12 +857,12 @@ test.describe('watched service recovery', () => {
 
     await follow.focus()
     await expect(page.getByRole('alert')).toContainText('couldn’t update your watched status')
-    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
     await expect(watched).toBeEnabled()
     await expect(follow).toBeFocused()
     expect(mutationRequestCount()).toBe(3)
     await watched.click()
-    await expect(watched).toHaveAttribute('aria-pressed', 'false')
+    await expect(watched).toHaveAccessibleName('Mark as watched')
     await expect(watched).toBeFocused()
     expect(mutationRequestCount()).toBe(4)
   })
@@ -907,7 +906,7 @@ test.describe('watched retry focus', () => {
       }).click()
 
       await expect(page.getByRole('button', {
-        name: 'Checking watched status…',
+        name: 'Mark as watched, loading status…',
         exact: true
       })).toBeVisible()
 

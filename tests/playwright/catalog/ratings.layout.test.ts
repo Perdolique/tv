@@ -79,7 +79,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.goto(titlePath)
       await waitForHydration(page)
 
-      const rate = page.getByRole('button', { name: /^(?:Rate|\d+ \/ 10)$/u })
+      const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
       const panel = page.getByRole('region', { name: 'Your rating' })
 
       await expect(rate).toBeEnabled()
@@ -141,7 +141,12 @@ for (const colorScheme of ['light', 'dark'] as const) {
       }
 
       await page.keyboard.press(activationKey)
-      await expect(panel.getByText('2 / 10', { exact: true })).toBeVisible()
+
+      await expect(panel.getByRole('button', {
+        name: 'Rate, your rating: 2 out of 10',
+        exact: true
+      })).toHaveText('Rate')
+
       await expect(rate).toBeFocused()
     })
   }
@@ -180,7 +185,10 @@ test('keeps the editor usable at a narrow width and with double-sized text', asy
     exact: true
   }).click()
 
-  await expect(page.getByText('10 / 10', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', {
+    name: 'Rate, your rating: 10 out of 10',
+    exact: true
+  })).toHaveText('Rate')
 })
 
 function observeRatingReads(page: Page): () => number {
@@ -209,14 +217,14 @@ test('keeps one rating action and preserves the picker across the mobile breakpo
 
   await page.goto(titlePath)
 
-  const rate = page.getByRole('button', { name: /^(?:Rate|\d+ \/ 10)$/u })
+  const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
   const picker = page.getByRole('dialog', { name: 'Your rating' })
 
   await test.step('open the mobile sheet and wrap keyboard focus', async () => {
     await expect(rate).toHaveCount(1)
     await rate.click()
     await expect(picker).toHaveJSProperty('tagName', 'DIALOG')
-    await expect(page.locator('body')).toHaveCSS('overflow', 'hidden')
+    await expect(page.locator('html')).toHaveCSS('overflow', 'hidden')
 
     await page.getByRole('button', {
       name: '10 out of 10',
@@ -237,7 +245,7 @@ test('keeps one rating action and preserves the picker across the mobile breakpo
     await page.keyboard.press('Escape')
     await expect(picker).toHaveCount(0)
     await expect(rate).toBeFocused()
-    await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden')
+    await expect(page.locator('html')).not.toHaveCSS('overflow', 'hidden')
     await rate.click()
     await page.mouse.click(8, 8)
     await expect(picker).toHaveCount(0)
@@ -252,7 +260,7 @@ test('keeps one rating action and preserves the picker across the mobile breakpo
     })
 
     await expect(picker).toHaveJSProperty('tagName', 'DIV')
-    await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden')
+    await expect(page.locator('html')).not.toHaveCSS('overflow', 'hidden')
 
     await expect(picker.getByRole('button', {
       name: '1 out of 10',
@@ -264,7 +272,8 @@ test('keeps one rating action and preserves the picker across the mobile breakpo
       exact: true
     }).click()
 
-    await expect(rate).toHaveText('7 / 10')
+    await expect(rate).toHaveAccessibleName('Rate, your rating: 7 out of 10')
+    await expect(page.getByRole('region', { name: 'Personal score' })).toContainText('7 out of 10')
     await rate.click()
   })
 
@@ -325,6 +334,22 @@ test('flips the popover above its action when the viewport has no room below', a
   })
 
   await rate.click()
+
+  const positioning = await picker.evaluate(element => {
+    const style = globalThis.getComputedStyle(element)
+
+    return {
+      anchor: style.getPropertyValue('position-anchor'),
+      inlineTop: element.style.top,
+      inlineLeft: element.style.left,
+      inlineMaxHeight: element.style.maxHeight
+    }
+  })
+
+  expect(positioning.anchor).toMatch(/^--/u)
+  expect(positioning.inlineTop).toBe('')
+  expect(positioning.inlineLeft).toBe('')
+  expect(positioning.inlineMaxHeight).toBe('')
 
   const buttonTop = await rate.evaluate(element => {
     const box = element.getBoundingClientRect()

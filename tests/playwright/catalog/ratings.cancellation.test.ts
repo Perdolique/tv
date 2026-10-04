@@ -73,7 +73,11 @@ async function expectAbandonedRating(page: Page, method: string, start: () => Pr
       exact: true
     })).toBeVisible()
 
-    await expect(panel.getByText('8 / 10', { exact: true })).toHaveCount(0)
+    await expect(panel.getByRole('button', {
+      name: 'Rate, your rating: 8 out of 10',
+      exact: true
+    })).toHaveCount(0)
+
     await expect(panel.getByRole('button', { name: /^\d+ out of 10$/u })).toHaveCount(0)
     await expect(panel.getByRole('status')).toBeEmpty()
   } finally {

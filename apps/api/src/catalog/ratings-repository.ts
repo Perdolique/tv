@@ -1,7 +1,44 @@
 import type { Database } from '@tv/database'
 import { catalogItemRatings, catalogItems, catalogItemTitles } from '@tv/database/schema'
-import type { CatalogRatingResponse } from '@tv/shared/catalog'
-import { and, eq } from 'drizzle-orm'
+import type { CatalogRatingResponse, CatalogRatingSummaryResponse } from '@tv/shared/catalog'
+import { and, avg, count, eq } from 'drizzle-orm'
+
+async function findCatalogItemRatingSummary(
+  database: Database,
+  catalogItemId: string
+): Promise<CatalogRatingSummaryResponse | null> {
+  const rows = await database
+    .select({
+      averageScore: avg(catalogItemRatings.score),
+      ratingCount: count(catalogItemRatings.id)
+    })
+    .from(catalogItems)
+    .innerJoin(
+      catalogItemTitles,
+      and(
+        eq(catalogItemTitles.catalogItemId, catalogItems.id),
+        eq(catalogItemTitles.isOriginal, true)
+      )
+    )
+    .leftJoin(catalogItemRatings, eq(catalogItemRatings.catalogItemId, catalogItems.id))
+    .where(
+      eq(catalogItems.id, catalogItemId)
+    )
+    .groupBy(catalogItems.id)
+
+  const [summary] = rows
+
+  if (summary === undefined) {
+    return null
+  }
+
+  const averageScore = summary.averageScore === null ? null : Number(summary.averageScore)
+
+  return {
+    averageScore,
+    ratingCount: summary.ratingCount
+  }
+}
 
 async function findCatalogItemRating(
   database: Database,
@@ -91,4 +128,4 @@ async function setCatalogItemRating(
   })
 }
 
-export { findCatalogItemRating, setCatalogItemRating }
+export { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating }

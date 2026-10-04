@@ -3,8 +3,10 @@
     <main :class="$style.component">
       <NuxtLink :class="$style.backLink" :to="backLocation">{{ backLabel }}</NuxtLink>
       <section v-if="isLoading" :class="$style.loading" aria-label="Loading title" aria-busy="true">
-        <div :class="$style.posterSkeleton" aria-hidden="true" />
-        <div :class="$style.loadingCopy"><h1 :class="$style.heading">Loading title…</h1></div>
+        <div :class="$style.hero">
+          <div :class="$style.posterSkeleton" aria-hidden="true" />
+          <div :class="$style.loadingCopy"><h1 :class="$style.heading">Loading title…</h1></div>
+        </div>
       </section>
       <section v-else-if="isNotFound" :class="$style.message">
         <h1 ref="heading" :class="$style.heading" tabindex="-1">Title not found</h1>
@@ -16,76 +18,116 @@
         <AppButton ref="retryButton" @click="retry">Try again</AppButton>
       </section>
       <article v-else-if="item" :class="$style.details" :data-type="item.type">
-        <CatalogPoster :key="posterKey" :poster-url="item.posterUrl" :title="item.title" />
-        <div :class="$style.information">
-          <p :class="$style.metadata">{{ metadata }}</p>
-          <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
-          <p v-if="showOriginalTitle" :class="$style.originalTitle" :lang="item.originalTitleLocale">{{ item.originalTitle }}</p>
-          <div :class="$style.personalActions">
-            <CatalogRating
-              :account-id="accountId"
-              :catalog-item-id="item.id"
-              :has-session-error="hasSessionError"
-              :is-anonymous="isAnonymous"
-              :sign-in-location="signInLocation"
-              @unauthorized="handleRatingUnauthorized"
+        <header :class="$style.hero">
+          <CatalogPoster :key="posterKey" :class="$style.poster" :poster-url="item.posterUrl" :title="item.title" />
+          <div :class="$style.information">
+            <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
+            <p :class="$style.metadata">{{ metadata }}</p>
+            <p v-if="showOriginalTitle" :class="$style.originalTitle" :lang="item.originalTitleLocale">{{ item.originalTitle }}</p>
+            <CatalogRatingSummary
+              :class="$style.inlineRating"
+              :has-error="hasRatingSummaryError"
+              :is-loading="isRatingSummaryLoading"
+              :summary="ratingSummary"
+              @retry="ratingSummaryReady.execute({ dedupe: 'cancel' })"
             />
-            <section :class="$style.personalAction" aria-label="Follow action">
-              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Follow</NuxtLink>
-              <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Follow unavailable</AppButton>
-              <template v-else-if="isAuthenticated && followStatus === 'error'">
-                <AppMessage role="alert" tone="danger">We couldn’t check your follow status. Try again.</AppMessage>
-                <AppButton ref="followRetryButton" aria-label="Retry follow status" :class="$style.actionButton" variant="secondary" @click="retryFollow">Retry</AppButton>
-              </template>
-              <template v-else-if="isAuthenticated && followStatus === 'loaded'">
-                <AppButton
-                  ref="followButton"
-                  :aria-busy="isSaving || undefined"
-                  :aria-pressed="followed"
-                  :class="$style.actionButton"
-                  :disabled="isSaving"
-                  variant="secondary"
-                  @click="toggleFollow"
-                >
-                  <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="follow">
-                    <Icon :class="$style.actionStateIcon" mode="svg" name="hugeicons:bookmark-02" />
-                    <span :class="$style.actionProgress" data-loading-indicator />
-                  </span>
-                  Follow
-                </AppButton>
-                <AppMessage v-if="saveError !== ''" role="alert" tone="danger">{{ saveError }}</AppMessage>
-              </template>
-              <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking follow status…</AppButton>
-            </section>
-            <section v-if="isMovie" :class="$style.personalAction" aria-label="Watched action">
-              <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Mark as watched</NuxtLink>
-              <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Watched unavailable</AppButton>
-              <template v-else-if="isAuthenticated && watchedStatus === 'error'">
-                <AppMessage role="alert" tone="danger">We couldn’t check whether you watched this movie. Try again.</AppMessage>
-                <AppButton ref="watchedRetryButton" aria-label="Retry watched status" :class="$style.actionButton" variant="secondary" @click="retryWatched">Retry</AppButton>
-              </template>
-              <template v-else-if="isAuthenticated && watchedStatus === 'loaded'">
-                <AppButton
-                  ref="watchedButton"
-                  :aria-busy="isSavingWatched || undefined"
-                  :aria-pressed="watched"
-                  :class="$style.actionButton"
-                  :disabled="isSavingWatched"
-                  variant="secondary"
-                  @click="toggleWatched"
-                >
-                  <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="watched">
-                    <Icon :class="$style.actionStateIcon" mode="svg" :name="watchedIconName" />
-                    <span :class="$style.actionProgress" data-loading-indicator />
-                  </span>
-                  Watched
-                </AppButton>
-                <AppMessage v-if="watchedSaveError !== ''" role="alert" tone="danger">{{ watchedSaveError }}</AppMessage>
-              </template>
-              <AppButton v-else :class="$style.actionButton" aria-busy="true" disabled variant="secondary">Checking watched status…</AppButton>
-            </section>
+            <div :class="$style.personalActions">
+              <CatalogRating
+                :class="$style.ratingAction"
+                :account-id="accountId"
+                :catalog-item-id="item.id"
+                :has-session-error="hasSessionError"
+                :is-anonymous="isAnonymous"
+                :is-saving="isSavingRating"
+                :load="loadRating"
+                :save="saveRating"
+                :save-error="ratingSaveError"
+                :score="ratingScore"
+                :sign-in-location="signInLocation"
+                :status="ratingStatus"
+                @clear-error="clearRatingError"
+                @saved="handleRatingSaved"
+              />
+              <section :class="$style.personalAction" aria-label="Follow action">
+                <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Follow</NuxtLink>
+                <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Follow unavailable</AppButton>
+                <template v-else-if="isAuthenticated && followStatus === 'error'">
+                  <AppMessage role="alert" tone="danger">We couldn’t check your follow status. Try again.</AppMessage>
+                  <AppButton ref="followRetryButton" aria-label="Retry follow status" :class="$style.actionButton" variant="secondary" @click="retryFollow">Retry</AppButton>
+                </template>
+                <template v-else>
+                  <AppButton
+                    ref="followButton"
+                    :aria-busy="isFollowBusy || undefined"
+                    :aria-label="followActionLabel"
+                    :aria-pressed="followPressed"
+                    :class="$style.actionButton"
+                    :disabled="isFollowBusy"
+                    variant="secondary"
+                    @click="toggleFollow"
+                  >
+                    <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="follow">
+                      <Icon :class="$style.actionStateIcon" mode="svg" name="hugeicons:bookmark-02" />
+                      <span :class="$style.actionProgress" data-loading-indicator />
+                    </span>
+                    Follow
+                  </AppButton>
+                  <AppMessage v-if="saveError !== ''" role="alert" tone="danger">{{ saveError }}</AppMessage>
+                </template>
+              </section>
+              <section v-if="isMovie" :class="$style.watchedAction" aria-label="Watched action">
+                <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Mark as watched</NuxtLink>
+                <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Watched unavailable</AppButton>
+                <template v-else-if="isAuthenticated && watchedStatus === 'error'">
+                  <AppMessage role="alert" tone="danger">We couldn’t check whether you watched this movie. Try again.</AppMessage>
+                  <AppButton ref="watchedRetryButton" aria-label="Retry watched status" :class="$style.actionButton" variant="secondary" @click="retryWatched">Retry</AppButton>
+                </template>
+                <template v-else>
+                  <AppButton
+                    ref="watchedButton"
+                    :aria-busy="isWatchedBusy || undefined"
+                    :aria-label="watchedActionLabel"
+                    :class="[$style.actionButton, { 'is-watched': watched }]"
+                    :disabled="isWatchedBusy"
+                    variant="secondary"
+                    @click="toggleWatched"
+                  >
+                    <span :class="$style.watchedContent">
+                      <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="watched">
+                        <Icon :key="watchedIconName" :class="$style.actionStateIcon" mode="svg" :name="watchedIconName" />
+                        <span :class="$style.actionProgress" data-loading-indicator />
+                      </span>
+                      <span>{{ watchedLabel }}</span>
+                    </span>
+                    <span aria-hidden="true" :class="$style.watchedSizer">Mark as watched</span>
+                  </AppButton>
+                  <AppMessage v-if="watchedSaveError !== ''" role="alert" tone="danger">{{ watchedSaveError }}</AppMessage>
+                </template>
+              </section>
+            </div>
           </div>
-        </div>
+        </header>
+        <aside :class="$style.ratingsRail" aria-label="Title ratings">
+          <CatalogRatingSummary
+            :has-error="hasRatingSummaryError"
+            :is-loading="isRatingSummaryLoading"
+            :summary="ratingSummary"
+            presentation="card"
+            @retry="ratingSummaryReady.execute({ dedupe: 'cancel' })"
+          />
+          <section :class="$style.personalRating" :aria-busy="isRatingLoading" aria-label="Personal score">
+            <span :class="$style.personalRatingIcon" aria-hidden="true">
+              <Icon mode="svg" name="hugeicons:star" />
+            </span>
+            <div :class="$style.personalRatingCopy">
+              <p :class="$style.personalRatingLabel">Your rating</p>
+              <p :class="$style.personalScore">
+                {{ personalScoreLabel }}
+                <span v-if="hasPersonalScore" :class="$style.accessible">out of 10</span>
+              </p>
+            </div>
+          </section>
+        </aside>
         <section v-if="isMovie" :class="$style.movieOverview" :aria-labelledby="overviewId">
           <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
           <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
@@ -194,9 +236,12 @@
   import AppShell from '~/components/app/AppShell.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
   import CatalogRating from '~/components/catalog/CatalogRating.vue'
+  import CatalogRatingSummary from '~/components/catalog/CatalogRatingSummary.vue'
   import CatalogEpisodeList from '~/components/catalog/CatalogEpisodeList.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCatalogDetails } from '~/composables/use-catalog-details.ts'
+  import { useCatalogRating } from '~/composables/use-catalog-rating.ts'
+  import { useCatalogRatingSummary } from '~/composables/use-catalog-rating-summary.ts'
   import { useCatalogEpisodes } from '~/composables/use-catalog-episodes.ts'
   import { useCatalogEpisodeWatches } from '~/composables/use-catalog-episode-watches.ts'
   import { useCatalogFollow } from '~/composables/use-catalog-follow.ts'
@@ -220,9 +265,27 @@
   const shouldRevalidateSession = import.meta.client && !nuxtApp.isHydrating
   const sessionReady = restoreSession({ force: shouldRevalidateSession })
   const { hasError, isLoading, isNotFound, item, ready } = useCatalogDetails(id, titleLocale)
+
+  const {
+    hasError: hasRatingSummaryError,
+    isLoading: isRatingSummaryLoading,
+    ready: ratingSummaryReady,
+    summary: ratingSummary
+  } = useCatalogRatingSummary(id)
+
   const accountId = computed(() => sessionState.value.status === 'authenticated' ? sessionState.value.user.id : null)
-  const followCatalogItemId = computed(() => item.value?.id ?? null)
+  const catalogItemId = computed(() => item.value?.id ?? null)
   const watchedCatalogItemId = computed(() => item.value?.type === 'movie' ? item.value.id : null)
+
+  const {
+    isSaving: isSavingRating,
+    load: loadRating,
+    save: saveRating,
+    saveError: ratingSaveError,
+    score: ratingScore,
+    status: ratingStatus,
+    unauthorized: ratingUnauthorized
+  } = useCatalogRating(catalogItemId, accountId)
 
   const {
     clearUnauthorized,
@@ -233,7 +296,7 @@
     status: followStatus,
     toggle: saveFollow,
     unauthorized: followUnauthorized
-  } = useCatalogFollow(followCatalogItemId, accountId)
+  } = useCatalogFollow(catalogItemId, accountId)
 
   const {
     clearUnauthorized: clearWatchedUnauthorized,
@@ -254,7 +317,8 @@
   const watchedRetryButton = useTemplateRef('watchedRetryButton')
   const episodesTab = useTemplateRef('episodesTab')
   const overviewTab = useTemplateRef('overviewTab')
-  const watchedIconName = computed(() => watched.value ? 'hugeicons:checkmark-circle-02' : 'hugeicons:circle')
+  const watchedIconName = computed(() => watched.value ? 'hugeicons:tick-02' : 'hugeicons:view')
+  const watchedLabel = computed(() => watched.value ? 'Watched' : 'Mark as watched')
   const overviewId = useId()
   const seriesOverviewId = useId()
   const episodesTabId = useId()
@@ -271,7 +335,41 @@
   const backLabel = computed(() => searchQuery.value === '' ? 'Back to catalog' : 'Back to results')
   const isAnonymous = computed(() => sessionState.value.status === 'anonymous')
   const isAuthenticated = computed(() => sessionState.value.status === 'authenticated')
+  const isFollowReady = computed(() => isAuthenticated.value && followStatus.value === 'loaded')
+  const isFollowBusy = computed(() => !isFollowReady.value || isSaving.value)
+  const followPressed = computed(() => isFollowReady.value ? followed.value : undefined)
+  const followActionLabel = computed(() => isFollowReady.value ? undefined : 'Follow, loading status…')
+  const isWatchedReady = computed(() => isAuthenticated.value && watchedStatus.value === 'loaded')
+  const isWatchedBusy = computed(() => !isWatchedReady.value || isSavingWatched.value)
+
+  const watchedActionLabel = computed(() => {
+    if (!isWatchedReady.value) {
+      return 'Mark as watched, loading status…'
+    }
+
+    return watched.value ? 'Watched, mark as unwatched' : undefined
+  })
+
   const hasSessionError = computed(() => sessionState.value.status === 'error')
+  const isRatingLoading = computed(() => !isAnonymous.value && !hasSessionError.value && (ratingStatus.value === 'loading' || ratingStatus.value === 'idle'))
+  const hasPersonalScore = computed(() => !isAnonymous.value && ratingStatus.value === 'loaded' && ratingScore.value !== null)
+
+  const personalScoreLabel = computed(() => {
+    if (isAnonymous.value) {
+      return '—'
+    }
+
+    if (hasSessionError.value || ratingStatus.value === 'error') {
+      return 'Unavailable'
+    }
+
+    if (isRatingLoading.value) {
+      return 'Loading…'
+    }
+
+    return ratingScore.value === null ? '—' : String(ratingScore.value)
+  })
+
   const isMovie = computed(() => item.value?.type === 'movie')
   const isSeries = computed(() => item.value?.type === 'series')
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
@@ -320,6 +418,18 @@
     return { title }
   })
 
+  watch(ratingUnauthorized, async reason => {
+    if (reason === null) {
+      return
+    }
+
+    setAnonymous()
+
+    if (reason === 'mutation') {
+      await navigateTo(signInLocation.value, { replace: true })
+    }
+  }, { flush: 'sync' })
+
   watch(followUnauthorized, async (reason) => {
     if (reason === null) {
       return
@@ -351,6 +461,7 @@
   })
 
   await ready
+  await ratingSummaryReady
 
   const episodeCatalogItemId = computed(() => item.value?.type === 'series' ? item.value.id : null)
 
@@ -410,11 +521,13 @@
     setResponseStatus(event, status)
   }
 
-  async function handleRatingUnauthorized(reason: 'load' | 'mutation'): Promise<void> {
-    setAnonymous()
+  function clearRatingError(): void {
+    ratingSaveError.value = ''
+  }
 
-    if (reason === 'mutation') {
-      await navigateTo(signInLocation.value, { replace: true })
+  function handleRatingSaved(savedItemId: string): void {
+    if (savedItemId === item.value?.id) {
+      void ratingSummaryReady.execute({ dedupe: 'cancel' })
     }
   }
 
@@ -579,76 +692,72 @@
   @layer components {
     .component {
       container-type: inline-size;
-      max-inline-size: 76rem;
+      max-inline-size: var(--layout-content-max);
       margin-inline: auto;
-      padding: var(--space-6) var(--layout-page-mobile) var(--space-12);
+      padding: 0 var(--layout-page-mobile) var(--space-12);
     }
     .backLink {
       display: inline-flex;
       align-items: center;
       min-block-size: 2.75rem;
-      margin-block-end: var(--space-6);
+      margin-block-end: var(--space-2);
       color: var(--color-text-secondary);
       text-underline-offset: 0.25em;
     }
-    .details, .loading {
+    .details, .loading { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
+    .hero {
       display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: var(--space-8);
-      > :first-child { max-inline-size: 16rem; }
+      grid-template-columns: minmax(0, 0.32fr) minmax(0, 0.68fr);
+      align-items: start;
+      gap: var(--space-4);
     }
-    .information { padding-block: var(--space-2); }
-    .heading {
-      margin-block: var(--space-2) var(--space-3);
-      font-size: 1.75rem;
-      font-weight: 600;
-      line-height: 1.15;
-    }
+    .heading { margin-block-end: var(--space-3); font-size: 1.75rem; font-weight: 600; line-height: 1.15; }
     .metadata, .originalTitle, .supportingText { color: var(--color-text-secondary); }
     .metadata { font-size: 0.875rem; }
-    .personalActions {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: start;
-      gap: var(--space-3);
-      margin-block-start: var(--space-6);
-    }
-    .personalAction {
-      display: grid;
-      justify-items: start;
-      gap: var(--space-3);
-      min-inline-size: min(100%, 13rem);
-      max-inline-size: 24rem;
-    }
-    .actionButton, .actionLink { min-inline-size: min(100%, 13rem); }
+    .originalTitle { margin-block-start: var(--space-2); }
+    .inlineRating { margin-block-start: var(--space-4); }
+    .personalActions { display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-2); margin-block-start: var(--space-4); }
+    .ratingAction, .personalAction, .watchedAction { flex: 1 1 6.5rem; min-inline-size: 0; }
+    .personalAction, .watchedAction { display: grid; gap: var(--space-3); }
+    .watchedAction { flex-basis: 12rem; }
+    .actionButton, .actionLink { inline-size: 100%; }
     .actionButton {
       --action-progress-delay: 1s;
-
-      position: relative;
+      min-block-size: 3rem;
+      padding: var(--space-3);
+      font-weight: 600;
+      .watchedAction > & { display: grid; grid-template-columns: minmax(0, 1fr); }
+      &[aria-pressed='true'], &:global(.is-watched),
+      &[aria-pressed='true']:disabled, &:global(.is-watched):disabled {
+        border-color: var(--color-accent);
+        background: var(--color-surface-selected);
+        color: var(--color-text-primary);
+      }
     }
-    .actionIndicator {
-      position: absolute;
-      inset-block-start: 50%;
-      inset-inline-start: var(--space-6);
-      inline-size: 1.25rem;
-      block-size: 1.25rem;
-      color: currentcolor;
-      pointer-events: none;
-      transform: translateY(-50%);
+    .watchedContent, .watchedSizer { grid-area: 1 / 1; }
+    .watchedContent { display: flex; align-items: center; justify-content: center; gap: var(--space-2); }
+    .watchedSizer { visibility: hidden; padding-inline-start: calc(1.25rem + var(--space-2)); }
+    .ratingsRail { display: grid; align-content: start; gap: var(--space-3); }
+    .personalRating { display: flex; align-items: center; gap: var(--space-4); min-inline-size: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+    .personalRatingIcon { display: grid; flex: 0 0 auto; place-items: center; inline-size: 2.5rem; block-size: 2.5rem; border: 1px solid var(--color-accent); border-radius: var(--radius-round); color: var(--color-accent); }
+    .personalRatingIcon :global(svg) { inline-size: 1.5rem; block-size: 1.5rem; }
+    .personalRatingCopy { min-inline-size: 0; }
+    .personalRatingLabel { color: var(--color-text-secondary); font-size: 0.875rem; line-height: 1.4; }
+    .personalScore { font-size: 1.25rem; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+    .accessible { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    @media (width < 40rem) {
+      .actionButton, .actionLink { scroll-margin-block-end: calc(5.5rem + env(safe-area-inset-bottom)); }
     }
+    .actionIndicator { position: relative; flex: 0 0 auto; inline-size: 1.25rem; block-size: 1.25rem; color: currentcolor; pointer-events: none; }
     .actionStateIcon, .actionProgress {
       position: absolute;
       inset: 0;
       inline-size: 100%;
       block-size: 100%;
     }
-    .actionButton[aria-pressed='true'],
-    .actionButton[aria-pressed='true']:disabled {
-      border-color: var(--color-accent);
-      background: var(--color-surface-selected);
-      color: var(--color-text-primary);
+    .actionStateIcon {
+      .actionButton[aria-pressed='true'] &, .actionButton:global(.is-watched) & { color: var(--color-accent); }
     }
-    .actionButton[aria-pressed='true'] .actionStateIcon { color: var(--color-accent); }
     .actionButton[aria-pressed='true'] .actionIndicator[data-action-icon='follow'] .actionStateIcon :global(path) {
       fill: currentcolor;
     }
@@ -672,8 +781,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-block-size: 3.5rem;
-      padding: var(--space-3) var(--space-6);
+      min-block-size: 3rem;
+      padding: var(--space-3);
       border-radius: var(--radius-md);
       font-weight: 700;
       text-decoration: none;
@@ -694,9 +803,7 @@
     }
     .seriesContent {
       display: grid;
-      grid-column: 1 / -1;
       gap: var(--space-6);
-      margin-block-start: var(--space-2);
     }
     .tabs {
       display: flex;
@@ -770,26 +877,48 @@
       }
     }
     @media (forced-colors: active) {
-      .actionButton[aria-pressed='true'],
-      .actionButton[aria-pressed='true']:disabled {
-        border-color: SelectedItem;
+      .actionButton {
+        &[aria-pressed='true'], &:global(.is-watched),
+        &[aria-pressed='true']:disabled, &:global(.is-watched):disabled {
+          border-color: SelectedItem;
+        }
       }
     }
     @media (width >= 40rem) {
       .component { padding-inline: var(--layout-page-compact); }
+      .details, .loading { grid-template-columns: minmax(0, 1fr) 14rem; gap: var(--space-8) var(--space-6); }
+      .hero { grid-column: 1; grid-row: 1; grid-template-columns: 8rem minmax(0, 1fr); gap: var(--space-5); }
       .heading { font-size: 2.25rem; line-height: 1.17; }
+      .ratingsRail { grid-column: 2; grid-row: 1; align-self: end; }
+      .personalRating { padding: var(--space-4); }
+      .personalRatingIcon { inline-size: 3rem; block-size: 3rem; }
+      .seriesContent, .movieOverview { grid-column: 1 / -1; }
     }
     @media (width >= 64rem) {
-      .component { padding: var(--space-8) var(--layout-page-wide) var(--space-16); }
+      .component { padding: 0 var(--layout-page-wide) var(--space-16); }
+      .details, .loading { grid-template-columns: minmax(0, 1fr) var(--layout-rail); gap: var(--space-12) var(--space-8); }
+      .hero { grid-column: 1 / -1; grid-template-columns: 13rem minmax(0, 1fr); gap: var(--space-6); }
+      .information, .loadingCopy { padding-block: var(--space-6); }
+      .heading { font-size: 3rem; line-height: 1.08; }
+      .metadata { font-size: 1rem; }
+      .personalActions { gap: var(--space-3); margin-block-start: var(--space-6); }
+      .ratingAction, .personalAction, .watchedAction { flex: 0 1 10rem; }
+      .watchedAction { flex-basis: 12rem; }
+      .ratingsRail { grid-column: 2; grid-row: 2 / span 2; align-self: start; margin-block-start: calc(-1 * var(--space-8)); }
+      .personalRating { padding: var(--space-3); }
+      .seriesContent, .movieOverview { grid-column: 1; grid-row: 2; }
+      .seriesContent { margin-block-start: var(--space-2); }
+      .credits { grid-column: 1; }
     }
-    @container (width >= 32rem) {
-      .details, .loading { grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr); }
-      .details[data-type='movie'] > :first-child { grid-row: 1 / 3; }
-      .movieOverview { grid-column: 2; grid-row: 2; }
+    @container (width < 38rem) {
+      .details, .loading { grid-template-columns: minmax(0, 1fr); }
+      .hero { grid-column: 1; }
+      .ratingsRail { grid-column: 1; grid-row: auto; margin-block-start: 0; }
+      .seriesContent, .movieOverview { grid-column: 1; grid-row: auto; }
     }
-    @container (width >= 52rem) {
-      .details, .loading { grid-template-columns: 17rem minmax(0, 1fr); gap: var(--space-10); > :first-child { max-inline-size: none; } }
+    @container (width < 18rem) {
+      .hero { grid-template-columns: minmax(0, 1fr); }
+      .poster, .posterSkeleton { inline-size: min(100%, 8rem); }
     }
-
   }
 </style>

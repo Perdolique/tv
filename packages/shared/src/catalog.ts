@@ -42,6 +42,11 @@ interface CatalogRatingResponse {
   score: number | null;
 }
 
+interface CatalogRatingSummaryResponse {
+  averageScore: number | null;
+  ratingCount: number;
+}
+
 interface CatalogEpisode {
   airDate: string | null;
   episodeNumber: number;
@@ -134,6 +139,7 @@ export type {
   CatalogErrorEnvelope,
   CatalogFollowResponse,
   CatalogRatingResponse,
+  CatalogRatingSummaryResponse,
   CatalogReleaseItem,
   CatalogReleasesResponse,
   CatalogSearchItem,
