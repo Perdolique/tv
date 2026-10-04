@@ -12,6 +12,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar
@@ -199,11 +200,13 @@ const catalogItemRatings = pgTable('catalog_item_ratings', {
   id: uuid().default(sql`uuidv7()`).primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  seasonNumber: integer('season_number'),
   score: integer().notNull()
 }, (table) => [
+  check('catalog_item_ratings_season_number_positive', sql`${table.seasonNumber} > 0`),
   check('catalog_item_ratings_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
-  uniqueIndex('catalog_item_ratings_user_item_unique').on(table.userId, table.catalogItemId),
-  index('catalog_item_ratings_item_index').on(table.catalogItemId)
+  unique('catalog_item_ratings_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber).nullsNotDistinct(),
+  index('catalog_item_ratings_target_index').on(table.catalogItemId, table.seasonNumber)
 ])
 
 const catalogMovieWatches = pgTable('catalog_movie_watches', {

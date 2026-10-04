@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { computed, effectScope, ref } from 'vue'
 
 interface RequestOptions {
   method?: string;
@@ -20,7 +20,14 @@ function setup(accountId: string | null = 'account-one') {
   const scope = effectScope()
   const item = ref<string | null>('title-one')
   const account = ref<string | null>(accountId)
-  const rating = scope.run(() => useCatalogRating(item, account))
+  const season = ref<number | null>(null)
+
+  const target = computed(() => item.value === null ? null : {
+    catalogItemId: item.value,
+    seasonNumber: season.value
+  })
+
+  const rating = scope.run(() => useCatalogRating(target, account))
 
   scopes.push(scope)
 
@@ -28,6 +35,7 @@ function setup(accountId: string | null = 'account-one') {
 
   return {
     account,
+    season,
     item,
     rating,
     scope
@@ -230,6 +238,36 @@ describe('catalog rating lifecycle', () => {
 
     expect(signal?.aborted).toBe(true)
     expect(rating.score.value).toBe(4)
+  })
+
+  it.each(['load', 'save'] as const)('cancels a season %s and rejects its late response after selecting another season', async operation => {
+    const pending = Promise.withResolvers<unknown>()
+    const state = setup()
+
+    state.season.value = 1
+
+    harness.fetch.mockResolvedValueOnce({ score: 6 })
+    await state.rating.load()
+    harness.fetch.mockReturnValueOnce(pending.promise)
+
+    const oldRequest = state.rating[operation](9)
+    const signal = harness.fetch.mock.calls[1]?.[1].signal
+
+    state.season.value = 2
+
+    expect(state.rating.score.value).toBeNull()
+    expect(signal?.aborted).toBe(true)
+    harness.fetch.mockResolvedValueOnce({ score: 3 })
+    await state.rating.load()
+    pending.resolve({ score: 9 })
+
+    await oldRequest
+
+    expect(state.rating.score.value).toBe(3)
+    expect(state.rating.isSaving.value).toBe(false)
+    expect(state.rating.saveError.value).toBe('')
+    expect(harness.fetch.mock.calls[0]?.[0]).toBe('/api/catalog/items/title-one/seasons/1/rating')
+    expect(harness.fetch.mock.calls[2]?.[0]).toBe('/api/catalog/items/title-one/seasons/2/rating')
   })
 
   it('does not start automatic requests during SSR', () => {

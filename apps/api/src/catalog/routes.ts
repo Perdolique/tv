@@ -10,6 +10,7 @@ import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
 import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
 import { registerCatalogEpisodeRoutes } from './episode-routes.ts'
 import { registerCatalogRatingRoutes } from './rating-routes.ts'
+import { registerCatalogSeasonRatingRoutes } from './season-rating-routes.ts'
 import { registerCatalogImportRoutes } from './import/routes.ts'
 import { registerCatalogViewingRoutes } from './viewing-routes.ts'
 
@@ -96,6 +97,7 @@ function createCatalogApp(
 
   registerCatalogEpisodeRoutes(app, dependencies)
   registerCatalogRatingRoutes(app, dependencies)
+  registerCatalogSeasonRatingRoutes(app, dependencies)
   registerCatalogViewingRoutes(app, dependencies)
 
   app.get('/api/catalog/items/:id/follow', async (context) => {

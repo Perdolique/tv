@@ -3,10 +3,10 @@
     ref="summaryRegion"
     :class="$style.component"
     :data-presentation="presentation"
-    aria-label="TV viewer rating"
+    :aria-label="label"
     tabindex="-1"
   >
-    <p :class="$style.label">TV viewer rating</p>
+    <p :class="$style.label">{{ label }}</p>
     <div v-if="summary" :class="$style.summary">
       <p :class="$style.score">
         <Icon aria-hidden="true" mode="svg" name="hugeicons:star" />
@@ -32,7 +32,8 @@
   interface Props {
     hasError: boolean;
     isLoading: boolean;
-    presentation?: 'inline' | 'card';
+    presentation?: 'inline' | 'card' | 'compact';
+    label?: string;
     summary?: CatalogRatingSummaryResponse;
   }
 
@@ -40,12 +41,12 @@
     retry: [];
   }
 
-  const { summary, hasError, isLoading, presentation = 'inline' } = defineProps<Props>()
+  const { summary, hasError, isLoading, presentation = 'inline', label = 'TV viewer rating' } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const summaryRegion = useTemplateRef('summaryRegion')
   const retryButton = useTemplateRef('retryButton')
   const isDesktop = useMediaQuery('(width >= 64rem)')
-  const isPresented = computed(() => presentation === 'card' ? isDesktop.value : !isDesktop.value)
+  const isPresented = computed(() => presentation === 'compact' || (presentation === 'card' ? isDesktop.value : !isDesktop.value))
   const errorLabel = computed(() => summary === undefined ? 'Viewer rating unavailable' : 'Viewer rating update failed. Try again.')
   const hasScore = computed(() => summary?.averageScore !== null && summary?.averageScore !== undefined)
   const scoreFormatter = new Intl.NumberFormat('en', { maximumFractionDigits: 1 })
@@ -124,6 +125,7 @@
     .placeholder { display: flex; align-items: center; min-block-size: calc(2.75rem + var(--space-1) + 1.3125rem); color: var(--color-text-secondary); font-size: 0.875rem; }
     .error { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
     .component[data-presentation='card'] { --rating-icon-size: 2.5rem; display: none; padding: var(--space-5); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+    .component[data-presentation='compact'] { --rating-icon-size: 1.5rem; }
     @media (width >= 64rem) {
       .component[data-presentation='inline'] { display: none; }
       .component[data-presentation='card'] { display: grid; }

@@ -19,7 +19,12 @@ test.beforeEach(async ({ context }) => {
 for (const item of [dune, chernobyl]) {
   test(`rates ${item.type}, preserves the score across sessions and removes it`, async ({ context, page }) => {
     const path = `/titles/${item.id}`
-    const panel = page.getByRole('region', { name: 'Your rating' })
+
+    const panel = page.getByRole('region', {
+      name: 'Your rating',
+      exact: true
+    })
+
     const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
     const scoreCard = page.getByRole('region', { name: 'Personal score' })
 
@@ -162,7 +167,12 @@ for (const [width, nextWidth, pendingOverflowY] of [[400, 640, 'visible'], [1440
 
     const read = Promise.withResolvers<boolean>()
     const write = Promise.withResolvers<boolean>()
-    const panel = page.getByRole('region', { name: 'Your rating' })
+
+    const panel = page.getByRole('region', {
+      name: 'Your rating',
+      exact: true
+    })
+
     const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
 
     await page.route(ratingRoute, async route => {

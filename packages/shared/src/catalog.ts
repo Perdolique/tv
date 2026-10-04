@@ -38,6 +38,11 @@ interface CatalogWatchedResponse {
   watched: boolean;
 }
 
+interface CatalogRatingTarget {
+  catalogItemId: string;
+  seasonNumber: number | null;
+}
+
 interface CatalogRatingResponse {
   score: number | null;
 }
@@ -139,6 +144,7 @@ export type {
   CatalogErrorEnvelope,
   CatalogFollowResponse,
   CatalogRatingResponse,
+  CatalogRatingTarget,
   CatalogRatingSummaryResponse,
   CatalogReleaseItem,
   CatalogReleasesResponse,

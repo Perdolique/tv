@@ -638,6 +638,84 @@ function getCookieValue(request: Request, name: string): string | undefined {
   return cookie?.slice(prefix.length)
 }
 
+async function handleSeasonRating(request: Request, url: URL): Promise<Response> {
+  const segments = url.pathname.split('/')
+  const id = segments[4] ?? ''
+  const seasonNumber = Number(segments[6])
+  const episodes = episodeFixtures.get(id) ?? []
+  const exists = episodes.some(episode => episode.seasonNumber === seasonNumber)
+
+  if (!exists) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'This season could not be found.'
+    } }, 404)
+  }
+
+  const isSummary = segments[7] === 'rating-summary'
+
+  if (isSummary) {
+    const scores = ['first', 'second'].flatMap(account => {
+      const cookieName = `tv_season_rating_${account}_${id}_${seasonNumber}`
+      const value = getCookieValue(request, cookieName)
+
+      if (value === undefined) {
+        return []
+      }
+
+      const score = Number(value)
+
+      return [score]
+    })
+
+    const ratingCount = scores.length
+    const sum = scores.reduce((total, value) => total + value, 0)
+    const averageScore = ratingCount === 0 ? null : sum / ratingCount
+
+    return json({
+      averageScore,
+      ratingCount
+    })
+  }
+
+  if (!hasAuthenticatedCatalogSession(request)) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401)
+  }
+
+  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
+  const cookieName = `tv_season_rating_${account}_${id}_${seasonNumber}`
+
+  if (request.method === 'DELETE') {
+    const clearedCookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
+
+    return json({ score: null }, 200, { 'Set-Cookie': clearedCookie })
+  }
+
+  if (request.method === 'PUT') {
+    const input: unknown = await request.json()
+    const score = isRecord(input) ? input.score : undefined
+
+    if (typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10) {
+      return json({ error: {
+        code: 'INVALID_REQUEST',
+        message: 'Choose a score from 1 to 10.'
+      } }, 400)
+    }
+
+    const savedCookie = `${cookieName}=${score}; Path=/; SameSite=Lax`
+
+    return json({ score }, 200, { 'Set-Cookie': savedCookie })
+  }
+
+  const value = getCookieValue(request, cookieName)
+  const score = value === undefined ? null : Number(value)
+
+  return json({ score })
+}
+
 function handleCatalogRatingSummary(request: Request, url: URL): Response {
   const id = url.pathname.split('/').at(-2)
   const item = detailsItems.find(candidate => candidate.id === id)
@@ -1187,6 +1265,10 @@ export default {
       && url.pathname.endsWith('/watched')
     ) {
       return handleCatalogWatched(request, url)
+    }
+
+    if (/^\/api\/catalog\/items\/[^/]+\/seasons\/[^/]+\/rating(?:-summary)?$/u.test(url.pathname)) {
+      return handleSeasonRating(request, url)
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating-summary')) {

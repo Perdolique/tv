@@ -74,12 +74,15 @@ const response = {
 
 const scopes: ReturnType<typeof effectScope>[] = []
 
-function setup() {
+function setup(seasonNumber: number | null = null) {
   const scope = effectScope()
 
   scopes.push(scope)
 
-  const summary = scope.run(() => useCatalogRatingSummary(id))
+  const summary = scope.run(() => useCatalogRatingSummary({
+    catalogItemId: id,
+    seasonNumber
+  }))
 
   if (summary === undefined) {
     throw new Error('The summary scope did not start')
@@ -211,6 +214,45 @@ describe('public rating summary lifecycle', () => {
     expect(summary.summary.value).toBeUndefined()
     expect(summary.hasError.value).toBe(true)
     expect(log).toHaveBeenCalledTimes(1)
+  })
+
+  it('isolates public summaries for season targets and aborts a discarded season', async () => {
+    const delayed = Promise.withResolvers<unknown>()
+
+    harness.fetch.mockReturnValueOnce(delayed.promise).mockResolvedValueOnce({
+      averageScore: 4,
+      ratingCount: 1
+    })
+
+    const first = setup(1)
+    const oldSignal = harness.fetch.mock.calls[0]?.[1].signal
+
+    first.scope.stop()
+
+    const second = setup(2)
+
+    await second.summary.ready
+
+    delayed.resolve({
+      averageScore: 9,
+      ratingCount: 3
+    })
+
+    await first.summary.ready
+
+    expect(oldSignal?.aborted).toBe(true)
+    expect(first.summary.summary.value).toBeUndefined()
+
+    expect(second.summary.summary.value).toStrictEqual({
+      averageScore: 4,
+      ratingCount: 1
+    })
+
+    const requestedPaths = harness.fetch.mock.calls.map(call => call[0])
+    const firstSeasonPath = `/api/catalog/items/${id}/seasons/1/rating-summary`
+    const secondSeasonPath = `/api/catalog/items/${id}/seasons/2/rating-summary`
+
+    expect(requestedPaths).toStrictEqual([firstSeasonPath, secondSeasonPath])
   })
 
   it('keeps the last confirmed data through refresh, failure and retry', async () => {
