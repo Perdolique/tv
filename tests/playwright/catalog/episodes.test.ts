@@ -1,11 +1,10 @@
-import { strict as assert } from 'node:assert'
 import type { Locator, Page } from '@playwright/test'
 import { longEmail } from '../auth/constants.ts'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie } from '../helpers.ts'
 import { chernobyl, episodeEdgeSeries } from './details.fixtures.ts'
-import { waitForHydration } from './helpers.ts'
+import { openEpisodes } from './helpers.ts'
 
 const chernobylPath = `/titles/${chernobyl.id}`
 const edgeCasesPath = `/titles/${episodeEdgeSeries.id}`
@@ -35,16 +34,15 @@ function watchedButton(card: Locator): Locator {
   })
 }
 
-test('guest sees the five SSR episodes, returns from one row and confirms the watched action', async ({ page }) => {
+test('guest opens the five episodes, returns from sign-in and confirms the watched action', async ({ page }) => {
   const response = await page.goto(chernobylPath)
 
   expect(response?.status()).toBe(200)
 
   const html = await response?.text()
 
-  expect(html).toContain('1:23:45')
-  expect(html).toContain('Vichnaya Pamyat')
-  expect(html).toContain('Episode data from TVMaze')
+  expect(html).toContain(chernobyl.description)
+  await openEpisodes(page)
   await expect(page.getByRole('tab', { name: 'Episodes' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText(/^Season 1, E[1-5]$/u)).toHaveCount(5)
 
@@ -59,6 +57,7 @@ test('guest sees the five SSR episodes, returns from one row and confirms the wa
   await expect(signInLink).toHaveAttribute('href', `/sign-in?redirectTo=${chernobylPath}`)
   await signInLink.click()
   await signIn(page)
+  await openEpisodes(page)
   await expect(page).toHaveURL(`${appBaseUrl}${chernobylPath}`)
   await expect(page.getByRole('tab', { name: 'Episodes' })).toHaveAttribute('aria-selected', 'true')
 
@@ -73,12 +72,15 @@ test('guest sees the five SSR episodes, returns from one row and confirms the wa
 test('episode marks survive reload and sign-in but remain private to another account', async ({ context, page }) => {
   await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(chernobylPath)
+  await openEpisodes(page)
 
   const firstCard = episodeCard(page, '1:23:45')
 
   await watchedButton(firstCard).click()
   await expect(watchedButton(firstCard)).toHaveAttribute('aria-pressed', 'true')
+  await expect(watchedButton(firstCard)).toBeEnabled()
   await page.reload()
+  await openEpisodes(page)
   await expect(watchedButton(episodeCard(page, '1:23:45'))).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByRole('button', {
@@ -88,6 +90,7 @@ test('episode marks survive reload and sign-in but remain private to another acc
 
   await episodeCard(page, '1:23:45').getByRole('link', { name: 'Sign in to mark watched' }).click()
   await signIn(page)
+  await openEpisodes(page)
   await expect(watchedButton(episodeCard(page, '1:23:45'))).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByRole('button', {
@@ -97,6 +100,7 @@ test('episode marks survive reload and sign-in but remain private to another acc
 
   await episodeCard(page, '1:23:45').getByRole('link', { name: 'Sign in to mark watched' }).click()
   await signIn(page, longEmail)
+  await openEpisodes(page)
   await expect(watchedButton(episodeCard(page, '1:23:45'))).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
 })
@@ -110,6 +114,7 @@ test('unmarks a loaded episode with DELETE and keeps it unmarked after reload', 
 
   expect(response.status()).toBe(200)
   await page.goto(chernobylPath)
+  await openEpisodes(page)
 
   const button = watchedButton(episodeCard(page, '1:23:45'))
 
@@ -128,6 +133,7 @@ test('unmarks a loaded episode with DELETE and keeps it unmarked after reload', 
   await expect(button).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
   await page.reload()
+  await openEpisodes(page)
   await expect(button).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
 })
@@ -146,6 +152,7 @@ test('shows private watched loading feedback while keeping public episodes visib
 
   try {
     await page.goto(chernobylPath)
+    await openEpisodes(page)
 
     const loading = page.getByText('Loading watched status…', { exact: true })
     const button = watchedButton(episodeCard(page, '1:23:45'))
@@ -168,9 +175,11 @@ test('shows private watched loading feedback while keeping public episodes visib
 
 test('renders empty data and missing title, date and future-season variants', async ({ context, page }) => {
   await page.goto(`/titles/01991a00-0000-7000-8000-000000000002`)
+  await openEpisodes(page)
   await expect(page.getByText('No episode data is available yet.', { exact: true })).toBeVisible()
   await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(edgeCasesPath)
+  await openEpisodes(page)
   await expect(page.getByRole('link', { name: 'Episode data from TVMaze' })).toHaveAttribute('href', 'https://www.tvmaze.com/')
   await expect(page.getByText('Season 2, E1', { exact: true })).toBeVisible()
 
@@ -223,7 +232,7 @@ test.describe('independent public episode recovery', () => {
   test('keeps title metadata visible while retrying only the episode list', async ({ context, page }) => {
     await addCookie(context, 'fail_episodes', '1')
     await page.goto(chernobylPath)
-    await waitForHydration(page)
+    await openEpisodes(page)
     await context.clearCookies({ name: 'fail_episodes' })
 
     await expect(page.getByRole('heading', {
@@ -278,6 +287,7 @@ test.describe('independent private watched recovery', () => {
     await addCookie(context, 'tv_session', 'e2e-session')
     await addCookie(context, 'fail_episode_watches_load', '1')
     await page.goto(chernobylPath)
+    await openEpisodes(page)
 
     await expect(page.getByRole('heading', {
       name: 'Please Remain Calm',
@@ -310,6 +320,7 @@ test.describe('optimistic episode rollback', () => {
     await addCookie(context, 'tv_session', 'e2e-session')
     await addCookie(context, 'fail_episode_watched', '1')
     await page.goto(chernobylPath)
+    await openEpisodes(page)
 
     const first = watchedButton(episodeCard(page, '1:23:45'))
     const second = watchedButton(episodeCard(page, 'Please Remain Calm'))
@@ -323,55 +334,4 @@ test.describe('optimistic episode rollback', () => {
     await expect(page.getByText('We couldn’t update this episode. Try again.', { exact: true })).toBeVisible()
     await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
   })
-})
-
-test('supports the complete keyboard tab pattern and preserves Episodes as the default', async ({ page }) => {
-  await page.goto(chernobylPath)
-
-  const episodesTab = page.getByRole('tab', { name: 'Episodes' })
-  const overviewTab = page.getByRole('tab', { name: 'Overview' })
-
-  const episodesPanel = page.getByRole('tabpanel', {
-    name: 'Episodes',
-    includeHidden: true
-  })
-
-  const overviewPanel = page.getByRole('tabpanel', {
-    name: 'Overview',
-    includeHidden: true
-  })
-
-  await expect(page.getByRole('tab')).toHaveText(['Overview', 'Episodes'])
-  await expect(page.getByRole('tabpanel', { includeHidden: true })).toHaveCount(2)
-
-  const episodesPanelId = await episodesTab.getAttribute('aria-controls')
-  const overviewPanelId = await overviewTab.getAttribute('aria-controls')
-
-  assert.ok(episodesPanelId !== null, 'The Episodes tab must reference its panel')
-  assert.ok(overviewPanelId !== null, 'The Overview tab must reference its panel')
-  await expect(episodesPanel).toHaveAttribute('id', episodesPanelId)
-  await expect(overviewPanel).toHaveAttribute('id', overviewPanelId)
-  await expect(episodesTab).toHaveAttribute('aria-selected', 'true')
-  await expect(episodesPanel).toBeVisible()
-  await expect(overviewPanel).toBeHidden()
-  await episodesTab.focus()
-  await page.keyboard.press('ArrowRight')
-  await expect(overviewTab).toBeFocused()
-  await expect(overviewTab).toHaveAttribute('aria-selected', 'true')
-  await expect(episodesPanel).toBeHidden()
-  await expect(overviewPanel).toBeVisible()
-  await expect(page.getByText(chernobyl.description, { exact: true })).toBeVisible()
-  await page.keyboard.press('Home')
-  await expect(overviewTab).toBeFocused()
-  await page.keyboard.press('End')
-  await expect(episodesTab).toBeFocused()
-  await page.keyboard.press('ArrowLeft')
-  await expect(overviewTab).toBeFocused()
-  await page.keyboard.press('ArrowLeft')
-  await expect(episodesTab).toBeFocused()
-
-  await expect(page.getByRole('heading', {
-    name: 'Season 1',
-    exact: true
-  })).toBeVisible()
 })

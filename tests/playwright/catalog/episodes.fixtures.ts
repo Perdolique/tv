@@ -1,5 +1,5 @@
 import type { CatalogEpisode } from '../../../packages/shared/src/catalog.ts'
-import { chernobyl, episodeEdgeSeries } from './details.fixtures.ts'
+import { chernobyl, episodeEdgeSeries, manyEpisodeSeries } from './details.fixtures.ts'
 
 const chernobylEpisodes = [
   {
@@ -70,8 +70,25 @@ const edgeCaseEpisodes = [
   }
 ] as const satisfies readonly CatalogEpisode[]
 
+const manyEpisodes = Array.from({ length: 20 }, (_value, index) => {
+  const episodeNumber = index + 1
+  const identifierNumber = String(100 + episodeNumber)
+  const suffix = identifierNumber.padStart(12, '0')
+  const unbrokenTitle = 'UnbrokenTitle'.repeat(12)
+  const sourceTitle = episodeNumber === 1 ? `A very long episode title with an unbroken word: ${unbrokenTitle}` : null
+
+  return {
+    id: `30000000-0000-7000-8000-${suffix}`,
+    seasonNumber: 1,
+    episodeNumber,
+    sourceTitle,
+    airDate: null
+  } as const satisfies CatalogEpisode
+})
+
 const episodeFixtures = new Map<string, readonly CatalogEpisode[]>([
   [chernobyl.id, chernobylEpisodes],
+  [manyEpisodeSeries.id, manyEpisodes],
   [episodeEdgeSeries.id, edgeCaseEpisodes]
 ])
 

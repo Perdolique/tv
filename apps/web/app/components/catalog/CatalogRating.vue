@@ -1,14 +1,15 @@
 <template>
-  <section :class="$style.component" :style="{ '--rating-anchor': anchorName }" :aria-label="label">
+  <section :class="[$style.component, { 'is-compact': compact, 'is-rated': hasScore }]" :style="{ '--rating-anchor': anchorName }" :aria-label="label">
     <div ref="anchor" :class="$style.anchor">
-      <NuxtLink v-if="isAnonymous" :class="$style.link" :to="signInLocation">
+      <NuxtLink v-if="isAnonymous" :class="$style.link" :to="signInLocation" :aria-label="showScore ? accessibleTriggerLabel : undefined">
         <Icon :class="$style.star" aria-hidden="true" mode="svg" name="hugeicons:star" />
-        {{ actionLabel }}
+        {{ visibleActionLabel }}
       </NuxtLink>
       <AppButton
         v-else
         ref="trigger"
         :class="$style.trigger"
+        :variant="triggerVariant"
         :disabled="isTriggerDisabled"
         :aria-busy="isBusy || undefined"
         :aria-label="accessibleTriggerLabel"
@@ -22,7 +23,7 @@
         {{ triggerLabel }}
       </AppButton>
     </div>
-    <AppMessage v-if="hasLoadError" :class="$style.loadError" role="alert" tone="danger">We couldn’t load your rating. Try again.</AppMessage>
+    <AppMessage v-if="showRatingLoadError" :class="$style.loadError" role="alert" tone="danger">We couldn’t load your rating. Try again.</AppMessage>
     <p :class="$style.accessible" role="status">{{ notice }}</p>
     <component
       :is="panelTag"
@@ -83,6 +84,9 @@
     accountId: string | null;
     label?: string;
     actionLabel?: string;
+    showScore?: boolean;
+    compact?: boolean;
+    showLoadError?: boolean;
     targetKey: string | null;
     hasSessionError: boolean;
     isAnonymous: boolean;
@@ -100,7 +104,7 @@
     saved: [targetKey: string];
   }
 
-  const { label = 'Your rating', actionLabel = 'Rate', accountId, targetKey, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
+  const { label = 'Your rating', actionLabel = 'Rate', showScore, compact, showLoadError = true, accountId, targetKey, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const currentAccountId = computed(() => accountId)
   const currentTargetKey = computed(() => targetKey)
@@ -119,6 +123,7 @@
   const isLoaded = computed(() => status === 'loaded')
   const isLoading = computed(() => !isAnonymous && !hasSessionError && (status === 'loading' || status === 'idle'))
   const hasLoadError = computed(() => !isAnonymous && !hasSessionError && status === 'error')
+  const showRatingLoadError = computed(() => hasLoadError.value && showLoadError)
   const hasScore = computed(() => score !== null)
   const canEdit = computed(() => accountId !== null && !hasSessionError && isLoaded.value && !isSaving)
   const isBusy = computed(() => isLoading.value || isSaving)
@@ -127,6 +132,8 @@
   const panelTag = computed(() => isMobile.value ? 'dialog' : 'div')
   const presentation = computed(() => isMobile.value ? 'sheet' : 'popover')
   const popoverMode = computed(() => isMobile.value ? undefined : 'manual')
+  const visibleActionLabel = computed(() => compact ? 'Rate' : actionLabel)
+  const triggerVariant = computed(() => compact ? 'secondary' : 'primary')
 
   const choices = computed(() => options.map(option => {
     const choiceLabel = `${option} out of 10`
@@ -149,7 +156,13 @@
       return 'Retry rating'
     }
 
-    return actionLabel
+    if (showScore && isLoaded.value && score !== null) {
+      const scoreLabel = compact ? `${score}/10` : `Your rating: ${score}/10`
+
+      return scoreLabel
+    }
+
+    return visibleActionLabel.value
   })
 
   const accessibleTriggerLabel = computed(() => {
@@ -160,10 +173,12 @@
     }
 
     if (!isLoaded.value || hasSessionError || score === null) {
-      return triggerLabel.value
+      const action = hasSessionError || hasLoadError.value ? triggerLabel.value : actionLabel
+
+      return showScore ? `${action}, ${label}` : triggerLabel.value
     }
 
-    return `${actionLabel}, your rating: ${score} out of 10`
+    return showScore ? `${label}: ${score} out of 10` : `${actionLabel}, your rating: ${score} out of 10`
   })
 
   function focusChoice(): void {
@@ -375,13 +390,25 @@
     focusChoice()
   }, { flush: 'post' })
 
-  onClickOutside(panel, () => {
-    if (!isMobile.value) {
-      dismiss()
+  watch(isEditing, (editing, _previousEditing, onCleanup) => {
+    if (!editing) {
+      return
     }
-  }, { ignore: [anchor] })
 
-  useEventListener('keydown', handleKeydown)
+    const stopClickOutside = onClickOutside(panel, () => {
+      if (!isMobile.value) {
+        dismiss()
+      }
+    }, { ignore: [anchor] })
+
+    const stopKeydown = useEventListener('keydown', handleKeydown)
+
+    onCleanup(() => {
+      stopClickOutside()
+      stopKeydown()
+    })
+  }, { flush: 'post' })
+
   onBeforeUnmount(hidePanel)
 </script>
 
@@ -413,6 +440,14 @@
     }
     .link:hover { filter: brightness(0.96); }
     .star { flex: 0 0 auto; inline-size: 1.5rem; block-size: 1.5rem; }
+    .component:global(.is-compact) {
+      .trigger, .link { min-block-size: 2.75rem; padding: var(--space-2); border-radius: var(--radius-sm); font-size: 0.875rem; }
+      .trigger { font-variant-numeric: tabular-nums; }
+      .link { border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text-primary); }
+      .star { inline-size: 1.125rem; block-size: 1.125rem; }
+      &:global(.is-rated) .trigger { border-color: var(--color-accent); background: var(--color-surface-selected); color: var(--color-text-primary); }
+      &:global(.is-rated) .star { color: var(--color-accent); }
+    }
     .loadError { max-inline-size: 18rem; margin-block-start: var(--space-3); }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .panel { position: fixed; padding: min(var(--space-4), 16px); margin: 0; overflow: auto; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-primary); }

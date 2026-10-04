@@ -64,7 +64,14 @@ async function findCatalogItemRatingSummary(
         eq(catalogItemTitles.isOriginal, true)
       )
     )
-    .leftJoin(catalogItemRatings, and(eq(catalogItemRatings.catalogItemId, catalogItems.id), seasonFilter))
+    .leftJoin(
+      catalogItemRatings,
+      and(
+        eq(catalogItemRatings.catalogItemId, catalogItems.id),
+        seasonFilter,
+        isNull(catalogItemRatings.catalogEpisodeId)
+      )
+    )
     .where(
       eq(catalogItems.id, catalogItemId)
     )
@@ -114,6 +121,7 @@ async function findCatalogItemRating(
       and(
         eq(catalogItemRatings.catalogItemId, catalogItems.id),
         eq(catalogItemRatings.userId, userId),
+        isNull(catalogItemRatings.catalogEpisodeId),
         seasonFilter
       )
     )
@@ -190,6 +198,7 @@ async function setCatalogItemRating(
         .where(
           and(
             eq(catalogItemRatings.userId, userId),
+            isNull(catalogItemRatings.catalogEpisodeId),
             eq(catalogItemRatings.catalogItemId, catalogItemId),
             seasonFilter
           )
@@ -204,7 +213,7 @@ async function setCatalogItemRating(
           score
         })
         .onConflictDoUpdate({
-          target: [catalogItemRatings.userId, catalogItemRatings.catalogItemId, catalogItemRatings.seasonNumber],
+          target: [catalogItemRatings.userId, catalogItemRatings.catalogItemId, catalogItemRatings.seasonNumber, catalogItemRatings.catalogEpisodeId],
           set: { score }
         })
     }
@@ -213,4 +222,4 @@ async function setCatalogItemRating(
   })
 }
 
-export { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating }
+export { findCatalogItemRating, findCatalogItemRatingSummary, hasCatalogSeason, setCatalogItemRating }

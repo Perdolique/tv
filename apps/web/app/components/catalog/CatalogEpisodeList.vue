@@ -31,47 +31,69 @@
         <AppButton variant="secondary" @click="emit('retryWatched')">Retry watched status</AppButton>
       </div>
 
-      <ul :class="$style.episodeList">
-        <li v-for="{ episode, headingId, isWatched } in selectedEpisodeRows" :key="episode.id" :class="$style.episode">
-          <p :class="$style.episodeNumber"><span :class="$style.accessible">Season {{ episode.seasonNumber }}, </span>E{{ episode.episodeNumber }}</p>
-          <div>
-            <h4 :id="headingId" :class="$style.episodeTitle">{{ episodeTitle(episode) }}</h4>
-            <p v-if="episode.airDate !== null" :class="$style.airDate">
-              <time :datetime="episode.airDate">{{ formatAirDate(episode.airDate) }}</time>
-            </p>
-          </div>
-
-          <NuxtLink v-if="isAnonymous" :class="$style.signInLink" :to="signInLocation" :aria-describedby="headingId" aria-label="Sign in to mark watched">
-            <span :class="$style.accessible">Sign in to mark watched</span>
-          </NuxtLink>
-          <AppButton
-            v-else-if="hasSessionError"
-            :class="$style.watchedButton"
-            :aria-describedby="headingId"
-            aria-label="Watched unavailable"
-            disabled
-            variant="secondary"
-          >
-            <span :class="$style.accessible">Watched unavailable</span>
-          </AppButton>
-          <AppButton
-            v-else
-            :aria-busy="episodeAriaBusy(episode.id)"
-            :aria-describedby="headingId"
-            :aria-pressed="isWatched"
-            :class="$style.watchedButton"
-            :disabled="isWatchedDisabled"
-            aria-label="Watched"
-            variant="secondary"
-            @click="emit('toggleWatched', episode.id)"
-          >
-            <Icon v-if="isWatched" aria-hidden="true" mode="svg" name="hugeicons:tick-02" />
-          </AppButton>
-          <AppMessage v-if="saveErrorFor(episode.id) !== ''" :class="$style.episodeError" role="alert" tone="danger">
-            {{ saveErrorFor(episode.id) }}
-          </AppMessage>
-        </li>
-      </ul>
+      <CatalogEpisodeRatings
+        v-if="isActive"
+        :key="ratingsKey"
+        :account-id="accountId"
+        :catalog-item-id="catalogItemId"
+        :season-number="selectedSeason"
+        :episode-ids="selectedEpisodeIds"
+        @unauthorized="emit('ratingUnauthorized', $event)"
+      >
+        <template #default="{ ratings, summaries }">
+          <ul :class="$style.episodeList">
+            <li v-for="{ episode, headingId, isWatched } in selectedEpisodeRows" :key="episode.id" :class="$style.episode">
+              <div :class="$style.episodeIdentity">
+                <p :class="$style.episodeNumber"><span :class="$style.accessible">Season {{ episode.seasonNumber }}, </span>E{{ episode.episodeNumber }}</p>
+                <div>
+                  <h4 :id="headingId" :class="$style.episodeTitle">{{ episodeTitle(episode) }}</h4>
+                  <p v-if="episode.airDate !== null" :class="$style.airDate">
+                    <time :datetime="episode.airDate">{{ formatAirDate(episode.airDate) }}</time>
+                  </p>
+                </div>
+              </div>
+              <CatalogEpisodeRating
+                :account-id="accountId"
+                :episode="episode"
+                :has-session-error="hasSessionError"
+                :is-anonymous="isAnonymous"
+                :sign-in-location="signInLocation"
+                :ratings="ratings"
+                :summaries="summaries"
+              />
+              <NuxtLink v-if="isAnonymous" :class="$style.signInLink" :to="signInLocation" :aria-describedby="headingId" aria-label="Sign in to mark watched">
+                <span :class="$style.accessible">Sign in to mark watched</span>
+              </NuxtLink>
+              <AppButton
+                v-else-if="hasSessionError"
+                :class="$style.watchedButton"
+                :aria-describedby="headingId"
+                aria-label="Watched unavailable"
+                disabled
+                variant="secondary"
+              >
+                <span :class="$style.accessible">Watched unavailable</span>
+              </AppButton>
+              <AppButton
+                v-else
+                :aria-busy="episodeAriaBusy(episode.id)"
+                :aria-describedby="headingId"
+                :aria-pressed="isWatched"
+                :class="$style.watchedButton"
+                :disabled="isWatchedDisabled"
+                aria-label="Watched"
+                variant="secondary"
+                @click="emit('toggleWatched', episode.id)"
+              >
+                <Icon v-if="isWatched" aria-hidden="true" mode="svg" name="hugeicons:tick-02" />
+              </AppButton>
+              <AppMessage v-if="saveErrorFor(episode.id) !== ''" :class="$style.episodeError" role="alert" tone="danger">
+                {{ saveErrorFor(episode.id) }}
+              </AppMessage>
+            </li>
+          </ul>
+        </template>
+      </CatalogEpisodeRatings>
 
       <p :class="$style.credit">
         <a href="https://www.tvmaze.com/">Episode data from TVMaze</a>
@@ -84,6 +106,8 @@
   import type { CatalogEpisode } from '@tv/shared/catalog'
   import type { RouteLocationRaw } from 'vue-router'
   import { computed, ref, watch } from 'vue'
+  import CatalogEpisodeRatings from '~/components/catalog/CatalogEpisodeRatings.vue'
+  import CatalogEpisodeRating from '~/components/catalog/CatalogEpisodeRating.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
 
@@ -94,6 +118,9 @@
   }
 
   interface Props {
+    accountId: string | null;
+    catalogItemId: string;
+    isActive: boolean;
     episodes: CatalogEpisode[];
     hasEpisodesError: boolean;
     hasSessionError: boolean;
@@ -110,33 +137,34 @@
   }
 
   interface Emits {
+    ratingUnauthorized: [reason: 'load' | 'mutation'];
     retryEpisodes: [];
     retryWatched: [];
     toggleWatched: [episodeId: string];
   }
 
-  const props = defineProps<Props>()
+  const { catalogItemId, episodes, hasSessionError, isAnonymous, isSaving, savingEpisodeId, watchedCount, watchedEpisodeIds, watchedStatus } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const selectedSeason = ref(1)
   let hasSelectedInitialSeason = false
 
   const seasonNumbers = computed(() => {
-    const numbers = new Set(props.episodes.map(episode => episode.seasonNumber))
+    const numbers = new Set(episodes.map(episode => episode.seasonNumber))
 
     return [...numbers].toSorted((first, second) => first - second)
   })
 
-  const showSeasonHeading = computed(() => props.episodes.length > 0)
+  const showSeasonHeading = computed(() => episodes.length > 0)
   const hasSeasonSelector = computed(() => seasonNumbers.value.length > 1)
   const newestSeason = computed(() => seasonNumbers.value.at(-1) ?? 1)
 
   const selectedEpisodeRows = computed(() => {
     const rows: EpisodeRow[] = []
 
-    for (const episode of props.episodes) {
+    for (const episode of episodes) {
       if (episode.seasonNumber === selectedSeason.value) {
         const headingId = `episode-${episode.id}`
-        const isWatched = props.watchedEpisodeIds.includes(episode.id)
+        const isWatched = watchedEpisodeIds.includes(episode.id)
 
         rows.push({
           episode,
@@ -149,22 +177,30 @@
     return rows
   })
 
-  const isWatchedLoading = computed(() => !props.isAnonymous && !props.hasSessionError && (
-    props.watchedStatus === 'idle' || props.watchedStatus === 'loading'
+  const selectedEpisodeIds = computed(() => selectedEpisodeRows.value.map(row => row.episode.id))
+
+  const ratingsKey = computed(() => {
+    const episodeKey = selectedEpisodeIds.value.join(':')
+
+    return `${catalogItemId}:${selectedSeason.value}:${episodeKey}`
+  })
+
+  const isWatchedLoading = computed(() => !isAnonymous && !hasSessionError && (
+    watchedStatus === 'idle' || watchedStatus === 'loading'
   ))
 
-  const hasWatchedError = computed(() => props.watchedStatus === 'error')
-  const isWatchedDisabled = computed(() => props.watchedStatus !== 'loaded' || props.isSaving)
-  const showWatchedStatus = computed(() => isWatchedLoading.value || props.watchedStatus === 'loaded')
+  const hasWatchedError = computed(() => watchedStatus === 'error')
+  const isWatchedDisabled = computed(() => watchedStatus !== 'loaded' || isSaving)
+  const showWatchedStatus = computed(() => isWatchedLoading.value || watchedStatus === 'loaded')
 
   const watchedStatusLabel = computed(() => {
     if (isWatchedLoading.value) {
       return 'Loading watched status…'
     }
 
-    const noun = props.watchedCount === 1 ? 'episode' : 'episodes'
+    const noun = watchedCount === 1 ? 'episode' : 'episodes'
 
-    return `${props.watchedCount} watched ${noun}`
+    return `${watchedCount} watched ${noun}`
   })
 
   watch(seasonNumbers, (numbers) => {
@@ -194,7 +230,7 @@
   }
 
   function episodeAriaBusy(episodeId: string): true | undefined {
-    const isEpisodeSaving = props.isSaving && props.savingEpisodeId === episodeId
+    const isEpisodeSaving = isSaving && savingEpisodeId === episodeId
     const isBusy = isWatchedLoading.value || isEpisodeSaving
 
     return isBusy || undefined
@@ -206,7 +242,7 @@
   @layer reset, vendor, tokens, base, components, utilities;
 
   @layer components {
-    .component { display: grid; gap: var(--space-5); }
+    .component { container: episodes / inline-size; display: grid; gap: var(--space-5); }
     .header {
       display: flex;
       flex-wrap: wrap;
@@ -232,7 +268,7 @@
     .loading { gap: var(--space-3); }
     .episodeList { gap: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); list-style: none; }
     .skeleton {
-      min-block-size: 10rem;
+      min-block-size: 5rem;
       border-radius: var(--radius-md);
       background: var(--color-surface-muted);
     }
@@ -247,20 +283,21 @@
     }
     .episode {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
-      gap: var(--space-4);
-      min-block-size: 6rem;
-      padding: var(--space-4);
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
     }
     .episode + .episode { border-block-start: 1px solid var(--color-border); }
+    .episodeIdentity { grid-column: 1 / -1; display: grid; grid-template-columns: 2rem minmax(0, 1fr); align-items: center; gap: var(--space-3); }
     .episodeNumber {
-      font-size: 1.125rem;
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
     }
     .episodeTitle { font-size: 1rem; font-weight: 600; }
-    .airDate { margin-block-start: var(--space-2); font-size: 0.875rem; }
+    .airDate { margin-block-start: var(--space-1); font-size: 0.875rem; }
     .watchedButton, .signInLink { inline-size: 2.75rem; min-block-size: 2.75rem; padding: 0; border-radius: var(--radius-sm); }
     .watchedButton[aria-pressed='true'], .watchedButton[aria-pressed='true']:disabled {
       border-color: var(--color-accent);
@@ -283,10 +320,9 @@
     @media (forced-colors: active) {
       .watchedButton[aria-pressed='true'], .watchedButton[aria-pressed='true']:disabled { border-color: SelectedItem; }
     }
-    @media (width >= 40rem) {
-      .loading, .episodeList { grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
-      .episodeList { gap: var(--space-3); border: 0; background: transparent; }
-      .episode { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+    @container episodes (width >= 34rem) {
+      .episode { grid-template-columns: minmax(0, 1fr) 13.5rem auto; gap: var(--space-4); }
+      .episodeIdentity { grid-column: auto; }
     }
   }
 </style>

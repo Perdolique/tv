@@ -234,6 +234,7 @@ describe('saved catalog import application', () => {
     await firstClient.query('INSERT INTO catalog_releases (catalog_item_id, release_date, season_number, episode_number) VALUES ($1, $2, 1, 1)', [itemId, '2099-01-01'])
 
     const savedRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, season_number, score) VALUES ($1, $2, 1, 8) RETURNING id, score', [session.user.id, itemId])
+    const savedEpisodeRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, catalog_episode_id, score) VALUES ($1, $2, $3, 9) RETURNING id, score', [session.user.id, itemId, watchedEpisodeId])
     const changedShow = structuredClone(show)
 
     // oxlint-disable-next-line eslint/no-underscore-dangle -- TVMaze names this response field _embedded.
@@ -291,6 +292,10 @@ describe('saved catalog import application', () => {
 
     expect(expandedResult.result.createdEpisodes).toBe(1)
     expect(ratingAfterAddition.rows).toStrictEqual(savedRating.rows)
+
+    const episodeRatingAfter = await firstClient.query('SELECT id, score FROM catalog_item_ratings WHERE user_id = $1 AND catalog_episode_id = $2', [session.user.id, watchedEpisodeId])
+
+    expect(episodeRatingAfter.rows).toStrictEqual(savedEpisodeRating.rows)
 
     const summaryAfterAddition = await findCatalogItemRatingSummary(firstDatabase, itemId, 1)
 

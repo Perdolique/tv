@@ -14,7 +14,7 @@
       </p>
       <p :class="$style.count">{{ countLabel }}</p>
     </div>
-    <p v-else-if="!hasError" :class="$style.placeholder" aria-busy="true">Loading viewer rating…</p>
+    <p v-else-if="!hasError" :class="$style.placeholder" :aria-busy="isLoading">{{ placeholderLabel }}</p>
     <div v-if="hasError" :class="$style.error">
       <AppMessage role="alert" tone="danger">{{ errorLabel }}</AppMessage>
       <AppButton ref="retryButton" :disabled="isLoading" aria-label="Retry viewer rating" variant="secondary" @click="retry">Retry</AppButton>
@@ -32,7 +32,7 @@
   interface Props {
     hasError: boolean;
     isLoading: boolean;
-    presentation?: 'inline' | 'card' | 'compact';
+    presentation?: 'inline' | 'card' | 'compact' | 'episode';
     label?: string;
     summary?: CatalogRatingSummaryResponse;
   }
@@ -46,8 +46,21 @@
   const summaryRegion = useTemplateRef('summaryRegion')
   const retryButton = useTemplateRef('retryButton')
   const isDesktop = useMediaQuery('(width >= 64rem)')
-  const isPresented = computed(() => presentation === 'compact' || (presentation === 'card' ? isDesktop.value : !isDesktop.value))
+
+  const isPresented = computed(() => {
+    if (presentation === 'compact' || presentation === 'episode') {
+      return true
+    }
+
+    if (presentation === 'card') {
+      return isDesktop.value
+    }
+
+    return !isDesktop.value
+  })
+
   const errorLabel = computed(() => summary === undefined ? 'Viewer rating unavailable' : 'Viewer rating update failed. Try again.')
+  const placeholderLabel = computed(() => isLoading ? 'Loading viewer rating…' : 'Viewer rating unavailable')
   const hasScore = computed(() => summary?.averageScore !== null && summary?.averageScore !== undefined)
   const scoreFormatter = new Intl.NumberFormat('en', { maximumFractionDigits: 1 })
   const countFormatter = new Intl.NumberFormat('en')
@@ -105,7 +118,7 @@
     .component { --rating-icon-size: 2rem; display: grid; align-content: start; justify-items: start; gap: var(--space-1); min-inline-size: 0; }
     .label, .count { color: var(--color-text-secondary); font-size: 0.875rem; }
     .label {
-      .component[data-presentation='inline'] & { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      .component[data-presentation='inline'] &, .component[data-presentation='episode'] & { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .summary { display: grid; gap: var(--space-1); min-inline-size: 0; }
@@ -126,6 +139,12 @@
     .error { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
     .component[data-presentation='card'] { --rating-icon-size: 2.5rem; display: none; padding: var(--space-5); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
     .component[data-presentation='compact'] { --rating-icon-size: 1.5rem; }
+    .component[data-presentation='episode'] {
+      --rating-icon-size: 1.125rem;
+      .score { min-block-size: 0; gap: var(--space-2); font-size: 0.875rem; }
+      .count { padding-inline-start: calc(var(--rating-icon-size) + var(--space-2)); font-size: 0.75rem; }
+      .placeholder { min-block-size: 2.75rem; }
+    }
     @media (width >= 64rem) {
       .component[data-presentation='inline'] { display: none; }
       .component[data-presentation='card'] { display: grid; }

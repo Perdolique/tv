@@ -108,4 +108,4 @@ function registerCatalogSeasonRatingRoutes(app: Hono<CatalogEnvironment>, depend
   })
 }
 
-export { registerCatalogSeasonRatingRoutes }
+export { readSeasonTarget, registerCatalogSeasonRatingRoutes }
