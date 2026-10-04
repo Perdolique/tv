@@ -1,23 +1,24 @@
 /* oxlint-disable vitest/prefer-each -- Named viewport and theme cases stay explicit in browser reports. */
+import { strict as assert } from 'node:assert'
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { expectNoHorizontalOverflow } from '../helpers.ts'
 import { appBaseUrl } from '../constants.ts'
 import { chernobyl } from './details.fixtures.ts'
-import { waitForHydration } from './helpers.ts'
+import { openEpisodes, waitForHydration } from './helpers.ts'
 
 const chernobylPath = `/titles/${chernobyl.id}`
 
 test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } })
 
-interface EpisodeCardGeometry {
+interface EpisodeRowGeometry {
   height: number;
   left: number;
   top: number;
   width: number;
 }
 
-async function readGeometry(locator: Locator): Promise<EpisodeCardGeometry> {
+async function readGeometry(locator: Locator): Promise<EpisodeRowGeometry> {
   return locator.evaluate((element) => {
     const { height, left, top, width } = element.getBoundingClientRect()
 
@@ -30,23 +31,50 @@ async function readGeometry(locator: Locator): Promise<EpisodeCardGeometry> {
   })
 }
 
-async function expectEpisodeLayout(page: Page, expectedColumns: number): Promise<void> {
-  await waitForHydration(page)
+async function expectEpisodeLayout(page: Page, inlineControls: boolean): Promise<void> {
+  await openEpisodes(page)
   await page.evaluate(async () => globalThis.document.fonts.ready)
 
   const cards = page.getByRole('listitem')
 
   await expect(cards).toHaveCount(5)
 
+  const list = page.getByRole('region', {
+    name: 'Episodes',
+    exact: true
+  }).getByRole('list')
+
+  const listBox = await readGeometry(list)
   const first = await readGeometry(cards.nth(0))
   const second = await readGeometry(cards.nth(1))
+  const widthDifference = Math.abs(first.width - listBox.width)
+  const leftDifference = Math.abs(first.left - second.left)
 
-  if (expectedColumns === 1) {
-    expect(Math.abs(first.left - second.left)).toBeLessThanOrEqual(1)
-    expect(second.top).toBeGreaterThan(first.top + first.height - 1)
-  } else {
-    expect(second.left).toBeGreaterThan(first.left + first.width - 1)
-    expect(Math.abs(first.top - second.top)).toBeLessThanOrEqual(1)
+  expect(widthDifference).toBeLessThanOrEqual(2)
+  expect(leftDifference).toBeLessThanOrEqual(1)
+  expect(second.top).toBeGreaterThanOrEqual(first.top + first.height - 1)
+
+  if (inlineControls) {
+    const heading = cards.nth(0).getByRole('heading', { name: '1:23:45' })
+
+    const ratings = cards.nth(0).getByRole('region', {
+      name: 'Ratings for season 1, episode 1',
+      exact: true
+    })
+
+    const watched = cards.nth(0).getByRole('button', {
+      name: 'Watched',
+      exact: true
+    })
+
+    const [headingBox, ratingsBox, watchedBox] = await Promise.all([
+      readGeometry(heading), readGeometry(ratings), readGeometry(watched)
+    ])
+
+    expect(first.height).toBeLessThanOrEqual(88)
+    expect(headingBox.left + headingBox.width).toBeLessThan(ratingsBox.left)
+    expect(ratingsBox.left + ratingsBox.width).toBeLessThan(watchedBox.left)
+    expect(watchedBox.top).toBeLessThan(headingBox.top + headingBox.height)
   }
 
   const credit = page.getByRole('link', { name: 'Episode data from TVMaze' })
@@ -69,7 +97,7 @@ test('keeps title columns fixed when episode tabs add or remove the scrollbar', 
   })
 
   await page.goto(chernobylPath)
-  await waitForHydration(page)
+  await openEpisodes(page)
   await page.evaluate(async () => globalThis.document.fonts.ready)
 
   // Use classic scrollbars even when the host normally overlays them.
@@ -128,25 +156,25 @@ const referenceViewports = [
     height: 844,
     name: 'mobile',
     width: 390,
-    columns: 1
+    inlineControls: false
   },
   {
     height: 1024,
     name: 'tablet',
     width: 768,
-    columns: 2
+    inlineControls: true
   },
   {
     height: 1024,
     name: 'desktop',
     width: 1440,
-    columns: 2
+    inlineControls: true
   }
 ] as const
 
 for (const colorScheme of ['light', 'dark'] as const) {
   for (const viewport of referenceViewports) {
-    test(`episode grid at ${viewport.name} in ${colorScheme}`, async ({ context, page }) => {
+    test(`episode list at ${viewport.name} in ${colorScheme}`, async ({ context, page }) => {
       await context.addCookies([{
         name: 'tv_session',
         value: 'e2e-session',
@@ -162,11 +190,14 @@ for (const colorScheme of ['light', 'dark'] as const) {
         exact: true
       })).toBeEnabled()
 
-      await expectEpisodeLayout(page, viewport.columns)
+      await expectEpisodeLayout(page, viewport.inlineControls)
 
       const episodesTab = page.getByRole('tab', { name: 'Episodes' })
 
       await episodesTab.focus()
+      await page.keyboard.press('Tab')
+      await page.keyboard.press('Shift+Tab')
+      await expect(episodesTab).toBeFocused()
 
       const outlineStyle = await episodesTab.evaluate(
         element => globalThis.getComputedStyle(element).outlineStyle
@@ -188,7 +219,6 @@ for (const colorScheme of ['light', 'dark'] as const) {
       ])
 
       expect(numberBox.left + numberBox.width).toBeLessThan(titleBox.left)
-      expect(titleBox.left + titleBox.width).toBeLessThan(watchedBox.left)
       expect(watchedBox.width).toBeGreaterThanOrEqual(44)
       expect(watchedBox.height).toBeGreaterThanOrEqual(44)
       await expect(watched).toHaveAccessibleDescription('1:23:45')
@@ -203,40 +233,32 @@ const boundaryViewports = [
   {
     height: 844,
     name: 'narrow 320px',
-    width: 320,
-    columns: 1
+    width: 320
   },
   {
     height: 900,
     name: 'below tablet breakpoint',
-    width: 639,
-    columns: 1
+    width: 639
   },
   {
     height: 900,
     name: 'at tablet breakpoint',
-    width: 640,
-
-    // The classic scrollbar leaves too little space for two readable episode cards.
-    columns: 1
+    width: 640
   },
   {
     height: 900,
     name: 'above tablet breakpoint with scrollbar space',
-    width: 656,
-    columns: 2
+    width: 656
   },
   {
     height: 900,
     name: 'below desktop breakpoint',
-    width: 1023,
-    columns: 2
+    width: 1023
   },
   {
     height: 900,
     name: 'at desktop breakpoint',
-    width: 1024,
-    columns: 2
+    width: 1024
   }
 ] as const
 
@@ -244,6 +266,71 @@ for (const viewport of boundaryViewports) {
   test(`episode layout has no overflow at ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize(viewport)
     await page.goto(chernobylPath)
-    await expectEpisodeLayout(page, viewport.columns)
+    await expectEpisodeLayout(page, false)
   })
 }
+
+test('opens Overview by default and supports the complete keyboard tab pattern', async ({ page }) => {
+  await page.goto(chernobylPath)
+  await waitForHydration(page)
+
+  const episodesTab = page.getByRole('tab', { name: 'Episodes' })
+  const overviewTab = page.getByRole('tab', { name: 'Overview' })
+
+  const episodesPanel = page.getByRole('tabpanel', {
+    name: 'Episodes',
+    includeHidden: true
+  })
+
+  const overviewPanel = page.getByRole('tabpanel', {
+    name: 'Overview',
+    includeHidden: true
+  })
+
+  await expect(page.getByRole('tab')).toHaveText(['Overview', 'Episodes'])
+  await expect(page.getByRole('tabpanel', { includeHidden: true })).toHaveCount(2)
+
+  const episodesPanelId = await episodesTab.getAttribute('aria-controls')
+  const overviewPanelId = await overviewTab.getAttribute('aria-controls')
+
+  assert.ok(episodesPanelId !== null, 'The Episodes tab must reference its panel')
+  assert.ok(overviewPanelId !== null, 'The Overview tab must reference its panel')
+  await expect(episodesPanel).toHaveAttribute('id', episodesPanelId)
+  await expect(overviewPanel).toHaveAttribute('id', overviewPanelId)
+  await expect(overviewTab).toHaveAttribute('aria-selected', 'true')
+  await expect(overviewTab).toHaveAttribute('tabindex', '0')
+  await expect(episodesTab).toHaveAttribute('tabindex', '-1')
+  await expect(episodesPanel).toBeHidden()
+  await expect(overviewPanel).toBeVisible()
+  await overviewTab.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(episodesTab).toBeFocused()
+  await expect(episodesTab).toHaveAttribute('aria-selected', 'true')
+  await expect(episodesPanel).toBeVisible()
+  await expect(overviewPanel).toBeHidden()
+  await page.keyboard.press('ArrowRight')
+  await expect(overviewTab).toBeFocused()
+  await expect(overviewTab).toHaveAttribute('aria-selected', 'true')
+  await expect(episodesPanel).toBeHidden()
+  await expect(overviewPanel).toBeVisible()
+  await expect(page.getByText(chernobyl.description, { exact: true })).toBeVisible()
+  await page.keyboard.press('Home')
+  await expect(overviewTab).toBeFocused()
+  await page.keyboard.press('End')
+  await expect(episodesTab).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(overviewTab).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(episodesTab).toBeFocused()
+
+  await expect(page.getByRole('heading', {
+    name: 'Season 1',
+    exact: true
+  })).toBeVisible()
+
+  await page.reload()
+  await waitForHydration(page)
+  await expect(overviewTab).toHaveAttribute('aria-selected', 'true')
+  await expect(overviewPanel).toBeVisible()
+  await expect(episodesPanel).toBeHidden()
+})

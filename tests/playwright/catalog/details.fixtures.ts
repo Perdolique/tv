@@ -48,6 +48,13 @@ const episodeEdgeSeries = {
   posterUrl: null
 } as const satisfies CatalogDetailsItem
 
+const manyEpisodeSeries = {
+  ...episodeEdgeSeries,
+  id: '01991a00-0000-7000-8000-000000000008',
+  title: 'Twenty episode season',
+  originalTitle: 'Twenty episode season'
+} as const satisfies CatalogDetailsItem
+
 const detailsItems: CatalogDetailsItem[] = []
 
 for (const item of catalogItems) {
@@ -59,6 +66,6 @@ for (const item of catalogItems) {
   })
 }
 
-detailsItems.push(dune, chernobyl, episodeEdgeSeries)
+detailsItems.push(dune, chernobyl, episodeEdgeSeries, manyEpisodeSeries)
 
-export { chernobyl, detailsItems, dune, episodeEdgeSeries, russianDune }
+export { chernobyl, detailsItems, dune, episodeEdgeSeries, manyEpisodeSeries, russianDune }

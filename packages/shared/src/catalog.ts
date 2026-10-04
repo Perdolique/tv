@@ -52,6 +52,22 @@ interface CatalogRatingSummaryResponse {
   ratingCount: number;
 }
 
+interface CatalogEpisodeRating extends CatalogRatingResponse {
+  episodeId: string;
+}
+
+interface CatalogEpisodeRatingSummary extends CatalogRatingSummaryResponse {
+  episodeId: string;
+}
+
+interface CatalogEpisodeRatingsResponse {
+  items: CatalogEpisodeRating[];
+}
+
+interface CatalogEpisodeRatingSummariesResponse {
+  items: CatalogEpisodeRatingSummary[];
+}
+
 interface CatalogEpisode {
   airDate: string | null;
   episodeNumber: number;
@@ -138,6 +154,10 @@ export type {
   CatalogDetailsItem,
   CatalogDetailsResponse,
   CatalogEpisode,
+  CatalogEpisodeRating,
+  CatalogEpisodeRatingsResponse,
+  CatalogEpisodeRatingSummary,
+  CatalogEpisodeRatingSummariesResponse,
   CatalogEpisodesResponse,
   CatalogEpisodeWatchesResponse,
   CatalogErrorCode,

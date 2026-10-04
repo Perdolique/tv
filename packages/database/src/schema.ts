@@ -5,6 +5,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   pgEnum,
@@ -117,6 +118,7 @@ const catalogEpisodes = pgTable('catalog_episodes', {
 }, (table) => [
   check('catalog_episodes_season_number_positive', sql`${table.seasonNumber} > 0`),
   check('catalog_episodes_episode_number_positive', sql`${table.episodeNumber} > 0`),
+  unique('catalog_episodes_id_item_unique').on(table.id, table.catalogItemId),
   uniqueIndex('catalog_episodes_catalog_item_season_episode_unique')
     .on(table.catalogItemId, table.seasonNumber, table.episodeNumber)
 ])
@@ -201,11 +203,19 @@ const catalogItemRatings = pgTable('catalog_item_ratings', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
   seasonNumber: integer('season_number'),
+  catalogEpisodeId: uuid('catalog_episode_id'),
   score: integer().notNull()
 }, (table) => [
+  check('catalog_item_ratings_single_target', sql`${table.catalogEpisodeId} IS NULL OR ${table.seasonNumber} IS NULL`),
+  foreignKey({
+    columns: [table.catalogEpisodeId, table.catalogItemId],
+    foreignColumns: [catalogEpisodes.id, catalogEpisodes.catalogItemId],
+    name: 'catalog_item_ratings_episode_item_fk'
+  }).onDelete('cascade'),
   check('catalog_item_ratings_season_number_positive', sql`${table.seasonNumber} > 0`),
   check('catalog_item_ratings_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
-  unique('catalog_item_ratings_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber).nullsNotDistinct(),
+  unique('catalog_item_ratings_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber, table.catalogEpisodeId).nullsNotDistinct(),
+  index('catalog_item_ratings_episode_index').on(table.catalogEpisodeId),
   index('catalog_item_ratings_target_index').on(table.catalogItemId, table.seasonNumber)
 ])
 

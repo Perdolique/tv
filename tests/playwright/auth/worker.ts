@@ -638,6 +638,135 @@ function getCookieValue(request: Request, name: string): string | undefined {
   return cookie?.slice(prefix.length)
 }
 
+function episodeRatingCookie(request: Request, episodeId: string, account: string): number | null {
+  const name = `tv_episode_rating_${account}_${episodeId}`
+  const value = getCookieValue(request, name)
+
+  return value === undefined ? null : Number(value)
+}
+
+function episodeRatingSummary(request: Request, episodeId: string) {
+  const scores = ['first', 'second'].flatMap(account => {
+    const score = episodeRatingCookie(request, episodeId, account)
+
+    return score === null ? [] : [score]
+  })
+
+  const ratingCount = scores.length
+  const total = scores.reduce((sum, score) => sum + score, 0)
+  const averageScore = ratingCount === 0 ? null : total / ratingCount
+
+  return {
+    averageScore,
+    ratingCount
+  }
+}
+
+async function handleEpisodeRating(request: Request, url: URL): Promise<Response> {
+  const segments = url.pathname.split('/')
+  const episodeId = segments[4] ?? ''
+  const episodes = [...episodeFixtures.values()].flat()
+  const exists = episodes.some(episode => episode.id === episodeId)
+
+  if (!exists) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'Episode not found.'
+    } }, 404)
+  }
+
+  if (segments[5] === 'rating-summary') {
+    const summary = episodeRatingSummary(request, episodeId)
+
+    return json(summary)
+  }
+
+  if (!hasAuthenticatedCatalogSession(request)) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401)
+  }
+
+  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
+  const name = `tv_episode_rating_${account}_${episodeId}`
+
+  if (request.method === 'DELETE') {
+    const clearedCookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`
+
+    return json({ score: null }, 200, { 'Set-Cookie': clearedCookie })
+  }
+
+  if (request.method === 'PUT') {
+    const input: unknown = await request.json()
+    const score = isRecord(input) ? input.score : undefined
+
+    if (typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10) {
+      return json({ error: {
+        code: 'INVALID_REQUEST',
+        message: 'Choose a score from 1 to 10.'
+      } }, 400)
+    }
+
+    const savedCookie = `${name}=${score}; Path=/; SameSite=Lax`
+
+    return json({ score }, 200, { 'Set-Cookie': savedCookie })
+  }
+
+  const score = episodeRatingCookie(request, episodeId, account)
+
+  return json({ score })
+}
+
+function handleEpisodeRatingBatch(request: Request, url: URL): Response {
+  const segments = url.pathname.split('/')
+  const itemId = segments[4] ?? ''
+  const seasonNumber = Number(segments[6])
+  const catalogEpisodes = episodeFixtures.get(itemId) ?? []
+  const episodes = catalogEpisodes.filter(episode => episode.seasonNumber === seasonNumber)
+
+  if (episodes.length === 0) {
+    return json({ error: {
+      code: 'NOT_FOUND',
+      message: 'Season not found.'
+    } }, 404)
+  }
+
+  if (segments[8] === 'rating-summaries') {
+    const items = episodes.map(episode => {
+      const summary = episodeRatingSummary(request, episode.id)
+
+      return {
+        episodeId: episode.id,
+        averageScore: summary.averageScore,
+        ratingCount: summary.ratingCount
+      }
+    })
+
+    return json({ items })
+  }
+
+  if (!hasAuthenticatedCatalogSession(request)) {
+    return json({ error: {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Authentication is required.'
+    } }, 401)
+  }
+
+  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
+
+  const items = episodes.map(episode => {
+    const score = episodeRatingCookie(request, episode.id, account)
+
+    return {
+      episodeId: episode.id,
+      score
+    }
+  })
+
+  return json({ items })
+}
+
 async function handleSeasonRating(request: Request, url: URL): Promise<Response> {
   const segments = url.pathname.split('/')
   const id = segments[4] ?? ''
@@ -1265,6 +1394,14 @@ export default {
       && url.pathname.endsWith('/watched')
     ) {
       return handleCatalogWatched(request, url)
+    }
+
+    if (/^\/api\/catalog\/episodes\/[^/]+\/rating(?:-summary)?$/u.test(url.pathname)) {
+      return handleEpisodeRating(request, url)
+    }
+
+    if (/^\/api\/catalog\/items\/[^/]+\/seasons\/[^/]+\/episodes\/rating(?:s|-summaries)$/u.test(url.pathname)) {
+      return handleEpisodeRatingBatch(request, url)
     }
 
     if (/^\/api\/catalog\/items\/[^/]+\/seasons\/[^/]+\/rating(?:-summary)?$/u.test(url.pathname)) {

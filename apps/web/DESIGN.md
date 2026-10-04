@@ -1,12 +1,12 @@
 # TV design guide
 
-This guide defines the shared visual language for current and future TV pages and components. It covers layout, typography, color, controls, and interaction states. The reference images are the visual source of truth.
+This guide defines the shared visual language for current and future TV pages and components. It covers layout, typography, color, controls, and interaction states. The reference images are the visual source of truth, except for the confirmed design exceptions below.
 
 ## Required design references
 
 Before UI work, read this guide and open the relevant images below in both themes and all three responsive variants. For a new page without its own mockup, choose the closest page layout and component patterns from the references. Use them to build a consistent composition.
 
-When an image conflicts with this guide or existing UI, follow the image for visual decisions. Preserve accessibility and confirmed product behavior. Omit controls for features that are not implemented; a control in a mockup does not add a feature to the task.
+When an image conflicts with this guide or existing UI, follow the image for visual decisions unless a confirmed design exception applies. Preserve accessibility and confirmed product behavior. Omit controls for features that are not implemented; a control in a mockup does not add a feature to the task.
 
 | Page | Patterns | Mobile | Tablet | Desktop |
 | --- | --- | --- | --- | --- |
@@ -19,6 +19,12 @@ When an image conflicts with this guide or existing UI, follow the image for vis
 | Add title | Search, match selection, form or review, and confirmation | [Dark](designs/dark/mobile/add-title.png) · [Light](designs/light/mobile/add-title.png) | [Dark](designs/dark/tablet/add-title.png) · [Light](designs/light/tablet/add-title.png) | [Dark](designs/dark/desktop/add-title.png) · [Light](designs/light/desktop/add-title.png) |
 
 The files follow `designs/{dark|light}/{mobile|tablet|desktop}/{screen}.png`. Use the actual images to judge composition, spacing, hierarchy, and controls. Their file dimensions do not define CSS viewport sizes.
+
+## Confirmed design exceptions
+
+These user-confirmed decisions override only the stated parts of the reference images. Follow the images for all other design decisions.
+
+- **Title details — default tab:** Open `Overview` by default, as confirmed by the user on 2026-10-04. The title-details images show `Episodes` selected in both themes and all three responsive variants. Keep `Episodes` available as a separate tab.
 
 ## Visual language
 
@@ -94,4 +100,4 @@ Meet WCAG 2.2 AA. Use semantic HTML, accessible labels, keyboard access, and vis
 
 Compare changed screens with the selected images in both themes at the three reference viewports. Also check narrow widths, breakpoint edges, long text, missing artwork, keyboard focus, and 200% zoom. Authentication pages must remain usable at 1366 × 768 without vertical scrolling. Use semantic and geometry tests for important behavior; the generated mockups are not pixel screenshot baselines. Follow `AGENTS.md` for the applicable checks.
 
-Keep this guide focused on shared design decisions for future pages and components. Revise the relevant rule when that shared decision changes or conflicts with the images.
+Keep this guide focused on shared design decisions and confirmed design exceptions. Revise the relevant rule or exception when the user confirms a new decision.

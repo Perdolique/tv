@@ -25,4 +25,13 @@ async function waitForHydration(page: Page): Promise<void> {
   })
 }
 
-export { waitForHydration }
+async function openEpisodes(page: Page): Promise<void> {
+  await waitForHydration(page)
+
+  await page.getByRole('tab', {
+    name: 'Episodes',
+    exact: true
+  }).click()
+}
+
+export { openEpisodes, waitForHydration }

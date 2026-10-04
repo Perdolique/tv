@@ -1,7 +1,7 @@
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { appBaseUrl } from '../constants.ts'
 import { chernobyl, episodeEdgeSeries } from './details.fixtures.ts'
-import { waitForHydration } from './helpers.ts'
+import { openEpisodes, waitForHydration } from './helpers.ts'
 
 const series = episodeEdgeSeries
 const titlePath = `/titles/${series.id}`
@@ -9,7 +9,7 @@ const seasonPath = `/api/catalog/items/${series.id}/seasons/2/rating`
 const seasonRoute = `**${seasonPath}`
 const summaryRoute = `**${seasonPath}-summary`
 
-test('renders the selected season summary for guests on the server without private reads', async ({ page }) => {
+test('loads the season summary only after a guest opens Episodes without private reads', async ({ page }) => {
   const requestedUrls: string[] = []
 
   page.on('request', request => { requestedUrls.push(request.url()) })
@@ -17,9 +17,16 @@ test('renders the selected season summary for guests on the server without priva
   const response = await page.goto(titlePath)
   const html = await response?.text()
 
-  expect(html).toContain('Season 2 viewer rating')
-  expect(html).toContain('Season 2 ratings')
+  expect(html).not.toContain('Season 2 viewer rating')
+  expect(html).not.toContain('Season 2 ratings')
   await waitForHydration(page)
+
+  const privateRatingUrl = `${appBaseUrl}${seasonPath}`
+  const summaryUrl = `${appBaseUrl}${seasonPath}-summary`
+
+  expect(requestedUrls).not.toContain(privateRatingUrl)
+  expect(requestedUrls).not.toContain(summaryUrl)
+  await openEpisodes(page)
 
   const season = page.getByRole('region', {
     name: 'Season 2 ratings',
@@ -33,11 +40,8 @@ test('renders the selected season summary for guests on the server without priva
     exact: true
   })).toHaveAttribute('href', /^\/sign-in\?redirectTo=/u)
 
-  const privateRatingUrl = `${appBaseUrl}${seasonPath}`
-  const summaryUrl = `${appBaseUrl}${seasonPath}-summary`
-
   expect(requestedUrls).not.toContain(privateRatingUrl)
-  expect(requestedUrls).not.toContain(summaryUrl)
+  expect(requestedUrls.filter(url => url === summaryUrl)).toHaveLength(1)
 })
 
 test('keeps season scores separate across seasons, titles and sessions', async ({ context, page }) => {
@@ -48,7 +52,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
   }])
 
   await page.goto(titlePath)
-  await waitForHydration(page)
+  await openEpisodes(page)
 
   const firstSeason = page.getByRole('region', {
     name: 'Season 1 ratings',
@@ -134,6 +138,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
   const otherTitlePath = `/titles/${chernobyl.id}`
 
   await page.goto(otherTitlePath)
+  await openEpisodes(page)
   await expect(firstSeason.getByText('Not rated', { exact: true })).toBeVisible()
 
   await expect(firstSeason.getByRole('button', {
@@ -143,6 +148,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
 
   await page.goto(titlePath)
   await page.reload()
+  await openEpisodes(page)
 
   await expect(secondSeason.getByRole('button', {
     name: 'Rate season 2, your rating: 7 out of 10',
@@ -151,6 +157,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
 
   await context.clearCookies({ name: 'tv_session' })
   await page.reload()
+  await openEpisodes(page)
 
   await expect(secondSeason.getByRole('link', {
     name: 'Rate season 2',
@@ -166,6 +173,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
   }])
 
   await page.reload()
+  await openEpisodes(page)
 
   await expect(secondSeason.getByRole('button', {
     name: 'Rate season 2',
@@ -179,6 +187,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
   }])
 
   await page.reload()
+  await openEpisodes(page)
 
   await secondSeason.getByRole('button', {
     name: 'Rate season 2, your rating: 7 out of 10',
@@ -234,7 +243,7 @@ test('keeps episodes usable on rating failures and retries the affected data', a
   }])
 
   await page.goto(titlePath)
-  await waitForHydration(page)
+  await openEpisodes(page)
 
   const season = page.getByRole('region', {
     name: 'Season 2 ratings',
@@ -318,7 +327,7 @@ test('aborts pending season requests on selection changes without blocking the n
   }])
 
   await page.goto(titlePath)
-  await waitForHydration(page)
+  await openEpisodes(page)
 
   const season = page.getByRole('region', {
     name: 'Season 2 ratings',

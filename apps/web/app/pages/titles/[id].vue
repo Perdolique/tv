@@ -174,6 +174,9 @@
             tabindex="0"
           >
             <CatalogEpisodeList
+              :account-id="accountId"
+              :catalog-item-id="item.id"
+              :is-active="isEpisodesTabActive"
               :episodes="episodes"
               :has-episodes-error="hasEpisodesError"
               :has-session-error="hasSessionError"
@@ -190,6 +193,7 @@
               @retry-episodes="retryEpisodes"
               @retry-watched="retryEpisodeWatches"
               @toggle-watched="toggleEpisodeWatched"
+              @rating-unauthorized="handleSeasonRatingUnauthorized"
             >
               <template #season-rating="{ seasonNumber }">
                 <CatalogSeasonRating
@@ -349,7 +353,7 @@
   const episodesPanelId = useId()
   const overviewTabId = useId()
   const overviewPanelId = useId()
-  const activeTab = ref<'episodes' | 'overview'>('episodes')
+  const activeTab = ref<'episodes' | 'overview'>('overview')
   const isEpisodesTabActive = computed(() => activeTab.value === 'episodes')
   const isOverviewTabActive = computed(() => activeTab.value === 'overview')
   const episodesTabIndex = computed(() => isEpisodesTabActive.value ? 0 : -1)

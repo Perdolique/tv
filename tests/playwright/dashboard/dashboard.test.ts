@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie, getRedirectLocation } from '../helpers.ts'
 import { dune, chernobyl } from '../catalog/details.fixtures.ts'
-import { waitForHydration } from '../catalog/helpers.ts'
+import { openEpisodes, waitForHydration } from '../catalog/helpers.ts'
 import { longEmail } from '../auth/constants.ts'
 import { appBaseUrl } from '../constants.ts'
 
@@ -68,6 +68,7 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   await expect(movieButton).toHaveAccessibleName('Watched, mark as unwatched')
   await expect(movieButton).toBeEnabled()
   await page.goto(`/titles/${chernobyl.id}`)
+  await openEpisodes(page)
 
   const episode = page.getByRole('listitem').filter({ hasText: 'Please Remain Calm' })
 
