@@ -76,7 +76,10 @@ describe('catalog rating persistence', () => {
     const id = await itemId(title)
     const database = createDatabase(client)
 
-    await expect(findCatalogItemRating(database, userId, id)).resolves.toStrictEqual({ score: null })
+    await expect(findCatalogItemRating(database, userId, {
+      catalogItemId: id,
+      seasonNumber: null
+    })).resolves.toStrictEqual({ score: null })
 
     await expect(setCatalogItemRating(database, userId, {
       catalogItemId: id,
@@ -119,8 +122,16 @@ describe('catalog rating persistence', () => {
     })
 
     await expect(readRating(id)).resolves.toStrictEqual([])
-    await expect(findCatalogItemRating(database, userId, id)).resolves.toStrictEqual({ score: null })
-    await expect(findCatalogItemRating(database, otherUserId, id)).resolves.toStrictEqual({ score: 3 })
+
+    await expect(findCatalogItemRating(database, userId, {
+      catalogItemId: id,
+      seasonNumber: null
+    })).resolves.toStrictEqual({ score: null })
+
+    await expect(findCatalogItemRating(database, otherUserId, {
+      catalogItemId: id,
+      seasonNumber: null
+    })).resolves.toStrictEqual({ score: 3 })
 
     await setCatalogItemRating(database, userId, {
       catalogItemId: id,
@@ -346,7 +357,10 @@ describe('catalog rating persistence', () => {
     const database = createDatabase(client)
     const id = randomUUID()
 
-    await expect(findCatalogItemRating(database, userId, id)).resolves.toBeNull()
+    await expect(findCatalogItemRating(database, userId, {
+      catalogItemId: id,
+      seasonNumber: null
+    })).resolves.toBeNull()
 
     await expect(setCatalogItemRating(database, userId, {
       catalogItemId: id,

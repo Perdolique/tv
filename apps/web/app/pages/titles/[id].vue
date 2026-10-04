@@ -35,7 +35,7 @@
               <CatalogRating
                 :class="$style.ratingAction"
                 :account-id="accountId"
-                :catalog-item-id="item.id"
+                :target-key="item.id"
                 :has-session-error="hasSessionError"
                 :is-anonymous="isAnonymous"
                 :is-saving="isSavingRating"
@@ -190,7 +190,21 @@
               @retry-episodes="retryEpisodes"
               @retry-watched="retryEpisodeWatches"
               @toggle-watched="toggleEpisodeWatched"
-            />
+            >
+              <template #season-rating="{ seasonNumber }">
+                <CatalogSeasonRating
+                  v-if="isEpisodesTabActive"
+                  :key="seasonRatingKey(item.id, seasonNumber)"
+                  :catalog-item-id="item.id"
+                  :season-number="seasonNumber"
+                  :account-id="accountId"
+                  :is-anonymous="isAnonymous"
+                  :has-session-error="hasSessionError"
+                  :sign-in-location="signInLocation"
+                  @unauthorized="handleSeasonRatingUnauthorized"
+                />
+              </template>
+            </CatalogEpisodeList>
           </div>
           <div
             v-show="isOverviewTabActive"
@@ -238,6 +252,7 @@
   import CatalogRating from '~/components/catalog/CatalogRating.vue'
   import CatalogRatingSummary from '~/components/catalog/CatalogRatingSummary.vue'
   import CatalogEpisodeList from '~/components/catalog/CatalogEpisodeList.vue'
+  import CatalogSeasonRating from '~/components/catalog/CatalogSeasonRating.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useCatalogDetails } from '~/composables/use-catalog-details.ts'
   import { useCatalogRating } from '~/composables/use-catalog-rating.ts'
@@ -271,10 +286,19 @@
     isLoading: isRatingSummaryLoading,
     ready: ratingSummaryReady,
     summary: ratingSummary
-  } = useCatalogRatingSummary(id)
+  } = useCatalogRatingSummary({
+    catalogItemId: id,
+    seasonNumber: null
+  })
 
   const accountId = computed(() => sessionState.value.status === 'authenticated' ? sessionState.value.user.id : null)
   const catalogItemId = computed(() => item.value?.id ?? null)
+
+  const ratingTarget = computed(() => catalogItemId.value === null ? null : {
+    catalogItemId: catalogItemId.value,
+    seasonNumber: null
+  })
+
   const watchedCatalogItemId = computed(() => item.value?.type === 'movie' ? item.value.id : null)
 
   const {
@@ -285,7 +309,7 @@
     score: ratingScore,
     status: ratingStatus,
     unauthorized: ratingUnauthorized
-  } = useCatalogRating(catalogItemId, accountId)
+  } = useCatalogRating(ratingTarget, accountId)
 
   const {
     clearUnauthorized,
@@ -519,6 +543,20 @@
     }
 
     setResponseStatus(event, status)
+  }
+
+  function seasonRatingKey(itemId: string, seasonNumber: number): string {
+    const key = `${itemId}:${seasonNumber}`
+
+    return key
+  }
+
+  async function handleSeasonRatingUnauthorized(reason: 'load' | 'mutation'): Promise<void> {
+    setAnonymous()
+
+    if (reason === 'mutation') {
+      await navigateTo(signInLocation.value, { replace: true })
+    }
   }
 
   function clearRatingError(): void {

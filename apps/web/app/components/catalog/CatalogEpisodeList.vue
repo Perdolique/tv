@@ -25,6 +25,7 @@
       <p :class="$style.supportingText">No episode data is available yet.</p>
     </div>
     <template v-else>
+      <slot name="season-rating" :season-number="selectedSeason" />
       <div v-if="hasWatchedError" :class="$style.privateError">
         <AppMessage role="alert" tone="danger">We couldn’t load your watched episodes. The episode list is still available.</AppMessage>
         <AppButton variant="secondary" @click="emit('retryWatched')">Retry watched status</AppButton>

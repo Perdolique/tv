@@ -1,9 +1,9 @@
 <template>
-  <section :class="$style.component" :style="{ '--rating-anchor': anchorName }" aria-label="Your rating">
+  <section :class="$style.component" :style="{ '--rating-anchor': anchorName }" :aria-label="label">
     <div ref="anchor" :class="$style.anchor">
       <NuxtLink v-if="isAnonymous" :class="$style.link" :to="signInLocation">
         <Icon :class="$style.star" aria-hidden="true" mode="svg" name="hugeicons:star" />
-        Rate
+        {{ actionLabel }}
       </NuxtLink>
       <AppButton
         v-else
@@ -39,7 +39,7 @@
       @click="onBackdropClick"
     >
       <div :class="$style.header">
-        <h2 :id="headingId" :class="$style.heading">Your rating</h2>
+        <h2 :id="headingId" :class="$style.heading">{{ label }}</h2>
         <AppButton :class="$style.close" :disabled="isSaving" aria-label="Close rating" variant="secondary" @click="dismiss">
           <Icon aria-hidden="true" mode="svg" name="hugeicons:cancel-01" />
         </AppButton>
@@ -81,7 +81,9 @@
 
   interface Props {
     accountId: string | null;
-    catalogItemId: string | null;
+    label?: string;
+    actionLabel?: string;
+    targetKey: string | null;
     hasSessionError: boolean;
     isAnonymous: boolean;
     isSaving: boolean;
@@ -95,13 +97,13 @@
 
   interface Emits {
     clearError: [];
-    saved: [catalogItemId: string];
+    saved: [targetKey: string];
   }
 
-  const { accountId, catalogItemId, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
+  const { label = 'Your rating', actionLabel = 'Rate', accountId, targetKey, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const currentAccountId = computed(() => accountId)
-  const itemId = computed(() => catalogItemId)
+  const currentTargetKey = computed(() => targetKey)
   const isEditing = ref(false)
   const isMobile = useMediaQuery('(width < 40rem)')
   const notice = ref('')
@@ -127,11 +129,11 @@
   const popoverMode = computed(() => isMobile.value ? undefined : 'manual')
 
   const choices = computed(() => options.map(option => {
-    const label = `${option} out of 10`
+    const choiceLabel = `${option} out of 10`
 
     return {
       score: option,
-      label,
+      label: choiceLabel,
       isSelected: option === score
     }
   }))
@@ -147,19 +149,21 @@
       return 'Retry rating'
     }
 
-    return 'Rate'
+    return actionLabel
   })
 
   const accessibleTriggerLabel = computed(() => {
     if (isLoading.value) {
-      return 'Rate, loading rating…'
+      const loadingLabel = `${actionLabel}, loading rating…`
+
+      return loadingLabel
     }
 
     if (!isLoaded.value || hasSessionError || score === null) {
       return triggerLabel.value
     }
 
-    return `Rate, your rating: ${score} out of 10`
+    return `${actionLabel}, your rating: ${score} out of 10`
   })
 
   function focusChoice(): void {
@@ -259,7 +263,7 @@
   }
 
   async function persist(nextScore: number | null): Promise<void> {
-    const savedCatalogItemId = catalogItemId
+    const savedTargetKey = targetKey
     const mutationLabel = nextScore === null ? 'Remove rating' : `${nextScore} out of 10`
     const mutationSelector = `button[aria-label="${mutationLabel}"]`
     const focusOwner = globalThis.document.activeElement
@@ -294,8 +298,8 @@
     isEditing.value = false
     notice.value = nextScore === null ? 'Rating removed.' : 'Rating saved.'
 
-    if (savedCatalogItemId !== null) {
-      emit('saved', savedCatalogItemId)
+    if (savedTargetKey !== null) {
+      emit('saved', savedTargetKey)
     }
 
     if (restoreFocus) {
@@ -342,7 +346,7 @@
     }
   }
 
-  watch([currentAccountId, itemId], () => {
+  watch([currentAccountId, currentTargetKey], () => {
     contextVersion += 1
 
     hidePanel()

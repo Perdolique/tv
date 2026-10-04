@@ -742,3 +742,32 @@ describe('preview v3 reset migration', () => {
     })
   })
 })
+
+describe('season rating migration', () => {
+  it('keeps existing score identities and separates whole-title and season uniqueness', async () => {
+    await withDatabase(async fixture => {
+      await migrateBefore(fixture, '20261004093208_season_ratings')
+      await fixture.client.query('INSERT INTO users (id, email) VALUES ($1, \'season-migration@example.com\')', [firstUserId])
+
+      const saved = await fixture.client.query<{ id: string; catalog_item_id: string; score: number }>('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) SELECT $1, id, 8 FROM catalog_items WHERE type = \'series\' LIMIT 1 RETURNING id, catalog_item_id, score', [firstUserId])
+      const [original] = saved.rows
+
+      assert(original !== undefined)
+      await migrate(fixture.database, { migrationsFolder })
+
+      const preserved = await fixture.client.query('SELECT id, catalog_item_id, score FROM catalog_item_ratings WHERE user_id = $1 AND season_number IS NULL', [firstUserId])
+
+      expect(preserved.rows).toStrictEqual(saved.rows)
+      await fixture.client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, season_number, score) VALUES ($1, $2, 1, 6), ($1, $2, 2, 9)', [firstUserId, original.catalog_item_id])
+
+      const duplicateTitleRating = fixture.client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 7)', [firstUserId, original.catalog_item_id])
+
+      await expect(duplicateTitleRating).rejects.toMatchObject({ code: '23505' })
+      await migrate(fixture.database, { migrationsFolder })
+
+      const ratings = await fixture.client.query('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [firstUserId])
+
+      expect(ratings.rows).toHaveLength(3)
+    })
+  })
+})

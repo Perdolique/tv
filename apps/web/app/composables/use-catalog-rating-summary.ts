@@ -3,17 +3,18 @@ import type { CatalogRatingSummaryResponse } from '@tv/shared/catalog'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 import * as v from 'valibot'
 import { catalogRatingSummaryResponseSchema } from '~/utils/catalog-response.ts'
+import { catalogRatingPath, type CatalogRatingTarget } from '~/utils/catalog-rating-target.ts'
 
 type RatingSummaryOutcome =
   | { status: 'loaded'; summary: CatalogRatingSummaryResponse }
   | { status: 'error' }
 
 // Public data owns its request lifecycle, independently of account restoration.
-function useCatalogRatingSummary(id: string) {
+function useCatalogRatingSummary(target: CatalogRatingTarget) {
   const requestFetch = useRequestFetch()
-  const key = `catalog-rating-summary:${id}`
-  const encodedId = encodeURIComponent(id)
-  const url = `/api/catalog/items/${encodedId}/rating-summary`
+  const targetPath = catalogRatingPath(target)
+  const key = `catalog-rating-summary:${targetPath}`
+  const url = `${targetPath}/rating-summary`
   const summary = shallowRef<CatalogRatingSummaryResponse>()
 
   const ready = useAsyncData(key, async (_app, { signal }): Promise<RatingSummaryOutcome> => {

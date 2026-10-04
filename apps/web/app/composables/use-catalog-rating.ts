@@ -1,18 +1,20 @@
 import { useRequestFetch } from '#app'
 import { isRecord } from '@tv/shared/type-guards'
-import { ref, watch, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import * as v from 'valibot'
 import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
 import { catalogRatingResponseSchema } from '~/utils/catalog-response.ts'
+import { catalogRatingPath, type CatalogRatingTarget } from '~/utils/catalog-rating-target.ts'
 
 type RatingStatus = 'idle' | 'loading' | 'loaded' | 'error'
 type RatingUnauthorized = 'load' | 'mutation' | null
 
 function useCatalogRating(
-  catalogItemId: Readonly<Ref<string | null>>,
+  target: Readonly<Ref<CatalogRatingTarget | null>>,
   accountId: Readonly<Ref<string | null>>
 ) {
   const requestFetch = useRequestFetch()
+  const targetPath = computed(() => target.value === null ? null : catalogRatingPath(target.value))
   const status = ref<RatingStatus>('idle')
   const score = ref<number | null>(null)
   const isSaving = ref(false)
@@ -31,8 +33,8 @@ function useCatalogRating(
   }
 
   async function load(): Promise<void> {
-    const currentCatalogItemId = catalogItemId.value
-    const cannotLoad = accountId.value === null || currentCatalogItemId === null || isSaving.value
+    const currentPath = targetPath.value
+    const cannotLoad = accountId.value === null || currentPath === null || isSaving.value
 
     if (cannotLoad) {
       return
@@ -45,8 +47,7 @@ function useCatalogRating(
     unauthorized.value = null
 
     try {
-      const encodedId = encodeURIComponent(currentCatalogItemId)
-      const requestUrl = `/api/catalog/items/${encodedId}/rating`
+      const requestUrl = `${currentPath}/rating`
 
       const response = await requestFetch(
         requestUrl,
@@ -97,8 +98,8 @@ function useCatalogRating(
   }
 
   async function save(nextScore: number | null): Promise<boolean> {
-    const currentCatalogItemId = catalogItemId.value
-    const cannotSave = accountId.value === null || currentCatalogItemId === null || status.value !== 'loaded' || isSaving.value
+    const currentPath = targetPath.value
+    const cannotSave = accountId.value === null || currentPath === null || status.value !== 'loaded' || isSaving.value
 
     if (cannotSave) {
       return false
@@ -111,8 +112,7 @@ function useCatalogRating(
     unauthorized.value = null
 
     try {
-      const encodedId = encodeURIComponent(currentCatalogItemId)
-      const requestUrl = `/api/catalog/items/${encodedId}/rating`
+      const requestUrl = `${currentPath}/rating`
       const method = nextScore === null ? 'DELETE' : 'PUT'
       const body = nextScore === null ? undefined : { score: nextScore }
 
@@ -173,10 +173,10 @@ function useCatalogRating(
     }
   }
 
-  watch([catalogItemId, accountId], ([currentCatalogItemId, currentAccountId]) => {
+  watch([targetPath, accountId], ([currentPath, currentAccountId]) => {
     reset()
 
-    const shouldLoad = !import.meta.env.SSR && currentCatalogItemId !== null && currentAccountId !== null
+    const shouldLoad = !import.meta.env.SSR && currentPath !== null && currentAccountId !== null
 
     if (shouldLoad) {
       void load()

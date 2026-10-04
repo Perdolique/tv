@@ -10,6 +10,7 @@ import { movieResponse, seriesResponse, showResponse } from '../../../../testing
 import { applyImportPreview, listImportOperations, type ApplyImportOptions } from '../../apply-service.ts'
 import { findImportOperationView, listImportOperationPage } from '../../history.ts'
 import { createImportPreview, type ImportSession } from '../../service.ts'
+import { findCatalogItemRatingSummary } from '../../../ratings-repository.ts'
 
 const firstClient = new Client({ connectionString: env.TEST_DATABASE_URL })
 const secondClient = new Client({ connectionString: env.TEST_DATABASE_URL })
@@ -232,6 +233,7 @@ describe('saved catalog import application', () => {
     await firstClient.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) VALUES ($1, $2)', [session.user.id, watchedEpisodeId])
     await firstClient.query('INSERT INTO catalog_releases (catalog_item_id, release_date, season_number, episode_number) VALUES ($1, $2, 1, 1)', [itemId, '2099-01-01'])
 
+    const savedRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, season_number, score) VALUES ($1, $2, 1, 8) RETURNING id, score', [session.user.id, itemId])
     const changedShow = structuredClone(show)
 
     // oxlint-disable-next-line eslint/no-underscore-dangle -- TVMaze names this response field _embedded.
@@ -250,6 +252,17 @@ describe('saved catalog import application', () => {
     expect(updated.result.createdEpisodes).toBe(0)
     expect(episodeIdsAfter.rows).toStrictEqual(episodeIds.rows)
 
+    const ratingAfter = await firstClient.query('SELECT id, score FROM catalog_item_ratings WHERE user_id = $1 AND catalog_item_id = $2 AND season_number = 1', [session.user.id, itemId])
+
+    expect(ratingAfter.rows).toStrictEqual(savedRating.rows)
+
+    const summaryAfterRefresh = await findCatalogItemRatingSummary(firstDatabase, itemId, 1)
+
+    expect(summaryAfterRefresh).toStrictEqual({
+      averageScore: 8,
+      ratingCount: 1
+    })
+
     const retained = await firstClient.query(`
       SELECT
         (SELECT count(*) FROM catalog_item_follows WHERE catalog_item_id = $1)::integer AS follows,
@@ -264,6 +277,28 @@ describe('saved catalog import application', () => {
       releases: 1,
       title: 'Updated source episode'
     })
+
+    // oxlint-disable-next-line eslint/no-underscore-dangle -- TVMaze names this response field _embedded.
+    changedShow._embedded.episodes.push({
+      ...firstEpisode,
+      id: 9_000_003,
+      number: 99
+    })
+
+    const expanded = await savedPreview(series, tmdb, changedShow)
+    const expandedResult = await applySuccess(expanded.id)
+    const ratingAfterAddition = await firstClient.query('SELECT id, score FROM catalog_item_ratings WHERE user_id = $1 AND catalog_item_id = $2 AND season_number = 1', [session.user.id, itemId])
+
+    expect(expandedResult.result.createdEpisodes).toBe(1)
+    expect(ratingAfterAddition.rows).toStrictEqual(savedRating.rows)
+
+    const summaryAfterAddition = await findCatalogItemRatingSummary(firstDatabase, itemId, 1)
+
+    expect(summaryAfterAddition).toStrictEqual({
+      averageScore: 8,
+      ratingCount: 1
+    })
+
   })
 
   it('preserves an editorial empty value and retains source fields that disappear', async () => {
