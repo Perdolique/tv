@@ -87,7 +87,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       })
 
       const rows = page.getByRole('list', {
-        name: 'Watched marks',
+        name: 'Viewing entries',
         exact: true
       }).getByRole('listitem')
 
@@ -145,7 +145,7 @@ for (const [width, height] of [[320, 1024], [639, 1024], [640, 1024], [1023, 102
     expectNavigationColumns(controlBounds, width)
 
     const first = page.getByRole('list', {
-      name: 'Watched marks',
+      name: 'Viewing entries',
       exact: true
     }).getByRole('listitem').first()
 
@@ -190,7 +190,7 @@ for (const [timezoneId, date] of [['America/Los_Angeles', 'Sep 21, 2026'], ['Asi
       await waitForHydration(page)
 
       const timestamp = page.getByRole('list', {
-        name: 'Watched marks',
+        name: 'Viewing entries',
         exact: true
       }).locator('time').first()
 

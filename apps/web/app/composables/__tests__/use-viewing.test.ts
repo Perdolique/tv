@@ -71,6 +71,25 @@ describe('viewing requests', () => {
     expect(harness.fetch).toHaveBeenCalledTimes(3)
   })
 
+  it('reloads the first page when a cursor from an older API is rejected', async () => {
+    initialResponses()
+
+    const { history } = setup()
+
+    await history.ready
+
+    harness.fetch.mockRejectedValueOnce({ statusCode: 400 }).mockResolvedValueOnce({
+      items: [olderMovie],
+      nextCursor: null
+    })
+
+    await expect(history.loadMore()).resolves.toStrictEqual([])
+    expect(history.items.value).toStrictEqual([olderMovie])
+    expect(history.hasMore.value).toBe(false)
+    expect(history.hasLoadMoreError.value).toBe(false)
+    expect(harness.fetch.mock.calls[3]?.[1].query).toBeUndefined()
+  })
+
   it('keeps loaded history on failure and retries the same cursor', async () => {
     initialResponses()
 

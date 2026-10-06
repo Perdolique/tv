@@ -45,7 +45,7 @@ const cursorSchema = v.strictObject({
   entryId: v.pipe(v.string(), v.uuid()),
   kind: v.picklist(['movie', 'episode']),
   markedAt: v.pipe(v.string(), v.check(isViewingTimestamp)),
-  version: v.literal(1)
+  version: v.literal(2)
 })
 
 function encodeViewingCursor(item: CatalogViewingCursor): string {
@@ -53,7 +53,7 @@ function encodeViewingCursor(item: CatalogViewingCursor): string {
     entryId: item.entryId,
     kind: item.kind,
     markedAt: item.markedAt,
-    version: 1
+    version: 2
   })
 
   const bytes = new TextEncoder().encode(payload)

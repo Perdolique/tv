@@ -21,14 +21,14 @@ describe('viewing history cursors', () => {
 
     expect(payload).toStrictEqual({
       ...cursor,
-      version: 1
+      version: 2
     })
 
     expect(decodeViewingCursor(encoded)).toStrictEqual(cursor)
     expect(decodeViewingCursor(null)).toBeNull()
   })
 
-  it.each([undefined, 0, 2])('rejects cursor version %s', (version) => {
+  it.each([undefined, 0, 1, 3])('rejects cursor version %s', (version) => {
     const payload = JSON.stringify({
       ...cursor,
       version

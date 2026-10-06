@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
-import type { CatalogErrorEnvelope, CatalogWatchedResponse } from '@tv/shared/catalog'
+import type { CatalogErrorEnvelope } from '@tv/shared/catalog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
@@ -109,123 +109,50 @@ describe('catalog watched Worker contract', () => {
     }
   })
 
-  it('marks and unmarks idempotently without changing follows or the original timestamp', async () => {
+  it('reads canonical viewings and refuses legacy writes without changing data', async () => {
     const id = await findCatalogItemId('Dead Man')
     const path = `/api/catalog/items/${id}/watched`
+    const empty = await request(path)
 
-    await withClient(async (client) => {
-      await client.query(`
-        INSERT INTO catalog_item_follows (user_id, catalog_item_id)
-        VALUES ($1, $2)
-      `, [TEST_USER_ID, id])
-    })
+    await expect(empty.json()).resolves.toStrictEqual({ watched: false })
+    await withClient( async client => client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2), ($1, $2)', [TEST_USER_ID, id]))
 
-    const initial = await request(path)
-    const marked = await request(path, 'PUT')
+    const read = await request(path)
 
-    const firstTimestamp = await withClient(async (client) => {
-      const result = await client.query<{ marked_at: Date }>(`
-        SELECT marked_at FROM catalog_movie_watches
-        WHERE user_id = $1 AND catalog_item_id = $2
-      `, [TEST_USER_ID, id])
+    await expect(read.json()).resolves.toStrictEqual({ watched: true })
 
-      return result.rows[0]?.marked_at
-    })
+    await Promise.all(['PUT', 'DELETE'].map(async method => {
+      const response = await request(path, method)
 
-    await withClient(async (client) => client.query('SELECT pg_sleep(0.01)'))
-
-    const markedAgain = await request(path, 'PUT')
-
-    const repeatedTimestamp = await withClient(async (client) => {
-      const result = await client.query<{ marked_at: Date }>(`
-        SELECT marked_at FROM catalog_movie_watches
-        WHERE user_id = $1 AND catalog_item_id = $2
-      `, [TEST_USER_ID, id])
-
-      return result.rows[0]?.marked_at
-    })
-
-    const readMarked = await request(path)
-    const unmarked = await request(path, 'DELETE')
-    const unmarkedAgain = await request(path, 'DELETE')
-    const responses = [initial, marked, markedAgain, readMarked, unmarked, unmarkedAgain]
-    const expectedStates = [false, true, true, true, false, false]
-
-    const bodies = await Promise.all(
-      responses.map(async response => response.json<CatalogWatchedResponse>())
-    )
-
-    for (const [index, response] of responses.entries()) {
-      expect(response.status).toBe(200)
-
-      expect(bodies[index]).toStrictEqual({
-        watched: expectedStates[index]
-      })
-
+      expect(response.status).toBe(409)
       expectNoStore(response)
-    }
+      await expect(response.json()).resolves.toMatchObject({ error: { code: 'CONFLICT' } })
+    }))
 
-    await withClient(async (client) => {
-      const follows = await client.query<{ count: string }>(`
-        SELECT count(*) FROM catalog_item_follows
-        WHERE user_id = $1 AND catalog_item_id = $2
-      `, [TEST_USER_ID, id])
+    await withClient(async client => {
+      const rows = await client.query('SELECT id FROM catalog_viewings WHERE user_id = $1', [TEST_USER_ID])
 
-      const watches = await client.query<{ count: string; marked_at: Date }>(`
-        SELECT count(*)::text AS count, max(marked_at) AS marked_at
-        FROM catalog_movie_watches
-        WHERE user_id = $1 AND catalog_item_id = $2
-      `, [TEST_USER_ID, id])
-
-      expect(firstTimestamp).toBeInstanceOf(Date)
-      expect(repeatedTimestamp).toStrictEqual(firstTimestamp)
-      expect(follows.rows[0]?.count).toBe('1')
-      expect(watches.rows[0]?.count).toBe('0')
+      expect(rows.rows).toHaveLength(2)
     })
   })
 
-  it.each(['GET', 'PUT', 'DELETE'])('rejects series for %s', async (method) => {
-    const id = await findCatalogItemId('Spartacus')
-    const response = await request(`/api/catalog/items/${id}/watched`, method)
+  it('validates legacy reads and invalid write IDs', async () => {
+    const series = await findCatalogItemId('Spartacus')
+    const response = await request(`/api/catalog/items/${series}/watched`)
+    const missing = await request('/api/catalog/items/01991a00-0000-7000-8000-999999999999/watched')
 
     expect(response.status).toBe(400)
-
-    await expect(response.json()).resolves.toStrictEqual({ error: {
-      code: 'INVALID_REQUEST',
-      fields: { id: 'Only catalog movies can be marked as watched.' },
-      message: 'The request is invalid.'
-    } })
-
-    expectNoStore(response)
-  })
-
-  it.each(['GET', 'PUT', 'DELETE'])('returns structured invalid and missing title errors for %s', async (method) => {
-    const invalid = await request('/api/catalog/items/not-a-uuid/watched', method)
-
-    const missing = await request(
-      '/api/catalog/items/01991a00-0000-7000-8000-999999999999/watched',
-      method
-    )
-
-    expect(invalid.status).toBe(400)
-
-    await expect(invalid.json()).resolves.toMatchObject({ error: {
-      code: 'INVALID_REQUEST',
-      fields: { id: 'Use a valid catalog item UUID.' }
-    } })
-
     expect(missing.status).toBe(404)
 
-    await expect(missing.json()).resolves.toStrictEqual({ error: {
-      code: 'NOT_FOUND',
-      message: 'This title could not be found.'
-    } })
+    await Promise.all(['GET', 'PUT', 'DELETE'].map(async method => {
+      const invalid = await request('/api/catalog/items/not-a-uuid/watched', method)
 
-    expectNoStore(invalid)
-    expectNoStore(missing)
+      expect(invalid.status).toBe(400)
+      expectNoStore(invalid)
+    }))
   })
 
-  it.each(['GET', 'PUT', 'DELETE'])('returns a safe 503 and keeps the raw database failure in telemetry for %s', async (method) => {
+  it.each(['GET'])('returns a safe 503 and keeps the raw database failure in telemetry for %s', async (method) => {
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {
       // Expected failure is inspected below.
     })
@@ -233,7 +160,7 @@ describe('catalog watched Worker contract', () => {
     const id = await findCatalogItemId('Dead Man')
 
     await withClient(async (client) => {
-      await client.query('ALTER TABLE catalog_movie_watches RENAME TO catalog_movie_watches_unavailable')
+      await client.query('ALTER VIEW catalog_movie_watches RENAME TO catalog_movie_watches_unavailable')
 
       try {
         const response = await request(`/api/catalog/items/${id}/watched`, method)
@@ -254,7 +181,7 @@ describe('catalog watched Worker contract', () => {
         expect(serialized).toContain('does not exist')
         expect(serialized).toContain('requestId')
       } finally {
-        await client.query('ALTER TABLE catalog_movie_watches_unavailable RENAME TO catalog_movie_watches')
+        await client.query('ALTER VIEW catalog_movie_watches_unavailable RENAME TO catalog_movie_watches')
       }
     })
   })

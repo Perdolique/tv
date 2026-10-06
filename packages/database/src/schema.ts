@@ -1,4 +1,5 @@
 /* oxlint-disable eslint/max-lines -- The central schema keeps related catalog and account table exports in one place. */
+import type { CatalogViewingCreateInput } from '@tv/shared/catalog-viewings'
 import { sql } from 'drizzle-orm'
 
 import {
@@ -8,8 +9,10 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
+  pgView,
   primaryKey,
   text,
   timestamp,
@@ -219,31 +222,79 @@ const catalogItemRatings = pgTable('catalog_item_ratings', {
   index('catalog_item_ratings_target_index').on(table.catalogItemId, table.seasonNumber)
 ])
 
-const catalogMovieWatches = pgTable('catalog_movie_watches', {
-  userId:
-    uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+const catalogViewings = pgTable('catalog_viewings', {
+  id: uuid().default(sql`uuidv7()`).primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  status: text().notNull().default('completed'),
+  startedOn: date('started_on', { mode: 'string' }),
+  completedOn: date('completed_on', { mode: 'string' }),
 
-  catalogItemId:
-    uuid('catalog_item_id')
-    .notNull()
-    .references(() => catalogItems.id, { onDelete: 'cascade' }),
+  recordedAt: timestamp('recorded_at', {
+    withTimezone: true,
+    mode: 'date'
+  }).defaultNow().notNull(),
 
-  markedAt:
-    timestamp('marked_at', {
-      mode: 'date',
-      withTimezone: true
-    })
-    .defaultNow()
-    .notNull()
+  revision: integer().notNull().default(1)
+}, (table) => [
+  unique('catalog_viewings_owner_item_id_unique').on(table.userId, table.catalogItemId, table.id),
+  check('catalog_viewings_completed_only', sql`${table.status} = 'completed'`),
+  check('catalog_viewings_revision_positive', sql`${table.revision} > 0`),
+  check('catalog_viewings_date_order', sql`${table.startedOn} <= ${table.completedOn}`),
+  check('catalog_viewings_date_range', sql`(${table.startedOn} IS NULL OR ${table.startedOn} BETWEEN '0001-01-01'::date AND '9999-12-31'::date) AND (${table.completedOn} IS NULL OR ${table.completedOn} BETWEEN '0001-01-01'::date AND '9999-12-31'::date)`),
+  index('catalog_viewings_owner_item_recorded_index').on(table.userId, table.catalogItemId, table.recordedAt.desc(), table.id.desc()),
+  index('catalog_viewings_owner_recorded_index').on(table.userId, table.recordedAt.desc(), table.id.desc()),
+  index('catalog_viewings_item_index').on(table.catalogItemId)
+])
+
+const catalogViewingContexts = pgTable('catalog_viewing_contexts', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  currentViewingId: uuid('current_viewing_id'),
+  contextVersion: integer('context_version').notNull().default(0)
 }, (table) => [
   primaryKey({ columns: [table.userId, table.catalogItemId] }),
-  index('catalog_movie_watches_catalog_item_id_index')
-    .on(table.catalogItemId),
-  index('catalog_movie_watches_user_marked_at_item_index')
-    .on(table.userId, table.markedAt.desc(), table.catalogItemId.desc())
+  check('catalog_viewing_contexts_version_nonnegative', sql`${table.contextVersion} >= 0`),
+
+  // The migration limits SET NULL to the viewing ID; Drizzle cannot express its column list.
+  foreignKey({
+    name: 'catalog_viewing_contexts_owner_item_fk',
+    columns: [table.userId, table.catalogItemId, table.currentViewingId],
+    foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
+  }).onDelete('set null'),
+  index('catalog_viewing_contexts_current_index').on(table.currentViewingId)
 ])
+
+// Creation keys survive viewing deletion so a late retry cannot restore a deleted record.
+const catalogViewingCreations = pgTable('catalog_viewing_creations', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  requestId: uuid('request_id').notNull(),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  input: jsonb().$type<CatalogViewingCreateInput>().notNull(),
+  viewingId: uuid('viewing_id')
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.requestId] }),
+
+  // The migration limits SET NULL to the viewing ID; Drizzle cannot express its column list.
+  foreignKey({
+    name: 'catalog_viewing_creations_owner_item_fk',
+    columns: [table.userId, table.catalogItemId, table.viewingId],
+    foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
+  }).onDelete('set null'),
+  index('catalog_viewing_creations_viewing_index').on(table.viewingId),
+  index('catalog_viewing_creations_item_index').on(table.catalogItemId)
+])
+
+// Read-only projection for the API version running between migration and deployment.
+const catalogMovieWatches = pgView('catalog_movie_watches', {
+  userId: uuid('user_id'),
+  catalogItemId: uuid('catalog_item_id'),
+
+  markedAt: timestamp('marked_at', {
+    mode: 'date',
+    withTimezone: true
+  })
+}).as(sql`SELECT user_id, catalog_item_id, max(recorded_at) AS marked_at FROM catalog_viewings WHERE status = 'completed' GROUP BY user_id, catalog_item_id`)
 
 const catalogEpisodeWatches = pgTable('catalog_episode_watches', {
   userId:
@@ -375,6 +426,9 @@ export {
   catalogItemRatings,
   catalogItemDescriptions,
   catalogMovieWatches,
+  catalogViewings,
+  catalogViewingContexts,
+  catalogViewingCreations,
   catalogItemTitles,
   catalogItems,
   catalogItemType,

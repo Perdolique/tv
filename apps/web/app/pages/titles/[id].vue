@@ -79,8 +79,8 @@
                 <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Mark as watched</NuxtLink>
                 <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Watched unavailable</AppButton>
                 <template v-else-if="isAuthenticated && watchedStatus === 'error'">
-                  <AppMessage role="alert" tone="danger">We couldn’t check whether you watched this movie. Try again.</AppMessage>
-                  <AppButton ref="watchedRetryButton" aria-label="Retry watched status" :class="$style.actionButton" variant="secondary" @click="retryWatched">Retry</AppButton>
+                  <p :class="$style.supportingText">Your viewings are unavailable.</p>
+                  <AppButton ref="watchedRetryButton" aria-label="Retry viewing history" :class="$style.actionButton" variant="secondary" @click="retryWatched">Retry</AppButton>
                 </template>
                 <template v-else>
                   <AppButton
@@ -90,7 +90,7 @@
                     :class="[$style.actionButton, { 'is-watched': watched }]"
                     :disabled="isWatchedBusy"
                     variant="secondary"
-                    @click="toggleWatched"
+                    @click="recordCurrentViewing"
                   >
                     <span :class="$style.watchedContent">
                       <span aria-hidden="true" :class="$style.actionIndicator" data-action-icon="watched">
@@ -101,7 +101,7 @@
                     </span>
                     <span aria-hidden="true" :class="$style.watchedSizer">Mark as watched</span>
                   </AppButton>
-                  <AppMessage v-if="watchedSaveError !== ''" role="alert" tone="danger">{{ watchedSaveError }}</AppMessage>
+                  <p v-if="showViewingCount" :class="$style.supportingText" role="status">{{ viewingCountLabel }}</p>
                 </template>
               </section>
             </div>
@@ -133,6 +133,16 @@
           <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
           <p v-else :class="$style.supportingText">No description available yet.</p>
         </section>
+        <CatalogMovieViewings
+          v-if="isMovie"
+          :key="viewingComponentKey"
+          :class="$style.movieViewings"
+          :state="movieViewings"
+          :is-anonymous="isAnonymous"
+          :has-session-error="hasSessionError"
+          :sign-in-location="signInLocation"
+          :selected-id="selectedViewingId"
+        />
         <section v-if="isSeries" :class="$style.seriesContent" aria-label="Series details">
           <div :class="$style.tabs" role="tablist" aria-label="Series information">
             <button
@@ -264,7 +274,8 @@
   import { useCatalogEpisodes } from '~/composables/use-catalog-episodes.ts'
   import { useCatalogEpisodeWatches } from '~/composables/use-catalog-episode-watches.ts'
   import { useCatalogFollow } from '~/composables/use-catalog-follow.ts'
-  import { useCatalogWatched } from '~/composables/use-catalog-watched.ts'
+  import { useMovieViewings } from '~/composables/use-movie-viewings.ts'
+  import CatalogMovieViewings from '~/components/catalog/CatalogMovieViewings.vue'
   import { normalizeSearchQuery } from '~/utils/catalog-response.ts'
 
   definePageMeta({
@@ -326,17 +337,19 @@
     unauthorized: followUnauthorized
   } = useCatalogFollow(catalogItemId, accountId)
 
+  const selectedViewingId = computed(() => typeof route.query.viewingId === 'string' ? route.query.viewingId : null)
+  const movieViewings = useMovieViewings(watchedCatalogItemId, accountId, { selectedId: selectedViewingId })
+
   const {
-    clearUnauthorized: clearWatchedUnauthorized,
     isSaving: isSavingWatched,
     load: loadWatched,
-    saveError: watchedSaveError,
     status: watchedStatus,
-    toggle: saveWatched,
-    unauthorized: watchedUnauthorized,
-    watched
-  } = useCatalogWatched(watchedCatalogItemId, accountId)
+    summary: viewingSummary,
+    unauthorized: watchedUnauthorized
+  } = movieViewings
 
+  const watched = computed(() => viewingSummary.value.completedCount > 0)
+  const viewingComponentKey = computed(() => `${accountId.value ?? 'guest'}:${catalogItemId.value ?? ''}`)
   const heading = useTemplateRef('heading')
   const retryButton = useTemplateRef('retryButton')
   const followButton = useTemplateRef('followButton')
@@ -346,7 +359,21 @@
   const episodesTab = useTemplateRef('episodesTab')
   const overviewTab = useTemplateRef('overviewTab')
   const watchedIconName = computed(() => watched.value ? 'hugeicons:tick-02' : 'hugeicons:view')
-  const watchedLabel = computed(() => watched.value ? 'Watched' : 'Mark as watched')
+  const showViewingCount = computed(() => watchedStatus.value === 'loaded')
+
+  const viewingCountLabel = computed(() => {
+    const count = viewingSummary.value.completedCount
+    const unit = count === 1 ? 'viewing' : 'viewings'
+
+    return `${count} ${unit}`
+  })
+
+  const watchedLabel = computed(() => {
+    if (isSavingWatched.value) { return 'Saving viewing…' }
+
+    return watched.value ? 'Watched again' : 'Mark as watched'
+  })
+
   const overviewId = useId()
   const seriesOverviewId = useId()
   const episodesTabId = useId()
@@ -375,7 +402,7 @@
       return 'Mark as watched, loading status…'
     }
 
-    return watched.value ? 'Watched, mark as unwatched' : undefined
+    return isSavingWatched.value ? 'Saving viewing…' : undefined
   })
 
   const hasSessionError = computed(() => sessionState.value.status === 'error')
@@ -478,7 +505,6 @@
       return
     }
 
-    clearWatchedUnauthorized()
     setAnonymous()
 
     if (reason === 'mutation') {
@@ -649,10 +675,10 @@
     }
   }
 
-  async function toggleWatched(): Promise<void> {
+  async function recordCurrentViewing(): Promise<void> {
     const focusOwner = globalThis.document.activeElement
 
-    await saveWatched()
+    await movieViewings.create('current')
     await nextTick()
 
     if (!canRestoreActionFocus(focusOwner)) {
@@ -839,6 +865,8 @@
     }
     .actionLink:hover { filter: brightness(0.96); }
     .actionLink:active { transform: translateY(0.0625rem); }
+    .movieViewings { grid-column: 1 / -1; }
+
     .overview, .movieOverview {
       padding-block-start: var(--space-6);
       border-block-start: 1px solid var(--color-border);
@@ -949,6 +977,7 @@
       .ratingsRail { grid-column: 2; grid-row: 2 / span 2; align-self: start; margin-block-start: calc(-1 * var(--space-8)); }
       .personalRating { padding: var(--space-3); }
       .seriesContent, .movieOverview { grid-column: 1; grid-row: 2; }
+      .movieViewings { grid-column: 1; grid-row: 3; }
       .seriesContent { margin-block-start: var(--space-2); }
       .credits { grid-column: 1; }
     }
@@ -956,7 +985,7 @@
       .details, .loading { grid-template-columns: minmax(0, 1fr); }
       .hero { grid-column: 1; }
       .ratingsRail { grid-column: 1; grid-row: auto; margin-block-start: 0; }
-      .seriesContent, .movieOverview { grid-column: 1; grid-row: auto; }
+      .seriesContent, .movieOverview, .movieViewings { grid-column: 1; grid-row: auto; }
     }
     @container (width < 18rem) {
       .hero { grid-template-columns: minmax(0, 1fr); }

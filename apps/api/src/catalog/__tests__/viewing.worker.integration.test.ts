@@ -64,7 +64,7 @@ describe('viewing Worker routes', () => {
     })
 
     await withClient(async (client) => {
-      await client.query(`INSERT INTO catalog_movie_watches (user_id, catalog_item_id)
+      await client.query(`INSERT INTO catalog_viewings (user_id, catalog_item_id)
         SELECT $1, id FROM catalog_items WHERE type = 'movie' ORDER BY id LIMIT 2`, [userId])
 
       await client.query(`INSERT INTO catalog_episode_watches (user_id, catalog_episode_id)
@@ -131,7 +131,7 @@ describe('viewing Worker routes', () => {
     })
 
     await withClient(async (client) => {
-      await client.query('ALTER TABLE catalog_movie_watches RENAME TO catalog_movie_watches_unavailable')
+      await client.query('ALTER TABLE catalog_viewings RENAME TO catalog_viewings_unavailable')
 
       try {
         const response = await request(path)
@@ -146,11 +146,11 @@ describe('viewing Worker routes', () => {
 
         const serialized = JSON.stringify(logs.mock.calls)
 
-        expect(serialized).toContain('catalog_movie_watches')
+        expect(serialized).toContain('catalog_viewings')
         expect(serialized).toContain('does not exist')
         expect(serialized).toContain('requestId')
       } finally {
-        await client.query('ALTER TABLE catalog_movie_watches_unavailable RENAME TO catalog_movie_watches')
+        await client.query('ALTER TABLE catalog_viewings_unavailable RENAME TO catalog_viewings')
       }
     })
   })

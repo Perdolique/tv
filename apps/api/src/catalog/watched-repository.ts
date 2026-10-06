@@ -7,8 +7,6 @@ interface CatalogItemWatchState {
   watched: boolean;
 }
 
-type MarkCatalogMovieResult = 'marked' | 'not-found' | 'not-movie'
-
 async function findCatalogItemWatchState(
   database: Database,
   userId: string,
@@ -51,76 +49,4 @@ async function findCatalogItemWatchState(
   }
 }
 
-async function markCatalogMovieWatched(
-  database: Database,
-  userId: string,
-  catalogItemId: string
-): Promise<MarkCatalogMovieResult> {
-  return database.transaction(async (transaction) => {
-    const rows = await transaction
-      .select({
-        type: catalogItems.type
-      })
-      .from(catalogItems)
-      .innerJoin(
-        catalogItemTitles,
-        and(
-          eq(catalogItemTitles.catalogItemId, catalogItems.id),
-          eq(catalogItemTitles.isOriginal, true)
-        )
-      )
-      .where(
-        eq(catalogItems.id, catalogItemId)
-      )
-      .limit(1)
-      .for('no key update', {
-        of: [catalogItems, catalogItemTitles]
-      })
-
-    const [item] = rows
-
-    if (item === undefined) {
-      return 'not-found'
-    }
-
-    if (item.type !== 'movie') {
-      return 'not-movie'
-    }
-
-    await transaction
-      .insert(catalogMovieWatches)
-      .values({
-        catalogItemId,
-        userId
-      })
-      .onConflictDoNothing({
-        target: [
-          catalogMovieWatches.userId,
-          catalogMovieWatches.catalogItemId
-        ]
-      })
-
-    return 'marked'
-  })
-}
-
-async function unmarkCatalogMovieWatched(
-  database: Database,
-  userId: string,
-  catalogItemId: string
-): Promise<void> {
-  await database
-    .delete(catalogMovieWatches)
-    .where(
-      and(
-        eq(catalogMovieWatches.userId, userId),
-        eq(catalogMovieWatches.catalogItemId, catalogItemId)
-      )
-    )
-}
-
-export {
-  findCatalogItemWatchState,
-  markCatalogMovieWatched,
-  unmarkCatalogMovieWatched
-}
+export { findCatalogItemWatchState }

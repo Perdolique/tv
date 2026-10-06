@@ -12,7 +12,7 @@ import {
 } from '../../episodes-repository.ts'
 
 import { followCatalogItem } from '../../repository.ts'
-import { markCatalogMovieWatched } from '../../watched-repository.ts'
+import { createMovieViewing } from '../../movie-viewings-repository.ts'
 
 const databaseUrl = env.TEST_DATABASE_URL
 
@@ -183,7 +183,16 @@ describe('postgreSQL catalog episodes and watches', () => {
 
       await markCatalogEpisodeWatched(database, firstUserId, episodeId)
       await followCatalogItem(database, secondUserId, chernobylId)
-      await markCatalogMovieWatched(database, secondUserId, movieId)
+
+      await createMovieViewing(database, {
+        userId: secondUserId,
+        catalogItemId: movieId
+      }, {
+        requestId: crypto.randomUUID(),
+        mode: 'history',
+        startedOn: null,
+        completedOn: null
+      })
 
       await expect(findCatalogEpisodeWatchListing(database, firstUserId, chernobylId)).resolves.toStrictEqual({
         type: 'series',

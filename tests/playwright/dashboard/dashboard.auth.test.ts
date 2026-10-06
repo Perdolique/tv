@@ -6,7 +6,7 @@ import { appBaseUrl } from '../constants.ts'
 
 function marks(page: Page) {
   return page.getByRole('list', {
-    name: 'Watched marks',
+    name: 'Viewing entries',
     exact: true
   }).getByRole('listitem')
 }

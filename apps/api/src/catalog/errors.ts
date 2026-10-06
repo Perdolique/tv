@@ -3,6 +3,7 @@ import type { CatalogErrorCode, CatalogErrorEnvelope } from '@tv/shared/catalog'
 
 const ERROR_MESSAGES = {
   AUTHENTICATION_REQUIRED: 'Authentication is required.',
+  CONFLICT: 'Your viewing changed. Reload the title and try again.',
   FORBIDDEN: 'You do not have access to catalog imports.',
   INTERNAL_ERROR: 'An unexpected error occurred.',
   INVALID_REQUEST: 'The request is invalid.',

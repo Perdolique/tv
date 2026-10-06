@@ -107,7 +107,7 @@ async function snapshot() {
     (SELECT jsonb_agg(t ORDER BY id) FROM catalog_import_fields t) AS fields,
     (SELECT jsonb_agg(t ORDER BY id) FROM catalog_releases t) AS releases,
     (SELECT jsonb_agg(t ORDER BY user_id, catalog_item_id) FROM catalog_item_follows t) AS follows,
-    (SELECT jsonb_agg(t ORDER BY user_id, catalog_item_id) FROM catalog_movie_watches t) AS watches,
+    (SELECT jsonb_agg(t ORDER BY user_id, catalog_item_id) FROM catalog_viewings t) AS watches,
     (SELECT jsonb_agg(t ORDER BY user_id, catalog_episode_id) FROM catalog_episode_watches t) AS episode_watches`)
 
   const [row] = result.rows
@@ -189,7 +189,7 @@ describe('saved import target selection', () => {
 
     await expect(snapshot()).resolves.toStrictEqual(before)
     await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, id])
-    await client.query('INSERT INTO catalog_movie_watches (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, id])
+    await client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, id])
 
     const result = await applyImportPreview(session, selected.id, applyOptions())
 

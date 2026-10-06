@@ -2,6 +2,8 @@ import { createApiTargetUrl, proxyApiRequest } from '../proxy-api.ts'
 
 import type {
   getRequestURL as h3GetRequestURL,
+  getProxyRequestHeaders as h3GetProxyRequestHeaders,
+  sendProxy as h3SendProxy,
   H3Event,
   proxyRequest as h3ProxyRequest,
   setResponseHeader as h3SetResponseHeader,
@@ -14,12 +16,16 @@ const requestId = '01991a00-0000-7000-8000-000000000001'
 
 const {
   getRequestURL,
+  getProxyRequestHeaders,
+  sendProxy,
   proxyRequest,
   setResponseHeader,
   setResponseStatus
 } = vi.hoisted(() => {
   return {
     getRequestURL: vi.fn<typeof h3GetRequestURL>(),
+    getProxyRequestHeaders: vi.fn<typeof h3GetProxyRequestHeaders>(),
+    sendProxy: vi.fn<typeof h3SendProxy>(),
     proxyRequest: vi.fn<typeof h3ProxyRequest>(),
     setResponseHeader: vi.fn<typeof h3SetResponseHeader>(),
     setResponseStatus: vi.fn<typeof h3SetResponseStatus>()
@@ -29,6 +35,8 @@ const {
 vi.mock(import('h3'), () => {
   return {
     getRequestURL,
+    getProxyRequestHeaders,
+    sendProxy,
     proxyRequest,
     setResponseHeader,
     setResponseStatus
@@ -192,6 +200,88 @@ describe('catalog proxy', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.resetAllMocks()
+  })
+
+  it('preserves the ordinary DELETE transport for Nitro development context', async () => {
+    const url = new URL('http://localhost:3000/api/catalog/items/movie/viewings/viewing')
+    const original = new Request(url)
+
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- h3 transport is mocked; the fixture represents Nitro's development context.
+    const event = { context: {} } as H3Event
+
+    event.context.cloudflare = { request: original }
+
+    Object.defineProperty(event, 'method', { value: 'DELETE' })
+
+    const upstream = { summary: { completedCount: 0 } }
+
+    getRequestURL.mockReturnValue(url)
+    proxyRequest.mockResolvedValue(upstream)
+
+    const result = await proxyApiRequest(event, {
+      message: 'Unavailable.',
+      logContext: 'test proxy'
+    }, true)
+
+    expect(result).toBe(upstream)
+
+    expect(proxyRequest).toHaveBeenCalledWith(event, 'http://127.0.0.1:8788/api/catalog/items/movie/viewings/viewing', {
+      headers: { 'X-Request-ID': requestId },
+      streamRequest: true
+    })
+
+    expect(sendProxy).not.toHaveBeenCalled()
+  })
+
+  it('forwards the real Cloudflare DELETE body and request headers', async () => {
+    const url = new URL('https://tv.example.com/api/catalog/items/movie/viewings/viewing')
+    const body = JSON.stringify({ revision: 2 })
+
+    const original = new Request(url, {
+      method: 'DELETE',
+      body
+    })
+
+    const fetch = vi.fn()
+
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Mocked h3 consumes only the method and Cloudflare platform context.
+    const event = { context: {} } as H3Event
+
+    event.context.cloudflare = {
+      request: original,
+      env: { API: { fetch } }
+    }
+
+    Object.defineProperty(event, 'method', { value: 'DELETE' })
+
+    const upstream = { summary: { completedCount: 0 } }
+
+    getRequestURL.mockReturnValue(url)
+
+    getProxyRequestHeaders.mockReturnValue({
+      cookie: 'session=private',
+      'content-type': 'application/json'
+    })
+
+    sendProxy.mockResolvedValue(upstream)
+
+    const result = await proxyApiRequest(event, {
+      message: 'Unavailable.',
+      logContext: 'test proxy'
+    }, false)
+
+    const options = sendProxy.mock.calls[0]?.[2]?.fetchOptions
+
+    expect(result).toBe(upstream)
+    expect(proxyRequest).not.toHaveBeenCalled()
+    expect(options?.method).toBe('DELETE')
+    expect(options?.body).toBe(original.body)
+    expect(options?.headers).toBeInstanceOf(Headers)
+
+    const headers = new Headers(options?.headers)
+
+    expect(headers.get('cookie')).toBe('session=private')
+    expect(headers.get('X-Request-ID')).toBe(requestId)
   })
 
   it.each([[true, 'http://127.0.0.1:8788'], [false, 'https://tv.example.com']] as const)('preserves the event, query and upstream response in development=%s', async (development, origin) => {

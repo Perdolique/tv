@@ -139,6 +139,19 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
   const unauthorized = computed(() => outcome.value?.status === 'unauthorized' || loadMoreUnauthorized.value)
   const isLoading = computed(() => accountId.value !== null && (ready.status.value === 'pending' || outcome.value === undefined))
 
+  function clear(): void {
+    clearContinuation()
+    ready.clear()
+  }
+
+  async function reload(): Promise<void> {
+    clear()
+
+    if (accountId.value !== null) {
+      await ready.execute({ dedupe: 'cancel' })
+    }
+  }
+
   async function loadMore(): Promise<CatalogViewingHistoryItem[]> {
     if (activeRequest !== null) {
       return activeRequest
@@ -198,6 +211,12 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
           return []
         }
 
+        if (isRecord(error) && error.statusCode === 400) {
+          await reload()
+
+          return []
+        }
+
         if (isRecord(error) && error.statusCode === 401) {
           continuation.value = null
           loadMoreUnauthorized.value = true
@@ -227,19 +246,6 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
         activeRequest = null
         controller = null
       }
-    }
-  }
-
-  function clear(): void {
-    clearContinuation()
-    ready.clear()
-  }
-
-  async function reload(): Promise<void> {
-    clear()
-
-    if (accountId.value !== null) {
-      await ready.execute({ dedupe: 'cancel' })
     }
   }
 
