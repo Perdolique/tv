@@ -29,7 +29,7 @@ async function findViewingHistoryRows(
   const cursorKindRank = cursor?.kind === 'episode' ? 1 : 0
 
   const moviePosition = cursor === null ? sql`true` : sql`
-    (marked_at, 0, catalog_item_id) < (${cursor.markedAt}::timestamptz, ${cursorKindRank}::integer, ${cursor.entryId}::uuid)
+    (recorded_at, 0, id) < (${cursor.markedAt}::timestamptz, ${cursorKindRank}::integer, ${cursor.entryId}::uuid)
   `
 
   const episodePosition = cursor === null ? sql`true` : sql`
@@ -39,13 +39,13 @@ async function findViewingHistoryRows(
   // Limit identities before joining translations; preserve timestamp microseconds as text.
   const result = await database.execute<CatalogViewingHistoryRow & Record<string, unknown>>(sql`
     WITH movies AS (
-      SELECT catalog_item_id AS entry_id, marked_at, 0 AS kind_rank
-      FROM catalog_movie_watches
+      SELECT id AS entry_id, catalog_item_id, recorded_at AS marked_at, 0 AS kind_rank
+      FROM catalog_viewings
       WHERE user_id = ${userId}::uuid AND ${moviePosition}
-      ORDER BY marked_at DESC NULLS LAST, catalog_item_id DESC NULLS LAST
+      ORDER BY recorded_at DESC NULLS LAST, id DESC NULLS LAST
       LIMIT ${VIEWING_HISTORY_QUERY_LIMIT}
     ), episodes AS (
-      SELECT catalog_episode_id AS entry_id, marked_at, 1 AS kind_rank
+      SELECT catalog_episode_id AS entry_id, NULL::uuid AS catalog_item_id, marked_at, 1 AS kind_rank
       FROM catalog_episode_watches
       WHERE user_id = ${userId}::uuid AND ${episodePosition}
       ORDER BY marked_at DESC NULLS LAST, catalog_episode_id DESC NULLS LAST
@@ -65,7 +65,7 @@ async function findViewingHistoryRows(
     FROM positions
     LEFT JOIN catalog_episodes episode ON positions.kind_rank = 1 AND episode.id = positions.entry_id
     INNER JOIN catalog_items item ON item.id = CASE positions.kind_rank
-      WHEN 0 THEN positions.entry_id ELSE episode.catalog_item_id END
+      WHEN 0 THEN positions.catalog_item_id ELSE episode.catalog_item_id END
     INNER JOIN catalog_item_titles title ON title.catalog_item_id = item.id
     ORDER BY positions.marked_at DESC, positions.kind_rank DESC, positions.entry_id DESC, title.locale
   `)
@@ -88,7 +88,7 @@ async function findViewingSummary(
       GROUP BY episode.catalog_item_id
     )
     SELECT
-      (SELECT count(*)::integer FROM catalog_movie_watches WHERE user_id = ${userId}::uuid) AS "watchedMovieCount",
+      (SELECT count(*)::integer FROM catalog_viewings WHERE user_id = ${userId}::uuid) AS "watchedMovieCount",
       (SELECT count(*)::integer FROM catalog_episode_watches WHERE user_id = ${userId}::uuid) AS "watchedEpisodeCount",
       COALESCE((
         SELECT json_agg(series_titles) FROM (

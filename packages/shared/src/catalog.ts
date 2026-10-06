@@ -134,6 +134,7 @@ interface CatalogUpcomingReleasesResponse {
 
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
+  | 'CONFLICT'
   | 'FORBIDDEN'
   | 'INTERNAL_ERROR'
   | 'INVALID_REQUEST'

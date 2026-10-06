@@ -105,7 +105,7 @@ async function catalogRows() {
       (SELECT jsonb_agg(to_jsonb(field) ORDER BY id) FROM catalog_import_fields field) AS fields,
       (SELECT jsonb_agg(to_jsonb(release) ORDER BY id) FROM catalog_releases release) AS releases,
       (SELECT jsonb_agg(to_jsonb(follow) ORDER BY user_id, catalog_item_id) FROM catalog_item_follows follow) AS follows,
-      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_item_id) FROM catalog_movie_watches watch) AS movie_watches,
+      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_item_id) FROM catalog_viewings watch) AS movie_watches,
       (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_episode_id) FROM catalog_episode_watches watch) AS episode_watches
   `)
 
@@ -413,7 +413,7 @@ describe('saved catalog import application', () => {
     const itemId = applied.result.catalogItemId
 
     await firstClient.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
-    await firstClient.query('INSERT INTO catalog_movie_watches (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
+    await firstClient.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
     await firstClient.query('INSERT INTO catalog_releases (catalog_item_id, release_date) VALUES ($1, $2)', [itemId, '2099-01-01'])
 
     const fresh = movieResponse()
@@ -454,7 +454,7 @@ describe('saved catalog import application', () => {
     }>(`
       SELECT item.release_year, title.title, description.description,
         (SELECT count(*) FROM catalog_item_follows WHERE catalog_item_id = $1)::integer AS follows,
-        (SELECT count(*) FROM catalog_movie_watches WHERE catalog_item_id = $1)::integer AS watches,
+        (SELECT count(*) FROM catalog_viewings WHERE catalog_item_id = $1)::integer AS watches,
         (SELECT count(*) FROM catalog_releases WHERE catalog_item_id = $1)::integer AS releases
       FROM catalog_items item
       JOIN catalog_item_titles title ON title.catalog_item_id = item.id AND title.locale = 'en-US'

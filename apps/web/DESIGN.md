@@ -26,6 +26,9 @@ These user-confirmed decisions override only the stated parts of the reference i
 
 - **Title details — default tab:** Open `Overview` by default, as confirmed by the user on 2026-10-04. The title-details images show `Episodes` selected in both themes and all three responsive variants. Keep `Episodes` available as a separate tab.
 
+- **Title details — movie viewings:** The title-details references show a single watched action and no movie history block. For #89, show the viewing count beside `Mark as watched` or `Watched again`, and place a visible `Your viewings` section below `Overview`. Use inline forms for past viewings and date edits, and inline confirmation for deletion. Keep ratings independent. Confirmed by the user on 2026-10-06.
+- **Dashboard — movie history:** Each movie viewing has its own row, recording time and direct link. Use `Movie viewings` for the metric. The reference images show a movie-based summary; repeat viewings are separate entries in #89. Confirmed by the user on 2026-10-06.
+
 ## Visual language
 
 - TV is a movie and series catalog and tracking product. Large artwork sets the mood; titles, dates, episode numbers, and actions stay easy to read.

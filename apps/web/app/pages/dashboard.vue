@@ -11,7 +11,7 @@
       <main :class="$style.content">
         <header :class="$style.pageHeader">
           <h1 ref="heading" :class="$style.heading" tabindex="-1">Dashboard</h1>
-          <p :class="$style.supportingText">Your current watched marks. Dates show when you marked a title, not when you watched it.</p>
+          <p :class="$style.supportingText">Your movie viewings and watched episodes. Dates show when each entry was recorded.</p>
         </header>
 
         <section v-if="isSummaryLoading" :class="$style.metrics" aria-label="Loading viewing summary" aria-busy="true">
@@ -26,7 +26,7 @@
         </section>
         <dl v-else-if="summary" :class="$style.metrics" aria-label="Viewing summary">
           <div :class="$style.metric">
-            <dt :class="$style.metricLabel">Movies watched</dt>
+            <dt :class="$style.metricLabel">Movie viewings</dt>
             <dd :class="$style.metricValue">{{ summary.watchedMovieCount }}</dd>
           </div>
           <div :class="$style.metric">
@@ -59,7 +59,7 @@
               <p :class="$style.supportingText">Open a movie or series and mark what you have watched to see it here.</p>
               <NuxtLink :class="$style.catalogLink" to="/">Browse catalog</NuxtLink>
             </div>
-            <ul v-else ref="historyList" :class="$style.list" aria-label="Watched marks">
+            <ul v-else ref="historyList" :class="$style.list" aria-label="Viewing entries">
               <li v-for="item in historyRows" :key="item.key">
                 <NuxtLink :class="$style.row" :to="item.location" :data-entry-key="item.key">
                   <CatalogPoster compact :poster-url="item.posterUrl" :title="item.title" />
@@ -67,7 +67,7 @@
                     <h3 :class="$style.itemTitle" :lang="item.titleLocale">{{ item.title }}</h3>
                     <p :class="$style.metadata">{{ item.metadata }}</p>
                     <p v-if="item.sourceTitle" :class="$style.episodeTitle">{{ item.sourceTitle }}</p>
-                    <p :class="$style.timestamp">Marked <NuxtTime :datetime="item.markedAt" date-style="medium" time-style="short" /></p>
+                    <p :class="$style.timestamp">Recorded <NuxtTime :datetime="item.markedAt" date-style="medium" time-style="short" /></p>
                   </div>
                 </NuxtLink>
               </li>
@@ -166,10 +166,11 @@
   const historyRows = computed(() => items.value.map((item) => {
     const movieMetadata = item.releaseYear === null ? 'Movie' : `Movie · ${item.releaseYear}`
     const metadata = item.kind === 'episode' ? `Episode · S${item.seasonNumber} · E${item.episodeNumber}` : movieMetadata
+    const location = item.kind === 'movie' ? `/titles/${item.id}?viewingId=${item.entryId}#viewing-${item.entryId}` : `/titles/${item.id}`
 
     return {
       key: `${item.kind}:${item.entryId}`,
-      location: `/titles/${item.id}`,
+      location,
       markedAt: item.markedAt,
       metadata,
       posterUrl: item.posterUrl,

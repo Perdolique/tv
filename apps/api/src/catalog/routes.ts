@@ -14,6 +14,7 @@ import { registerCatalogRatingRoutes } from './rating-routes.ts'
 import { registerCatalogSeasonRatingRoutes } from './season-rating-routes.ts'
 import { registerCatalogImportRoutes } from './import/routes.ts'
 import { registerCatalogViewingRoutes } from './viewing-routes.ts'
+import { registerCatalogMovieViewingRoutes } from './movie-viewing-routes.ts'
 
 import {
   findCatalogDetailsRows,
@@ -25,7 +26,7 @@ import {
   unfollowCatalogItem
 } from './repository.ts'
 
-import { findCatalogItemWatchState, markCatalogMovieWatched, unmarkCatalogMovieWatched } from './watched-repository.ts'
+import { findCatalogItemWatchState } from './watched-repository.ts'
 import { findCatalogUpcomingReleaseRows } from './upcoming-releases-repository.ts'
 import { canonicalizeTitleLocale, createCatalogSearchItems, normalizeCatalogQuery } from './search.ts'
 
@@ -101,6 +102,7 @@ function createCatalogApp(
   registerCatalogSeasonRatingRoutes(app, dependencies)
   registerCatalogEpisodeRatingRoutes(app, dependencies)
   registerCatalogViewingRoutes(app, dependencies)
+  registerCatalogMovieViewingRoutes(app, dependencies)
 
   app.get('/api/catalog/items/:id/follow', async (context) => {
     const id = validateCatalogItemId(context.req.param('id'))
@@ -180,54 +182,12 @@ function createCatalogApp(
     return context.json({ watched: state.watched })
   })
 
-  app.put('/api/catalog/items/:id/watched', async (context) => {
-    const result = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
-      const id = validateCatalogItemId(context.req.param('id'))
+  app.on(['PUT', 'DELETE'], '/api/catalog/items/:id/watched', async (context) => {
+    await withCatalogSession(context, dependencies.connectDatabase, () => {
+      validateCatalogItemId(context.req.param('id'))
 
-      return markCatalogMovieWatched(session.database, session.user.id, id)
+      throw new CatalogHttpError('CONFLICT', 409)
     })
-
-    if (result === 'not-found') {
-      throw new CatalogHttpError('NOT_FOUND', 404)
-    }
-
-    if (result === 'not-movie') {
-      throw new CatalogHttpError('INVALID_REQUEST', 400, {
-        fields: { id: 'Only catalog movies can be marked as watched.' }
-      })
-    }
-
-    return context.json({ watched: true })
-  })
-
-  app.delete('/api/catalog/items/:id/watched', async (context) => {
-    await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
-      const id = validateCatalogItemId(context.req.param('id'))
-
-      const state = await findCatalogItemWatchState(
-        session.database,
-        session.user.id,
-        id
-      )
-
-      if (state === null) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
-
-      if (state.type !== 'movie') {
-        throw new CatalogHttpError('INVALID_REQUEST', 400, {
-          fields: { id: 'Only catalog movies can be marked as watched.' }
-        })
-      }
-
-      await unmarkCatalogMovieWatched(
-        session.database,
-        session.user.id,
-        id
-      )
-    })
-
-    return context.json({ watched: false })
   })
 
   app.get('/api/catalog/watchlist', async (context) => {

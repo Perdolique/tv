@@ -1,15 +1,19 @@
 /* oxlint-disable eslint/max-lines -- Persistence, locking and trigger invariants share one disposable PostgreSQL fixture. */
 import { env } from 'node:process'
+import { randomUUID } from 'node:crypto'
 import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, assert, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
+import { findCatalogItemWatchState } from '../../watched-repository.ts'
 
 import {
-  findCatalogItemWatchState,
-  markCatalogMovieWatched,
-  unmarkCatalogMovieWatched
-} from '../../watched-repository.ts'
+  createMovieViewing,
+  deleteMovieViewing,
+  findMovieViewing,
+  findMovieViewings,
+  updateMovieViewing
+} from '../../movie-viewings-repository.ts'
 
 import { followCatalogItem } from '../../repository.ts'
 
@@ -34,19 +38,6 @@ async function findCatalogItemId(title: string): Promise<string> {
   assert(id !== undefined, `${title} is missing from the seeded catalog`)
 
   return id
-}
-
-async function findMarkedAt(userId: string, catalogItemId: string): Promise<Date> {
-  const result = await client.query<{ marked_at: Date }>(`
-    SELECT marked_at FROM catalog_movie_watches
-    WHERE user_id = $1 AND catalog_item_id = $2
-  `, [userId, catalogItemId])
-
-  const markedAt = result.rows[0]?.marked_at
-
-  assert(markedAt !== undefined, 'The watched timestamp is missing')
-
-  return markedAt
 }
 
 async function withDatabase<Result>(
@@ -82,7 +73,17 @@ describe('postgreSQL catalog movie watches', () => {
         VALUES ($1, 'first-watched@example.com'), ($2, 'second-watched@example.com')
       `, [firstUserId, secondUserId])
 
-      await expect(markCatalogMovieWatched(database, firstUserId, catalogItemId)).resolves.toBe('marked')
+      await createMovieViewing(database, {
+        userId: firstUserId,
+        catalogItemId
+      }, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 0,
+        startedOn: null,
+        completedOn: null
+      })
+
       await expect(followCatalogItem(database, secondUserId, catalogItemId)).resolves.toBe(true)
 
       await expect(findCatalogItemWatchState(database, firstUserId, catalogItemId)).resolves.toStrictEqual({
@@ -99,89 +100,287 @@ describe('postgreSQL catalog movie watches', () => {
     }
   })
 
-  it('keeps concurrent marks idempotent and refreshes the timestamp only after unmarking', async () => {
+  it('serializes current creations and replays a lost response without switching context', async () => {
     await assertDisposableTestDatabase(client)
 
     const userId = '50000000-0000-4000-8000-000000000001'
     const catalogItemId = await findCatalogItemId('Dead Man')
+
+    const owner = {
+      userId,
+      catalogItemId
+    }
+
     const database = createDatabase(client)
 
+    const input = {
+      requestId: randomUUID(),
+      mode: 'current' as const,
+      contextVersion: 0,
+      startedOn: null,
+      completedOn: null
+    }
+
     try {
-      await client.query(`
-        INSERT INTO users (id, email)
-        VALUES ($1, 'idempotent-watched@example.com')
-      `, [userId])
+      await client.query('INSERT INTO users (id, email) VALUES ($1, \'races@example.com\')', [userId])
 
-      await expect(markCatalogMovieWatched(database, userId, catalogItemId)).resolves.toBe('marked')
+      const races = await Promise.allSettled([
+        withDatabase( async db => createMovieViewing(db, owner, input)),
+        withDatabase( async db => createMovieViewing(db, owner, {
+          ...input,
+          requestId: randomUUID()
+        }))
+      ])
 
-      const initialTimestamp = await findMarkedAt(userId, catalogItemId)
+      const winner = races.find(result => result.status === 'fulfilled')
+      const loser = races.find(result => result.status === 'rejected')
 
-      await client.query('SELECT pg_sleep(0.01)')
+      assert(winner?.status === 'fulfilled')
 
-      await expect(Promise.all([
-        withDatabase(async concurrentDatabase => markCatalogMovieWatched(
-          concurrentDatabase,
-          userId,
-          catalogItemId
-        )),
-        withDatabase(async concurrentDatabase => markCatalogMovieWatched(
-          concurrentDatabase,
-          userId,
-          catalogItemId
-        )),
-        withDatabase(async concurrentDatabase => markCatalogMovieWatched(
-          concurrentDatabase,
-          userId,
-          catalogItemId
-        ))
-      ])).resolves.toStrictEqual(['marked', 'marked', 'marked'])
+      expect(loser).toMatchObject({ reason: {
+        code: 'CONFLICT',
+        status: 409
+      } })
 
-      const repeatedTimestamp = await findMarkedAt(userId, catalogItemId)
+      expect(winner.value.summary.completedCount).toBe(1)
 
-      expect(repeatedTimestamp).toStrictEqual(initialTimestamp)
-      await unmarkCatalogMovieWatched(database, userId, catalogItemId)
-      await unmarkCatalogMovieWatched(database, userId, catalogItemId)
-      await client.query('SELECT pg_sleep(0.01)')
-      await expect(markCatalogMovieWatched(database, userId, catalogItemId)).resolves.toBe('marked')
+      const historyInput = {
+        requestId: randomUUID(),
+        mode: 'history' as const,
+        startedOn: '2020-01-01',
+        completedOn: null
+      }
 
-      const renewedTimestamp = await findMarkedAt(userId, catalogItemId)
+      const history = await createMovieViewing(database, owner, historyInput)
 
-      expect(renewedTimestamp.getTime()).toBeGreaterThan(initialTimestamp.getTime())
+      const secondInput = {
+        ...input,
+        requestId: randomUUID(),
+        contextVersion: 1
+      }
+
+      const repeatedRaces = await Promise.allSettled([
+        withDatabase( async db => createMovieViewing(db, owner, secondInput)),
+        withDatabase( async db => createMovieViewing(db, owner, {
+          ...secondInput,
+          requestId: randomUUID()
+        }))
+      ])
+
+      const second = repeatedRaces.find(result => result.status === 'fulfilled')
+
+      assert(second?.status === 'fulfilled')
+
+      const rejected = repeatedRaces.filter(result => result.status === 'rejected')
+
+      expect(rejected).toHaveLength(1)
+
+      const replay = await createMovieViewing(database, owner, historyInput)
+
+      expect(replay.viewing).toStrictEqual(history.viewing)
+      expect(replay.summary).toStrictEqual(second.value.summary)
+
+      await expect(createMovieViewing(database, owner, {
+        ...historyInput,
+        startedOn: null
+      })).rejects.toMatchObject({ status: 409 })
+
+      await deleteMovieViewing(database, {
+        ...owner,
+        viewingId: history.viewing.id
+      }, 1)
+
+      await expect(createMovieViewing(database, owner, historyInput)).rejects.toMatchObject({ status: 409 })
+
+      const page = await findMovieViewings(database, owner, null)
+
+      expect(page.summary.completedCount).toBe(2)
     } finally {
       await client.query('DELETE FROM users WHERE id = $1', [userId])
     }
   })
 
-  it('unmarks only the requested account and remains idempotent', async () => {
+  it('edits dates with revisions, preserves recording order and clears a deleted current context', async () => {
     await assertDisposableTestDatabase(client)
 
-    const firstUserId = '50000000-0000-4000-8000-000000000001'
-    const secondUserId = '50000000-0000-4000-8000-000000000002'
+    const userId = '50000000-0000-4000-8000-000000000001'
+    const otherId = '50000000-0000-4000-8000-000000000002'
     const catalogItemId = await findCatalogItemId('Dead Man')
+
+    const owner = {
+      userId,
+      catalogItemId
+    }
+
     const database = createDatabase(client)
 
     try {
-      await client.query(`
-        INSERT INTO users (id, email)
-        VALUES ($1, 'first-unmark@example.com'), ($2, 'second-unmark@example.com')
-      `, [firstUserId, secondUserId])
+      await client.query('INSERT INTO users (id, email) VALUES ($1, \'edits@example.com\'), ($2, \'private@example.com\')', [userId, otherId])
 
-      await markCatalogMovieWatched(database, firstUserId, catalogItemId)
-      await markCatalogMovieWatched(database, secondUserId, catalogItemId)
-      await unmarkCatalogMovieWatched(database, firstUserId, catalogItemId)
-      await unmarkCatalogMovieWatched(database, firstUserId, catalogItemId)
-
-      await expect(findCatalogItemWatchState(database, firstUserId, catalogItemId)).resolves.toStrictEqual({
-        type: 'movie',
-        watched: false
+      const first = await createMovieViewing(database, owner, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 0,
+        startedOn: null,
+        completedOn: null
       })
 
-      await expect(findCatalogItemWatchState(database, secondUserId, catalogItemId)).resolves.toStrictEqual({
-        type: 'movie',
-        watched: true
+      const second = await createMovieViewing(database, owner, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 1,
+        startedOn: null,
+        completedOn: null
       })
+
+      const dates = {
+        startedOn: '2020-02-29',
+        completedOn: '2020-03-01',
+        revision: 1
+      }
+
+      const edit = await updateMovieViewing(database, {
+        ...owner,
+        viewingId: first.viewing.id
+      }, dates)
+
+      const replay = await updateMovieViewing(database, {
+        ...owner,
+        viewingId: first.viewing.id
+      }, dates)
+
+      expect(edit.viewing.revision).toBe(2)
+      expect(edit.viewing.recordedAt).toBe(first.viewing.recordedAt)
+      expect(replay).toStrictEqual(edit)
+
+      await expect(updateMovieViewing(database, {
+        ...owner,
+        viewingId: first.viewing.id
+      }, {
+        ...dates,
+        completedOn: null
+      })).rejects.toMatchObject({ status: 409 })
+
+      await expect(deleteMovieViewing(database, {
+        ...owner,
+        viewingId: first.viewing.id
+      }, 1)).rejects.toMatchObject({ status: 409 })
+
+      await expect(findMovieViewing(database, {
+        userId: otherId,
+        catalogItemId
+      }, first.viewing.id)).rejects.toMatchObject({ status: 404 })
+
+      await expect(updateMovieViewing(database, {
+        userId: otherId,
+        catalogItemId,
+        viewingId: first.viewing.id
+      }, dates)).rejects.toMatchObject({ status: 404 })
+
+      await deleteMovieViewing(database, {
+        userId: otherId,
+        catalogItemId,
+        viewingId: first.viewing.id
+      }, 2)
+
+      const page = await findMovieViewings(database, owner, null)
+      const ids = page.items.map(item => item.id)
+
+      expect(ids).toStrictEqual([second.viewing.id, first.viewing.id])
+
+      const removed = await deleteMovieViewing(database, {
+        ...owner,
+        viewingId: second.viewing.id
+      }, 1)
+
+      expect(removed).toStrictEqual({
+        completedCount: 1,
+        currentViewingId: null,
+        contextVersion: 3
+      })
+
+      await expect(deleteMovieViewing(database, {
+        ...owner,
+        viewingId: second.viewing.id
+      }, 1)).resolves.toStrictEqual(removed)
     } finally {
-      await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[firstUserId, secondUserId]])
+      await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherId]])
+    }
+  })
+
+  it('rolls back a reused key on another movie and enforces matching context ownership', async () => {
+    await assertDisposableTestDatabase(client)
+
+    const userId = '50000000-0000-4000-8000-000000000001'
+    const otherId = '50000000-0000-4000-8000-000000000002'
+    const movies = await client.query<{ id: string }>('SELECT id FROM catalog_items WHERE type = \'movie\' LIMIT 2')
+    const [firstMovie, secondMovie] = movies.rows
+
+    assert(firstMovie !== undefined)
+    assert(secondMovie !== undefined)
+
+    const database = createDatabase(client)
+
+    const input = {
+      requestId: randomUUID(),
+      mode: 'current' as const,
+      contextVersion: 0,
+      startedOn: null,
+      completedOn: null
+    }
+
+    try {
+      await client.query('INSERT INTO users (id, email) VALUES ($1, \'rollback@example.com\'), ($2, \'foreign@example.com\')', [userId, otherId])
+
+      const first = await createMovieViewing(database, {
+        userId,
+        catalogItemId: firstMovie.id
+      }, input)
+
+      await expect(createMovieViewing(database, {
+        userId,
+        catalogItemId: secondMovie.id
+      }, input)).rejects.toMatchObject({ status: 409 })
+
+      const second = await findMovieViewings(database, {
+        userId,
+        catalogItemId: secondMovie.id
+      }, null)
+
+      expect(second).toStrictEqual({
+        items: [],
+        nextCursor: null,
+
+        summary: {
+          completedCount: 0,
+          currentViewingId: null,
+          contextVersion: 0
+        }
+      })
+
+      await expect(client.query('INSERT INTO catalog_viewing_contexts (user_id, catalog_item_id, current_viewing_id) VALUES ($1, $2, $3)', [otherId, firstMovie.id, first.viewing.id])).rejects.toMatchObject({ code: '23503' })
+      await expect(client.query('INSERT INTO catalog_viewing_contexts (user_id, catalog_item_id, current_viewing_id) VALUES ($1, $2, $3)', [userId, secondMovie.id, first.viewing.id])).rejects.toMatchObject({ code: '23503' })
+      await client.query(`CREATE FUNCTION fail_viewing_creation() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'forced ledger failure'; END; $$ LANGUAGE plpgsql`)
+      await client.query('CREATE TRIGGER fail_viewing_creation BEFORE INSERT ON catalog_viewing_creations FOR EACH ROW EXECUTE FUNCTION fail_viewing_creation()')
+
+      await expect(createMovieViewing(database, {
+        userId,
+        catalogItemId: secondMovie.id
+      }, {
+        ...input,
+        requestId: randomUUID()
+      })).rejects.toThrow('Failed query')
+
+      const rollback = await findMovieViewings(database, {
+        userId,
+        catalogItemId: secondMovie.id
+      }, null)
+
+      expect(rollback).toStrictEqual(second)
+    } finally {
+      await client.query('DROP TRIGGER IF EXISTS fail_viewing_creation ON catalog_viewing_creations')
+      await client.query('DROP FUNCTION IF EXISTS fail_viewing_creation()')
+      await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherId]])
     }
   })
 
@@ -215,27 +414,29 @@ describe('postgreSQL catalog movie watches', () => {
         watched: false
       })
 
-      await expect(markCatalogMovieWatched(database, userId, seriesId)).resolves.toBe('not-movie')
+      await expect(createMovieViewing(database, {
+        userId,
+        catalogItemId: seriesId
+      }, {
+        requestId: randomUUID(),
+        mode: 'history',
+        startedOn: null,
+        completedOn: null
+      })).rejects.toMatchObject({ status: 400 })
 
-      const metadataResults = await Promise.all(
-        [untitledItemId, translatedOnlyItemId].map(async (itemId) => {
-          return {
-            mark: await markCatalogMovieWatched(database, userId, itemId),
-            state: await findCatalogItemWatchState(database, userId, itemId)
-          }
-        })
-      )
+      await Promise.all([untitledItemId, translatedOnlyItemId].map(async itemId => {
+        await expect(createMovieViewing(database, {
+          userId,
+          catalogItemId: itemId
+        }, {
+          requestId: randomUUID(),
+          mode: 'history',
+          startedOn: null,
+          completedOn: null
+        })).rejects.toMatchObject({ status: 404 })
 
-      expect(metadataResults).toStrictEqual([
-        {
-          mark: 'not-found',
-          state: null
-        },
-        {
-          mark: 'not-found',
-          state: null
-        }
-      ])
+        await expect(findCatalogItemWatchState(database, userId, itemId)).resolves.toBeNull()
+      }))
     } finally {
       await client.query('DELETE FROM users WHERE id = $1', [userId])
       await client.query('DELETE FROM catalog_items WHERE id = ANY($1::uuid[])', [[untitledItemId, translatedOnlyItemId]])
@@ -267,8 +468,28 @@ describe('postgreSQL catalog movie watches', () => {
         VALUES ($1, 'en', 'Watched cascade fixture', true)
       `, [disposableItemId])
 
-      await markCatalogMovieWatched(database, itemWatchUserId, disposableItemId)
-      await markCatalogMovieWatched(database, userWatchUserId, catalogItemId)
+      await createMovieViewing(database, {
+        userId: itemWatchUserId,
+        catalogItemId: disposableItemId
+      }, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 0,
+        startedOn: null,
+        completedOn: null
+      })
+
+      await createMovieViewing(database, {
+        userId: userWatchUserId,
+        catalogItemId
+      }, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 0,
+        startedOn: null,
+        completedOn: null
+      })
+
       await client.query('DELETE FROM catalog_items WHERE id = $1', [disposableItemId])
 
       const itemCascade = await client.query<{ count: string }>(`
@@ -328,11 +549,20 @@ describe('postgreSQL catalog movie watches', () => {
 
       await client.query(`
         CREATE TRIGGER delay_catalog_movie_watch_insert
-        BEFORE INSERT ON catalog_movie_watches
+        BEFORE INSERT ON catalog_viewings
         FOR EACH ROW EXECUTE FUNCTION delay_catalog_movie_watch_insert()
       `)
 
-      const mark = markCatalogMovieWatched(database, userId, catalogItemId)
+      const mark = createMovieViewing(database, {
+        userId,
+        catalogItemId
+      }, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 0,
+        startedOn: null,
+        completedOn: null
+      })
 
       await expect.poll(async () => {
         const locks = await deletionClient.query<{ locked: boolean }>(`
@@ -353,7 +583,7 @@ describe('postgreSQL catalog movie watches', () => {
         WHERE catalog_item_id = $1 AND is_original
       `, [catalogItemId])
 
-      await expect(mark).resolves.toBe('marked')
+      await expect(mark).resolves.toMatchObject({ summary: { completedCount: 1 } })
 
       await deletion
 
@@ -369,7 +599,7 @@ describe('postgreSQL catalog movie watches', () => {
       })
     } finally {
       await deletionClient.end()
-      await client.query('DROP TRIGGER IF EXISTS delay_catalog_movie_watch_insert ON catalog_movie_watches')
+      await client.query('DROP TRIGGER IF EXISTS delay_catalog_movie_watch_insert ON catalog_viewings')
       await client.query('DROP FUNCTION IF EXISTS delay_catalog_movie_watch_insert()')
       await client.query('DELETE FROM users WHERE id = $1', [userId])
       await client.query('DELETE FROM catalog_items WHERE id = $1', [catalogItemId])
@@ -401,11 +631,20 @@ describe('postgreSQL catalog movie watches', () => {
       `, [movieId])
 
       await expect(client.query(`
-        INSERT INTO catalog_movie_watches (user_id, catalog_item_id)
+        INSERT INTO catalog_viewings (user_id, catalog_item_id)
         VALUES ($1, $2)
       `, [userId, seriesId])).rejects.toMatchObject({ code: '23514' })
 
-      await markCatalogMovieWatched(database, userId, movieId)
+      await createMovieViewing(database, {
+        userId,
+        catalogItemId: movieId
+      }, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 0,
+        startedOn: null,
+        completedOn: null
+      })
 
       await expect(client.query(`
         UPDATE catalog_items SET type = 'series' WHERE id = $1
@@ -461,11 +700,20 @@ describe('postgreSQL catalog movie watches', () => {
 
       await client.query(`
         CREATE TRIGGER delay_catalog_movie_type_watch_insert
-        BEFORE INSERT ON catalog_movie_watches
+        BEFORE INSERT ON catalog_viewings
         FOR EACH ROW EXECUTE FUNCTION delay_catalog_movie_type_watch_insert()
       `)
 
-      const mark = markCatalogMovieWatched(database, userId, catalogItemId)
+      const mark = createMovieViewing(database, {
+        userId,
+        catalogItemId
+      }, {
+        requestId: randomUUID(),
+        mode: 'current',
+        contextVersion: 0,
+        startedOn: null,
+        completedOn: null
+      })
 
       await expect.poll(async () => {
         const locks = await updateClient.query<{ locked: boolean }>(`
@@ -486,7 +734,7 @@ describe('postgreSQL catalog movie watches', () => {
         [catalogItemId]
       )
 
-      await expect(mark).resolves.toBe('marked')
+      await expect(mark).resolves.toMatchObject({ summary: { completedCount: 1 } })
       await expect(typeChange).rejects.toMatchObject({ code: '23514' })
 
       await expect(findCatalogItemWatchState(database, userId, catalogItemId)).resolves.toStrictEqual({
@@ -495,7 +743,7 @@ describe('postgreSQL catalog movie watches', () => {
       })
     } finally {
       await updateClient.end()
-      await client.query('DROP TRIGGER IF EXISTS delay_catalog_movie_type_watch_insert ON catalog_movie_watches')
+      await client.query('DROP TRIGGER IF EXISTS delay_catalog_movie_type_watch_insert ON catalog_viewings')
       await client.query('DROP FUNCTION IF EXISTS delay_catalog_movie_type_watch_insert()')
       await client.query('DELETE FROM users WHERE id = $1', [userId])
       await client.query('DELETE FROM catalog_items WHERE id = $1', [catalogItemId])

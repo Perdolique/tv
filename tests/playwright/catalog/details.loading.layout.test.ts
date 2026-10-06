@@ -91,7 +91,7 @@ for (const width of [320, 390, 768, 1440]) {
     label: 'Mark as watched'
   }, {
     watched: true,
-    label: 'Watched, mark as unwatched'
+    label: 'Watched again'
   }]) {
     test(`keeps personal actions stable while loading at ${width}px with watched ${watched}`, async ({ context, page }) => {
       const release = Promise.withResolvers<boolean>()
@@ -113,10 +113,31 @@ for (const width of [320, 390, 768, 1440]) {
         await route.fulfill({ json: { followed: true } })
       })
 
-      await page.route(`**/api/catalog/items/${dune.id}/watched`, async route => {
+      await page.route(`**/api/catalog/items/${dune.id}/viewings`, async route => {
         await release.promise
 
-        await route.fulfill({ json: { watched } })
+        await route.fulfill({ json: {
+          // oxlint-disable-next-line vitest/no-conditional-in-test -- The table fixes watched membership before this network fixture runs.
+          items: watched ? [{
+            id: dune.id,
+            catalogItemId: dune.id,
+            status: 'completed',
+            startedOn: null,
+            completedOn: null,
+            recordedAt: '2020-01-01T12:00:00.123456Z',
+            revision: 1
+          }] : [],
+
+          nextCursor: null,
+
+          summary: {
+            completedCount: Number(watched),
+
+            // oxlint-disable-next-line vitest/no-conditional-in-test -- Each table case has a fixed current-viewing fixture.
+            currentViewingId: watched ? dune.id : null,
+            contextVersion: Number(watched)
+          }
+        } })
       })
 
       try {

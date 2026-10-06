@@ -103,7 +103,19 @@ async function seedUserActivity(): Promise<void> {
   const itemId = await createItem('movie', ['tmdb', 'movie', '9000005'])
 
   await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
-  await client.query('INSERT INTO catalog_movie_watches (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
+
+  const viewings = await client.query<{ id: string }>(`
+    INSERT INTO catalog_viewings (user_id, catalog_item_id, started_on, completed_on, revision)
+    VALUES ($1, $2, '2020-02-29', '2020-03-01', 3), ($1, $2, NULL, NULL, 1) RETURNING id
+  `, [session.user.id, itemId])
+
+  const currentId = viewings.rows[1]?.id
+
+  expect(currentId).toBeDefined()
+  await client.query('INSERT INTO catalog_viewing_contexts (user_id, catalog_item_id, current_viewing_id, context_version) VALUES ($1, $2, $3, 2)', [session.user.id, itemId, currentId])
+
+  await client.query(`INSERT INTO catalog_viewing_creations (user_id, request_id, catalog_item_id, input, viewing_id)
+    VALUES ($1, $2, $3, jsonb_build_object('requestId', $2::uuid, 'mode', 'current', 'contextVersion', 1, 'startedOn', NULL, 'completedOn', NULL), $4)`, [session.user.id, randomUUID(), itemId, currentId])
 
   const watches = await client.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) SELECT $1, id FROM catalog_episodes ORDER BY id LIMIT 1 RETURNING catalog_episode_id', [session.user.id])
 
@@ -119,7 +131,9 @@ async function catalogSnapshot() {
       (SELECT jsonb_agg(to_jsonb(link) ORDER BY provider, entity_type, external_id) FROM catalog_external_links AS link) AS links,
       (SELECT jsonb_agg(to_jsonb(release) ORDER BY id) FROM catalog_releases AS release) AS releases,
       (SELECT jsonb_agg(to_jsonb(follow) ORDER BY user_id, catalog_item_id) FROM catalog_item_follows AS follow) AS follows,
-      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_item_id) FROM catalog_movie_watches AS watch) AS movies,
+      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_item_id, id) FROM catalog_viewings AS watch) AS movies,
+      (SELECT jsonb_agg(to_jsonb(context) ORDER BY user_id, catalog_item_id) FROM catalog_viewing_contexts AS context) AS viewing_contexts,
+      (SELECT jsonb_agg(to_jsonb(creation) ORDER BY user_id, request_id) FROM catalog_viewing_creations AS creation) AS viewing_creations,
       (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_episode_id) FROM catalog_episode_watches AS watch) AS watches,
       (SELECT jsonb_agg(to_jsonb(account) ORDER BY id) FROM users AS account) AS users
   `)
@@ -353,7 +367,7 @@ describe('saved catalog import previews', () => {
     assertSavedResult(linkedPreview)
     expect(linkedPreview.preview.catalogFingerprint).toBe(linked)
     await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
-    await client.query('INSERT INTO catalog_movie_watches (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
+    await client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
     await expect(fingerprint(movieSelection)).resolves.toBe(linked)
     await createItem('movie', ['tmdb', 'movie', '9000005'])
     await expect(fingerprint(movieSelection)).resolves.toBe(linked)
