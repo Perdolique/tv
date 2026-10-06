@@ -16,15 +16,20 @@ When an image conflicts with this guide or existing UI, follow the image for vis
 | Dashboard | Personal summary, content rows, and a secondary rail | [Dark](designs/dark/mobile/dashboard.png) · [Light](designs/light/mobile/dashboard.png) | [Dark](designs/dark/tablet/dashboard.png) · [Light](designs/light/tablet/dashboard.png) | [Dark](designs/dark/desktop/dashboard.png) · [Light](designs/light/desktop/dashboard.png) |
 | Calendar | Date selection, month grid, and release agenda | [Dark](designs/dark/mobile/calendar.png) · [Light](designs/light/mobile/calendar.png) | [Dark](designs/dark/tablet/calendar.png) · [Light](designs/light/tablet/calendar.png) | [Dark](designs/dark/desktop/calendar.png) · [Light](designs/light/desktop/calendar.png) |
 | Title details | Artwork header, metadata, actions, and episode cards | [Dark](designs/dark/mobile/title-details.png) · [Light](designs/light/mobile/title-details.png) | [Dark](designs/dark/tablet/title-details.png) · [Light](designs/light/tablet/title-details.png) | [Dark](designs/dark/desktop/title-details.png) · [Light](designs/light/desktop/title-details.png) |
+| Title timeline | Personal activity grouped by date, with expandable episode groups | Use title-details layout | Use title-details layout | [Dark and light](designs/title-timeline.png) |
 | Add title | Search, match selection, form or review, and confirmation | [Dark](designs/dark/mobile/add-title.png) · [Light](designs/light/mobile/add-title.png) | [Dark](designs/dark/tablet/add-title.png) · [Light](designs/light/tablet/add-title.png) | [Dark](designs/dark/desktop/add-title.png) · [Light](designs/light/desktop/add-title.png) |
 
 The files follow `designs/{dark|light}/{mobile|tablet|desktop}/{screen}.png`. Use the actual images to judge composition, spacing, hierarchy, and controls. Their file dimensions do not define CSS viewport sizes.
+
+The title timeline is a component reference in `designs/title-timeline.png`, with dark on the left and light on the right. It contains only the approved desktop activity block. Use the title-details page references for the surrounding page and responsive placement; separate mobile and tablet timeline mockups have not been approved.
 
 ## Confirmed design exceptions
 
 These user-confirmed decisions override only the stated parts of the reference images. Follow the images for all other design decisions.
 
 - **Title details — default tab:** Open `Overview` by default, as confirmed by the user on 2026-10-04. The title-details images show `Episodes` selected in both themes and all three responsive variants. Keep `Episodes` available as a separate tab.
+
+- **Title details — personal timeline:** The original desktop references show friends watched and friends' reviews in the right rail. Replace that activity area with the signed-in user's `Your timeline` for the current title, following [the approved grouped timeline](designs/title-timeline.png), selected by the user on 2026-10-06. Show events newest first, grouped by date; combine episodes watched on the same day into an expandable entry. Include recorded ratings and rating changes, episode and season completions, finishing all available episodes, and starting a rewatch. Preserve previous and new numeric ratings, such as `8 → 9`. Keep the rest of the title-details design as shown in its page references. Friend events remain undecided. This approval establishes the design reference; it does not mean the timeline has been implemented.
 
 - **Title details — movie viewings:** The title-details references show a single watched action and no movie history block. For #89, show the viewing count beside `Mark as watched` or `Watched again`, and place a visible `Your viewings` section below `Overview`. Use inline forms for past viewings and date edits, and inline confirmation for deletion. Keep ratings independent. Confirmed by the user on 2026-10-06.
 - **Dashboard — movie history:** Each movie viewing has its own row, recording time and direct link. Use `Movie viewings` for the metric. The reference images show a movie-based summary; repeat viewings are separate entries in #89. Confirmed by the user on 2026-10-06.
