@@ -6,7 +6,9 @@ import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
 const sessionToken = 'p'.repeat(43)
+const otherSessionToken = 'q'.repeat(43)
 const userId = crypto.randomUUID()
+const otherUserId = crypto.randomUUID()
 const catalogItemId = crypto.randomUUID()
 const firstEpisodeId = crypto.randomUUID()
 const futureEpisodeId = crypto.randomUUID()
@@ -29,13 +31,14 @@ interface SeriesRequestOptions {
   method?: string;
   body?: unknown;
   authenticated?: boolean;
+  cookie?: string;
 }
 
 async function request(path: string, options: SeriesRequestOptions = {}): Promise<Response> {
   const headers = new Headers()
 
   if (options.authenticated !== false) {
-    headers.set('Cookie', cookie)
+    headers.set('Cookie', options.cookie ?? cookie)
   }
 
   if (options.body !== undefined) {
@@ -73,12 +76,16 @@ function initialInput() {
 describe('series viewing Worker transport', () => {
   beforeEach(async () => {
     const tokenHash = await hashSessionToken(sessionToken)
+    const otherTokenHash = await hashSessionToken(otherSessionToken)
 
     await withClient(async client => {
       const email = `${userId}@example.com`
+      const otherEmail = `${otherUserId}@example.com`
 
       await client.query('INSERT INTO users (id, email) VALUES ($1, $2)', [userId, email])
       await client.query('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval \'1 day\')', [userId, tokenHash])
+      await client.query('INSERT INTO users (id, email) VALUES ($1, $2)', [otherUserId, otherEmail])
+      await client.query('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval \'1 day\')', [otherUserId, otherTokenHash])
       await client.query('INSERT INTO catalog_items (id, type) VALUES ($1, \'series\')', [catalogItemId])
       await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original) VALUES ($1, \'en\', \'Series Worker fixture\', true)', [catalogItemId])
       await client.query('INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, air_date) VALUES ($1, $3, 1, 1, \'2000-01-01\'), ($2, $3, 1, 2, \'9999-01-01\')', [firstEpisodeId, futureEpisodeId, catalogItemId])
@@ -88,6 +95,7 @@ describe('series viewing Worker transport', () => {
   afterEach(async () => {
     await withClient(async client => {
       await client.query('DELETE FROM users WHERE id = $1', [userId])
+      await client.query('DELETE FROM users WHERE id = $1', [otherUserId])
       await client.query('DELETE FROM catalog_items WHERE id = $1', [catalogItemId])
     })
   })
@@ -99,7 +107,8 @@ describe('series viewing Worker transport', () => {
       ['DELETE', '/api/catalog/episodes/invalid/watched'],
       ['POST', '/api/catalog/items/invalid/seasons/invalid/watched'],
       ['POST', '/api/catalog/items/invalid/episodes/watched'],
-      ['POST', '/api/catalog/items/invalid/rewatch']
+      ['POST', '/api/catalog/items/invalid/rewatch'],
+      ['DELETE', '/api/catalog/items/invalid/rewatch']
     ]
 
     const protectedRequests = targets.map(async ([method, path]) => {
@@ -115,7 +124,7 @@ describe('series viewing Worker transport', () => {
     await Promise.all(protectedRequests)
   })
 
-  it('rejects old clients without creating any viewing and validates time zones and close choices', async () => {
+  it('rejects old clients without creating any viewing and validates time zones and obsolete close choices', async () => {
     const episodeWatchedPath = `/api/catalog/episodes/${firstEpisodeId}/watched`
     const listingPath = `/api/catalog/items/${catalogItemId}/episodes/watched`
     const rewatchPath = `/api/catalog/items/${catalogItemId}/rewatch`
@@ -168,14 +177,90 @@ describe('series viewing Worker transport', () => {
 
     const incompleteClose = await request(rewatchPath, {
       method: 'POST',
-      body: incompleteCloseInput
+
+      body: {
+        ...incompleteCloseInput,
+        closeStatus: 'paused'
+      }
     })
 
     expect(incompleteClose.status).toBe(400)
 
     const incompleteCloseBody = incompleteClose.json<unknown>()
 
-    await expect(incompleteCloseBody).resolves.toMatchObject({ error: { fields: { closeStatus: 'Choose paused or completed for the current viewing.' } } })
+    await expect(incompleteCloseBody).resolves.toHaveProperty('error')
+  })
+
+  it('cancels only an owned empty rewatch and restores the earlier marks through HTTP', async () => {
+    const episodePath = `/api/catalog/episodes/${firstEpisodeId}/watched`
+    const rewatchPath = `/api/catalog/items/${catalogItemId}/rewatch`
+
+    const firstMark = await request(episodePath, {
+      method: 'PUT',
+      body: initialInput()
+    })
+
+    const first = await firstMark.json<CatalogSeriesWatchesResponse>()
+
+    const input = {
+      requestId: crypto.randomUUID(),
+      currentViewingId: first.currentViewing?.id,
+      contextVersion: first.contextVersion,
+      timeZone: 'UTC'
+    }
+
+    const start = await request(rewatchPath, {
+      method: 'POST',
+      body: input
+    })
+
+    const next = await start.json<CatalogSeriesWatchesResponse>()
+
+    expect(start.status).toBe(200)
+    expect(next.currentViewing?.isRewatch).toBe(true)
+
+    const cancellation = {
+      currentViewingId: next.currentViewing?.id,
+      contextVersion: next.contextVersion
+    }
+
+    const otherCancellation = await request(rewatchPath, {
+      method: 'DELETE',
+      body: cancellation,
+      cookie: `__Host-tv_session=${otherSessionToken}`
+    })
+
+    expect(otherCancellation.status).toBe(200)
+
+    await expect(otherCancellation.json<unknown>()).resolves.toStrictEqual({
+      watches: [],
+      watchedEpisodeIds: [],
+      currentViewing: null,
+      contextVersion: 0
+    })
+
+    const stillCurrent = await request(`/api/catalog/items/${catalogItemId}/episodes/watched`)
+
+    await expect(stillCurrent.json<unknown>()).resolves.toStrictEqual(next)
+
+    const canceled = await request(rewatchPath, {
+      method: 'DELETE',
+      body: cancellation
+    })
+
+    const restored = await canceled.json<CatalogSeriesWatchesResponse>()
+
+    expect(canceled.status).toBe(200)
+    expect(restored.watches).toStrictEqual(first.watches)
+    expect(restored.currentViewing?.id).toBe(first.currentViewing?.id)
+    expect(restored.contextVersion).toBe(3)
+
+    const retry = await request(rewatchPath, {
+      method: 'DELETE',
+      body: cancellation
+    })
+
+    await expect(retry.json<unknown>()).resolves.toStrictEqual(restored)
   })
 
   it('bulk marks only released episodes, starts an empty rewatch, and returns current state on late retry', async () => {
@@ -202,8 +287,7 @@ describe('series viewing Worker transport', () => {
       requestId: rewatchRequestId,
       currentViewingId: first.currentViewing?.id,
       contextVersion: first.contextVersion,
-      timeZone: 'UTC',
-      closeStatus: 'completed'
+      timeZone: 'UTC'
     }
 
     const rewatch = await request(rewatchPath, {

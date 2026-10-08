@@ -111,7 +111,7 @@
 
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
-  import { navigateTo, useHead, useResponseHeader, useRoute, useRouter } from '#app'
+  import { useHead, useResponseHeader, useRoute, useRouter } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
   import AppShell from '~/components/app/AppShell.vue'
@@ -245,7 +245,8 @@
       setAnonymous()
     }
 
-    await navigateTo(signInLocation.value, { replace: true })
+    // During pending middleware, navigateTo only returns a target that this watcher cannot forward.
+    await router.replace(signInLocation.value)
   }, {
     flush: 'sync',
     immediate: true

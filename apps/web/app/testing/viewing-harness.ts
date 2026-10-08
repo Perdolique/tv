@@ -84,7 +84,11 @@ vi.mock('#app', () => {
       const pending = execute()
 
       return Object.assign(pending, {
-        data: computed(() => current.value.data.value),
+        data: computed({
+          get: () => current.value.data.value,
+          set: value => { current.value.data.value = value }
+        }),
+
         status: computed(() => current.value.status.value),
         clear: () => { clearNuxtData(toValue(key)) },
         execute

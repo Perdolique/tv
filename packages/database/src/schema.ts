@@ -1,6 +1,6 @@
 /* oxlint-disable eslint/max-lines -- The central schema keeps related catalog and account table exports in one place. */
 import type { CatalogViewingCreateInput } from '@tv/shared/catalog-viewings'
-import type { CatalogSeriesWatchesResponse } from '@tv/shared/catalog-series'
+import type { CatalogSeriesViewing } from '@tv/shared/catalog-series'
 import { sql } from 'drizzle-orm'
 
 import {
@@ -366,6 +366,10 @@ const catalogTimelineEventWatches = pgTable('catalog_timeline_event_watches', {
   index('catalog_timeline_event_watches_watch_index').on(table.watchId)
 ])
 
+interface CatalogSeriesRequestMetadata {
+  previousStatus?: CatalogSeriesViewing['status'];
+}
+
 // Tombstones keep late retries from restoring marks removed by a correction.
 const catalogSeriesRequests = pgTable('catalog_series_requests', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -373,7 +377,7 @@ const catalogSeriesRequests = pgTable('catalog_series_requests', {
   catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
   action: text().notNull(),
   input: jsonb().notNull(),
-  result: jsonb().$type<CatalogSeriesWatchesResponse>().notNull(),
+  result: jsonb().$type<CatalogSeriesRequestMetadata>().notNull(),
   viewingId: uuid('viewing_id'),
   watchIds: jsonb('watch_ids').$type<string[]>().notNull(),
   tombstoned: boolean().notNull().default(false)

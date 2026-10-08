@@ -84,14 +84,17 @@ function failure(status: number, headers?: HeadersInit): Response {
 // oxlint-disable-next-line eslint/complexity -- The test service mirrors five small viewing endpoint branches.
 async function handleMovieViewings(request: Request, url: URL, options: ViewingRequestOptions): Promise<Response> {
   const { authenticated, movieIds } = options
+  const expiredRead = cookie(request, 'expire_watched')
+  const expiredMutation = request.method === 'GET' ? null : cookie(request, 'expire_watched_mutation')
 
-  if (!authenticated || cookie(request, 'expire_watched') === '1' || (request.method !== 'GET' && cookie(request, 'expire_watched_mutation') === '1')) {
+  if (!authenticated || expiredRead === '1' || expiredMutation === '1') {
     return failure(401, { 'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax' })
   }
 
   const failureCookie = request.method === 'GET' ? 'fail_watched_load' : 'fail_watched'
+  const shouldFail = cookie(request, failureCookie)
 
-  if (cookie(request, failureCookie) === '1') {
+  if (shouldFail === '1') {
     return failure(503, { 'Set-Cookie': `${failureCookie}=; Max-Age=0; Path=/; SameSite=Lax` })
   }
 

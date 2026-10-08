@@ -1,7 +1,7 @@
-import { onMounted, ref } from 'vue'
+import { onMounted, shallowRef } from 'vue'
 
 function useBrowserTimeZone() {
-  const timeZone = ref<string | null>(null)
+  const timeZone = shallowRef<string | null>(null)
 
   onMounted(() => {
     const formatter = new Intl.DateTimeFormat()

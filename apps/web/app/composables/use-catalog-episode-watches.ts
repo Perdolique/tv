@@ -1,21 +1,22 @@
+/* oxlint-disable eslint/max-lines -- One current-viewing owner keeps mutation retry keys, cancellation and confirmed marks in the same request boundary. */
 import { useRequestFetch } from '#app'
 
 import {
   catalogSeriesWatchesResponseSchema,
-  type CatalogSeriesRewatchInput,
+  type CatalogSeriesCancelRewatchInput,
   type CatalogSeriesUnwatchInput,
   type CatalogSeriesWatchInput,
   type CatalogSeriesWatchesResponse
 } from '@tv/shared/catalog-series'
 
 import { isRecord } from '@tv/shared/type-guards'
-import { computed, reactive, ref, watch, type Ref } from 'vue'
+import { computed, reactive, ref, shallowRef, watch, type Ref } from 'vue'
 import * as v from 'valibot'
 import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
 
 type EpisodeWatchesStatus = 'idle' | 'loading' | 'loaded' | 'error'
 type EpisodeWatchesUnauthorized = 'load' | 'mutation' | null
-type SeriesMutationBody = CatalogSeriesWatchInput | CatalogSeriesUnwatchInput | CatalogSeriesRewatchInput
+type SeriesMutationBody = CatalogSeriesWatchInput | CatalogSeriesUnwatchInput | CatalogSeriesCancelRewatchInput
 
 interface SeriesMutation {
   action: string;
@@ -38,22 +39,23 @@ function useCatalogEpisodeWatches(
   const requestFetch = useRequestFetch()
   const reads = useRequestCancellation()
   const writes = useRequestCancellation()
-  const status = ref<EpisodeWatchesStatus>('idle')
+  const status = shallowRef<EpisodeWatchesStatus>('idle')
   const watchedEpisodeIds = ref<string[]>([])
   const watches = ref<CatalogSeriesWatchesResponse['watches']>([])
   const currentViewing = ref<CatalogSeriesWatchesResponse['currentViewing']>(null)
-  const contextVersion = ref(0)
-  const mutationVersion = ref(0)
-  const isSaving = ref(false)
-  const savingEpisodeId = ref<string | null>(null)
-  const savingAction = ref<string | null>(null)
+  const contextVersion = shallowRef(0)
+  const mutationVersion = shallowRef(0)
+  const isSaving = shallowRef(false)
+  const savingEpisodeId = shallowRef<string | null>(null)
+  const savingAction = shallowRef<string | null>(null)
   const saveErrors = reactive(new Map<string, string>())
-  const readError = ref('')
-  const actionError = ref('')
-  const rewatchError = ref('')
-  const unauthorized = ref<EpisodeWatchesUnauthorized>(null)
+  const readError = shallowRef('')
+  const actionError = shallowRef('')
+  const rewatchError = shallowRef('')
+  const unauthorized = shallowRef<EpisodeWatchesUnauthorized>(null)
   const pendingRequests = new Map<string, SeriesMutationBody>()
   const watchedCount = computed(() => watchedEpisodeIds.value.length)
+  const canCancelRewatch = computed(() => currentViewing.value?.isRewatch === true && watchedCount.value === 0)
   const currentViewingId = computed(() => currentViewing.value?.id ?? null)
   const contextKey = computed(() => `${currentViewingId.value ?? 'none'}:${contextVersion.value}`)
 
@@ -111,15 +113,21 @@ function useCatalogEpisodeWatches(
         signal: request.signal
       })
 
-      if (!reads.isCurrent(request)) { return false }
+      const isCurrent = reads.isCurrent(request)
+
+      if (!isCurrent) { return false }
 
       apply(response)
 
       return true
     } catch (error) {
-      if (!reads.isCurrent(request)) { return false }
+      const isCurrent = reads.isCurrent(request)
 
-      if (isRecord(error) && error.statusCode === 401) {
+      if (!isCurrent) { return false }
+
+      const isErrorRecord = isRecord(error)
+
+      if (isErrorRecord && error.statusCode === 401) {
         unauthorized.value = 'load'
       } else {
         globalThis.console.warn({
@@ -158,7 +166,9 @@ function useCatalogEpisodeWatches(
   }
 
   function showSaveError(action: string, episodeId: string | null, message: string): void {
-    if (action.startsWith('rewatch:')) {
+    const isRewatchAction = action.startsWith('rewatch:')
+
+    if (isRewatchAction) {
       rewatchError.value = message
     } else if (episodeId === null) {
       actionError.value = message
@@ -192,7 +202,9 @@ function useCatalogEpisodeWatches(
         signal: request.signal
       })
 
-      if (!writes.isCurrent(request)) { return false }
+      const isCurrent = writes.isCurrent(request)
+
+      if (!isCurrent) { return false }
 
       apply(response)
       pendingRequests.delete(action)
@@ -203,9 +215,12 @@ function useCatalogEpisodeWatches(
 
       return writes.isCurrent(request)
     } catch (error) {
-      if (!writes.isCurrent(request)) { return false }
+      const isCurrent = writes.isCurrent(request)
 
-      const code = isRecord(error) ? error.statusCode : undefined
+      if (!isCurrent) { return false }
+
+      const isErrorRecord = isRecord(error)
+      const code = isErrorRecord ? error.statusCode : undefined
 
       if (code === 401) {
         unauthorized.value = 'mutation'
@@ -216,10 +231,11 @@ function useCatalogEpisodeWatches(
         })
 
         let message = 'We couldn’t save this change. Try again.'
+        const isRewatchAction = action.startsWith('rewatch:')
 
         if (code === 409) {
           message = 'Your current viewing changed. Check the updated episodes and try again.'
-        } else if (code === 400 && episodeId === null && !action.startsWith('rewatch:')) {
+        } else if (code === 400 && episodeId === null && !isRewatchAction) {
           message = 'No released episodes with a known air date are available for this action.'
         }
 
@@ -232,7 +248,9 @@ function useCatalogEpisodeWatches(
 
       return false
     } finally {
-      if (writes.finish(request)) {
+      const isFinished = writes.finish(request)
+
+      if (isFinished) {
         isSaving.value = false
         savingEpisodeId.value = null
         savingAction.value = null
@@ -305,34 +323,42 @@ function useCatalogEpisodeWatches(
     })
   }
 
-  async function startRewatch(closeStatus?: 'paused' | 'completed'): Promise<boolean> {
+  async function changeRewatch(mode: 'start' | 'cancel'): Promise<boolean> {
     const itemId = catalogItemId.value
+    const viewingId = currentViewingId.value
 
-    if (itemId === null || currentViewingId.value === null || isSaving.value || status.value !== 'loaded') { return false }
+    if (itemId === null || viewingId === null || isSaving.value || status.value !== 'loaded') { return false }
 
-    const action = `rewatch:${closeStatus ?? 'closed'}`
+    const action = `rewatch:${mode}`
     let body = pendingRequests.get(action)
 
     if (body === undefined) {
-      const base = newBody()
+      if (mode === 'cancel') {
+        if (!canCancelRewatch.value) { return false }
 
-      if (base === null) { return false }
+        body = {
+          currentViewingId: viewingId,
+          contextVersion: contextVersion.value
+        }
+      } else {
+        if (watchedCount.value === 0) { return false }
 
-      body = closeStatus === undefined ? base : {
-        ...base,
-        closeStatus
+        body = newBody() ?? undefined
       }
+
+      if (body === undefined) { return false }
 
       pendingRequests.set(action, body)
     }
 
     const encodedId = encodeURIComponent(itemId)
     const url = `/api/catalog/items/${encodedId}/rewatch`
+    const method = mode === 'start' ? 'POST' : 'DELETE'
 
     return mutate({
       action,
       url,
-      method: 'POST',
+      method,
       body,
       episodeId: null
     })
@@ -352,6 +378,8 @@ function useCatalogEpisodeWatches(
 
   return {
     actionError,
+    canCancelRewatch,
+    cancelRewatch: async () => changeRewatch('cancel'),
     rewatchError,
     clearUnauthorized,
     contextKey,
@@ -366,7 +394,7 @@ function useCatalogEpisodeWatches(
     saveErrorFor,
     savingAction,
     savingEpisodeId,
-    startRewatch,
+    startRewatch: async () => changeRewatch('start'),
     status,
     toggle,
     unauthorized,

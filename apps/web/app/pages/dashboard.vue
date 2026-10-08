@@ -138,6 +138,7 @@
   const loadMoreButton = useTemplateRef('loadMoreButton')
 
   const {
+    didRecoverCursor,
     hasError: hasHistoryError,
     hasLoadMoreError,
     hasMore,
@@ -276,8 +277,9 @@
     }
 
     const [first] = added
+    const addedAnnouncement = added.length === 1 ? '1 older mark added.' : `${added.length} older marks added.`
 
-    announcement.value = added.length === 1 ? '1 older mark added.' : `${added.length} older marks added.`
+    announcement.value = didRecoverCursor.value ? 'History refreshed.' : addedAnnouncement
 
     if (first !== undefined) {
       const selector = `a[data-entry-key="${first.kind}:${first.entryId}"]`

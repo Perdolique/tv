@@ -4,6 +4,7 @@ import * as v from 'valibot'
 
 import {
   catalogSeriesBulkWatchSchema,
+  catalogSeriesCancelRewatchSchema,
   catalogSeriesRewatchSchema,
   catalogSeriesUnwatchSchema,
   catalogSeriesWatchSchema
@@ -14,6 +15,7 @@ import { validateCatalogEpisodeId } from './episodes.ts'
 import { CatalogHttpError } from './errors.ts'
 
 import {
+  cancelSeriesRewatch,
   findSeriesWatches,
   markSeriesEpisodeWatched,
   markSeriesEpisodesWatched,
@@ -116,8 +118,10 @@ function registerCatalogSeriesViewingRoutes(app: Hono<CatalogEnvironment>, depen
       const catalogItemId = validateCatalogItemId(rawId)
       const rawSeason = context.req.param('seasonNumber')
       const seasonNumber = Number(rawSeason)
+      const hasSeasonFormat = /^\d+$/u.test(rawSeason)
+      const isSafeSeason = hasSeasonFormat && Number.isSafeInteger(seasonNumber)
 
-      if (!/^\d+$/u.test(rawSeason) || !Number.isSafeInteger(seasonNumber) || seasonNumber < 1) {
+      if (!isSafeSeason || seasonNumber < 1) {
         throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { seasonNumber: 'Use a positive season number.' } })
       }
 
@@ -161,6 +165,22 @@ function registerCatalogSeriesViewingRoutes(app: Hono<CatalogEnvironment>, depen
 
     return context.json(response)
   })
+
+  app.delete('/api/catalog/items/:id/rewatch', async context => {
+    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
+      const rawId = context.req.param('id')
+      const catalogItemId = validateCatalogItemId(rawId)
+      const input = await readSeriesInput(context, catalogSeriesCancelRewatchSchema)
+
+      return cancelSeriesRewatch(session.database, {
+        userId: session.user.id,
+        catalogItemId
+      }, input)
+    })
+
+    return context.json(response)
+  })
+
 }
 
 export { registerCatalogSeriesViewingRoutes }

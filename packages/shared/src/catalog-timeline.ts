@@ -1,15 +1,22 @@
 import * as v from 'valibot'
 
 function isCalendarDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value) || value.startsWith('0000')) {
+  const hasDateFormat = /^\d{4}-\d{2}-\d{2}$/u.test(value)
+
+  if (!hasDateFormat) { return false }
+
+  const hasZeroYear = value.startsWith('0000')
+
+  if (hasZeroYear) {
     return false
   }
 
   const timestampValue = `${value}T00:00:00.000Z`
   const date = new Date(timestampValue)
   const timestamp = date.getTime()
+  const hasFiniteTimestamp = Number.isFinite(timestamp)
 
-  if (!Number.isFinite(timestamp)) {
+  if (!hasFiniteTimestamp) {
     return false
   }
 
@@ -20,7 +27,9 @@ function isCalendarDate(value: string): boolean {
 }
 
 function isTimeZone(value: string): boolean {
-  if (!/^[A-Za-z][A-Za-z_\d+/-]*$/u.test(value)) {
+  const hasValidCharacters = /^[A-Za-z][A-Za-z_\d+/-]*$/u.test(value)
+
+  if (!hasValidCharacters) {
     return false
   }
 

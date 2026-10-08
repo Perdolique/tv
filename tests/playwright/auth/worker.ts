@@ -19,6 +19,7 @@ import {
 import {
   catalogSeriesWatchSchema,
   catalogSeriesUnwatchSchema,
+  catalogSeriesCancelRewatchSchema,
   type CatalogSeriesWatchesResponse
 } from '../../../packages/shared/src/catalog-series.ts'
 
@@ -1096,6 +1097,7 @@ function seriesWatches(request: Request, itemId: string, watchedIds: Set<string>
     id: itemId,
     catalogItemId: itemId,
     status: 'watching',
+    isRewatch: false,
     recordedAt: '2026-10-08T10:00:00.000000Z',
     revision: 1
   } : null
@@ -1216,6 +1218,7 @@ async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<
     id: itemId,
     catalogItemId: itemId,
     status: 'watching',
+    isRewatch: false,
     recordedAt: '2026-10-08T10:00:00.000000Z',
     revision: 1
   }
@@ -1340,9 +1343,32 @@ export default {
       })
     }
 
-    const importResponse = await handleImportRequest(request, url, hasAuthenticatedCatalogSession(request))
+    const authenticated = hasAuthenticatedCatalogSession(request)
+    const importResponse = await handleImportRequest(request, url, authenticated)
 
     if (importResponse !== null) {return importResponse}
+
+    const isRewatchCancellation = request.method === 'DELETE' && /^\/api\/catalog\/items\/[^/]+\/rewatch$/u.test(url.pathname)
+
+    if (isRewatchCancellation) {
+      if (!authenticated) {
+        return json({ error: { code: 'AUTHENTICATION_REQUIRED' } }, 401)
+      }
+
+      const body: unknown = await request.json()
+      const parsed = v.safeParse(catalogSeriesCancelRewatchSchema, body)
+
+      if (!parsed.success) {
+        return json({ error: { code: 'INVALID_REQUEST' } }, 400)
+      }
+
+      return json({
+        watchedEpisodeIds: [],
+        watches: [],
+        currentViewing: null,
+        contextVersion: parsed.output.contextVersion + 1
+      })
+    }
 
     if (
       request.method === 'GET'
@@ -1380,7 +1406,7 @@ export default {
       const movieIds = getWatchedCatalogItemIds(request, getWatchedCookieName(request))
 
       return handleMovieViewings(request, url, {
-        authenticated: hasAuthenticatedCatalogSession(request),
+        authenticated,
         movieIds
       })
     }

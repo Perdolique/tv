@@ -2,6 +2,7 @@
 import type { Locator } from '@playwright/test'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
+import { waitForHydration } from '../catalog/helpers.ts'
 import { expectNoHorizontalOverflow, getVisibleLineCount } from '../helpers.ts'
 
 const FIXED_NOW = new Date('2026-09-12T10:00:00.000Z')
@@ -184,20 +185,30 @@ for (const width of [320, 390]) {
     })
 
     await page.goto('/calendar?date=2026-09-13')
+    await waitForHydration(page)
 
-    await page.getByRole('button', {
+    const monthButton = page.getByRole('button', {
       name: 'Month',
       exact: true
-    }).click()
+    })
 
-    const selectedDay = page.getByRole('grid', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')
+    await monthButton.click()
+    await expect(monthButton).toHaveAttribute('aria-pressed', 'true')
+
+    const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
+
+    await expect(calendarDays).toBeVisible()
+
+    const selectedDay = calendarDays.locator('button[aria-pressed="true"]')
     const visibleCue = selectedDay.locator('[data-type="episode"]:visible')
-    const cueBounds = await visibleCue.boundingBox()
 
     await expect(visibleCue).toHaveCount(1)
+
+    const cueBounds = await getVisibleBounds(visibleCue)
+
     await expect(selectedDay.getByText('2', { exact: true })).toBeVisible()
-    expect(cueBounds?.width).toBeGreaterThanOrEqual(16)
-    expect(cueBounds?.height).toBeGreaterThanOrEqual(16)
+    expect(cueBounds.width).toBeGreaterThanOrEqual(16)
+    expect(cueBounds.height).toBeGreaterThanOrEqual(16)
     await expectNoHorizontalOverflow(page)
   })
 }
@@ -209,6 +220,7 @@ test('shows the selected release agenda below mobile Month', async ({ page }) =>
   })
 
   await page.goto('/calendar?date=2026-09-12')
+  await waitForHydration(page)
 
   await page.getByRole('button', {
     name: 'Month',
@@ -254,6 +266,7 @@ test('keeps narrow desktop dates, release cues, and navigation icons aligned', a
   })
 
   await page.goto('/calendar?date=2026-09-13')
+  await waitForHydration(page)
 
   const calendarDays = page.getByRole('grid', { name: 'Calendar days' })
   const today = calendarDays.locator('button[aria-current="date"]')
@@ -314,6 +327,7 @@ test('keeps calendar usable with reduced motion and forced colors', async ({ pag
   })
 
   await page.goto('/calendar?date=2026-09-12')
+  await waitForHydration(page)
 
   const selected = page.getByRole('grid', { name: 'Calendar days' }).locator('button[aria-pressed="true"]')
 
@@ -353,6 +367,7 @@ test('reflows the calendar at a 200% zoom-equivalent viewport', async ({ page })
   })
 
   await page.goto('/calendar?date=2026-09-13')
+  await waitForHydration(page)
   await expect(page.getByRole('heading', { name: 'Release calendar' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
   await expectNoHorizontalOverflow(page)

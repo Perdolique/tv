@@ -28,7 +28,9 @@ const viewingBodyLimit = bodyLimit({
 
 async function readViewingInput<Schema extends v.GenericSchema>(context: Context<CatalogEnvironment>, schema: Schema): Promise<v.InferOutput<Schema>> {
   const header = context.req.header('Content-Type')
-  const mediaType = header?.split(';', 1)[0]?.trim().toLowerCase()
+  const headerParts = header?.split(';', 1)
+  const mediaTypeValue = headerParts?.[0]?.trim()
+  const mediaType = mediaTypeValue?.toLowerCase()
 
   if (mediaType !== 'application/json') {
     throw new CatalogHttpError('INVALID_REQUEST', 400)

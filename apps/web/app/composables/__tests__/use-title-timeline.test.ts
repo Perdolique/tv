@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
-import { timelineItemKey } from '~/utils/title-timeline.ts'
 import type { CatalogTimelineItem } from '@tv/shared/catalog-timeline'
 
 interface RequestOptions {
@@ -159,52 +158,13 @@ describe('title timeline pagination and cancellation', () => {
     expect(timeline.nextCursor.value).toBe('older')
   })
 
-  it('sends the snapshot and separate episode cursor when expanding a large group', async () => {
-    const failure = new Error('group page failed')
-
-    const episode = {
-      id: '01991a00-0000-7000-8000-000000000004',
-      watchId: '01991a00-0000-7000-8000-000000000005',
-      catalogEpisodeId: '01991a00-0000-7000-8000-000000000006',
-      seasonNumber: 1,
-      episodeNumber: 1,
-      sourceTitle: 'First',
-      markedAt: row.occurredAt
-    }
-
-    harness.fetch.mockResolvedValueOnce({
-      items: [episode],
-      nextCursor: 'episode-next'
-    }).mockRejectedValueOnce(failure)
-
-    const { timeline } = setup()
-
-    await timeline.loadEpisodes(row)
-
-    expect(harness.fetch.mock.calls[0]?.[1].query).toStrictEqual({
-      timeZone: 'Europe/Tallinn',
-      viewingId,
-      localDate: '2026-10-08',
-      groupCursor: 'group-snapshot'
-    })
-
-    await timeline.loadEpisodes(row, true)
-
-    const key = timelineItemKey(row)
-    const group = timeline.groupFor(key)
-
-    expect(group.items).toStrictEqual([episode])
-    expect(group.nextCursor).toBe('episode-next')
-    expect(harness.fetch.mock.calls[1]?.[1].query).toMatchObject({ cursor: 'episode-next' })
-  })
-
-  it('aborts and ignores an episode answer after current viewing changes', async () => {
+  it('aborts and ignores a history page after current viewing changes', async () => {
     const pending = Promise.withResolvers<unknown>()
 
     harness.fetch.mockReturnValueOnce(pending.promise)
 
     const current = setup()
-    const load = current.timeline.loadEpisodes(row)
+    const load = current.timeline.load()
     const signal = harness.fetch.mock.calls[0]?.[1].signal
 
     current.context.value = 'new:1'
@@ -217,11 +177,7 @@ describe('title timeline pagination and cancellation', () => {
     })
 
     await expect(load).resolves.toBe(false)
-
-    const key = timelineItemKey(row)
-    const group = current.timeline.groupFor(key)
-
-    expect(group.isLoaded).toBe(false)
+    expect(current.timeline.items.value).toStrictEqual([])
   })
 
   it('clears private history and ignores a late page after sign-out', async () => {

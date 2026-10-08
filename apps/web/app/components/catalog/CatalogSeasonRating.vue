@@ -16,6 +16,7 @@
     <CatalogRating
       :class="$style.editor"
       :account-id="accountId"
+      :is-active="isActive"
       :target-key="targetKey"
       :label="editorLabel"
       :action-label="actionLabel"
@@ -47,6 +48,7 @@
     accountId: string | null;
     catalogItemId: string;
     hasSessionError: boolean;
+    isActive: boolean;
     isAnonymous: boolean;
     seasonNumber: number;
     signInLocation: RouteLocationRaw;
@@ -123,7 +125,7 @@
     .personal { flex: 1 1 8rem; display: grid; gap: var(--space-1); }
     .label { color: var(--color-text-secondary); font-size: 0.875rem; }
     .score { font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .editor { flex: 0 1 12rem; }
+    .editor { flex: 0 1 12rem; margin-inline-start: auto; }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   }
 </style>

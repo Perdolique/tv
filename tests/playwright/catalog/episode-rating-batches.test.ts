@@ -20,6 +20,8 @@ test.describe('private episode batch errors', () => {
   }] } })
 
   test('keeps the episode list usable after a private batch failure', async ({ context, page }) => {
+    await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+
     const batchPath = `/api/catalog/items/${episodeEdgeSeries.id}/seasons/2/episodes/ratings`
 
     await addCookie(context, 'tv_session', 'e2e-session')
@@ -69,6 +71,8 @@ test.describe('public episode batch errors', () => {
   }] } })
 
   test('keeps the episode list usable and restores focus after a public batch retry', async ({ context, page }) => {
+    await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+
     const batchPath = `/api/catalog/items/${episodeEdgeSeries.id}/seasons/2/episodes/rating-summaries`
 
     await addCookie(context, 'tv_session', 'e2e-session')

@@ -21,7 +21,7 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, nextTick, onMounted, ref, useId, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, onMounted, ref, shallowRef, useId, useTemplateRef, watch } from 'vue'
   import * as v from 'valibot'
   import { catalogViewingUpdateSchema, type CatalogViewingDates } from '@tv/shared/catalog-viewings'
   import AppButton from '~/components/ui/AppButton.vue'
@@ -39,8 +39,8 @@
 
   const { initial, fields, isSaving } = defineProps<Props>()
   const emit = defineEmits<Emits>()
-  const startedOn = ref(initial.startedOn ?? '')
-  const completedOn = ref(initial.completedOn ?? '')
+  const startedOn = shallowRef(initial.startedOn ?? '')
+  const completedOn = shallowRef(initial.completedOn ?? '')
   const validation = ref<Record<string, string>>({})
   const startedId = useId()
   const completedId = useId()

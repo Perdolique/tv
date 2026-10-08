@@ -68,14 +68,16 @@ interface ApiForwardOptions {
 
 async function forwardApiRequest(event: H3Event, target: string, options: ApiForwardOptions): Promise<unknown> {
   const platform: unknown = event.context.cloudflare
-  const original = isRecord(platform) ? platform.request : null
+  const isPlatformRecord = isRecord(platform)
+  const original = isPlatformRecord ? platform.request : null
 
   // Nitro's Cloudflare adapter buffers POST, PUT and PATCH, but leaves DELETE bodies on the original Request.
   if (event.method === 'DELETE' && original instanceof globalThis.Request && original.method === 'DELETE') {
     const headers = new Headers(options.headers)
     const requestHeaders: unknown = getProxyRequestHeaders(event)
+    const isHeadersRecord = isRecord(requestHeaders)
 
-    if (isRecord(requestHeaders)) {
+    if (isHeadersRecord) {
       const entries = Object.entries(requestHeaders)
 
       for (const [name, value] of entries) {

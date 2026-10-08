@@ -1,5 +1,6 @@
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
+import type { CatalogTimelineResponse } from '@tv/shared/catalog-timeline'
 import type { CatalogViewingMutationResponse, CatalogMovieViewingsResponse } from '@tv/shared/catalog-viewings'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
@@ -99,6 +100,67 @@ describe('movie viewing Worker contract', () => {
     })
 
     await Promise.all(requests)
+  })
+
+  it('keeps a deployed old-writer viewing visible through new HTTP replay and timeline reads', async () => {
+    const catalogItemId = await findCatalogItemId('Dead Man')
+    const viewingId = crypto.randomUUID()
+
+    const input = {
+      requestId: crypto.randomUUID(),
+      mode: 'history',
+      startedOn: null,
+      completedOn: null
+    }
+
+    const inputJson = JSON.stringify(input)
+
+    await withClient(async client => {
+      await client.query('BEGIN')
+      await client.query('INSERT INTO catalog_viewings (id, user_id, catalog_item_id, recorded_at) VALUES ($1, $2, $3, \'2024-02-03 04:05:06.123456+00\')', [viewingId, TEST_USER_ID, catalogItemId])
+      await client.query('INSERT INTO catalog_viewing_creations (user_id, request_id, catalog_item_id, input, viewing_id) VALUES ($1, $2, $3, $4::jsonb, $5)', [TEST_USER_ID, input.requestId, catalogItemId, inputJson, viewingId])
+      await client.query('COMMIT')
+    })
+
+    const path = `/api/catalog/items/${catalogItemId}/viewings`
+    const replayResponse = await request(path, 'POST', TEST_COOKIE, input)
+    const replay = await replayResponse.json<CatalogViewingMutationResponse>()
+
+    expect(replayResponse.status).toBe(200)
+    expectNoStore(replayResponse)
+    expect(replay.viewing.id).toBe(viewingId)
+    expect(replay.viewing.recordedAt).toBe('2024-02-03T04:05:06.123456Z')
+    expect(replay.summary.completedCount).toBe(1)
+
+    const timelinePath = `/api/catalog/items/${catalogItemId}/timeline?timeZone=UTC`
+    const timelineResponse = await request(timelinePath)
+    const timeline = await timelineResponse.json<CatalogTimelineResponse>()
+
+    expect(timelineResponse.status).toBe(200)
+    expectNoStore(timelineResponse)
+
+    const eventId = timeline.items[0]?.id
+
+    expect(eventId).toBeTypeOf('string')
+
+    expect(timeline.items).toStrictEqual([{
+      id: eventId,
+      kind: 'movie_viewing',
+      occurredAt: '2024-02-03T04:05:06.123456Z',
+      viewingId,
+      startedOn: null,
+      completedOn: null
+    }])
+
+    const retryResponse = await request(path, 'POST', TEST_COOKIE, input)
+    const retry = await retryResponse.json<unknown>()
+
+    expect(retry).toStrictEqual(replay)
+
+    const repeatedTimelineResponse = await request(timelinePath)
+    const repeatedTimeline = await repeatedTimelineResponse.json<unknown>()
+
+    expect(repeatedTimeline).toStrictEqual(timeline)
   })
 
   it('creates, replays, edits and deletes records without restoring a deleted request key', async () => {

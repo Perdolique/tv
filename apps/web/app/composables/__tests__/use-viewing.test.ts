@@ -119,6 +119,47 @@ describe('viewing requests', () => {
     expect(harness.fetch.mock.calls[3]?.[1].query).toStrictEqual({ cursor: 'first-page' })
   })
 
+  it('retains every loaded page when an invalid cursor recovery fails and retries the refresh', async () => {
+    initialResponses()
+
+    const { history } = setup()
+
+    await history.ready
+
+    harness.fetch.mockResolvedValueOnce({
+      items: [olderMovie],
+      nextCursor: 'second-page'
+    })
+
+    await history.loadMore()
+
+    vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {
+      // The rejected recovery remains a retryable continuation error.
+    })
+
+    harness.fetch.mockRejectedValueOnce({ statusCode: 400 }).mockRejectedValueOnce({ statusCode: 503 })
+    await expect(history.loadMore()).resolves.toStrictEqual([])
+    expect(history.items.value).toStrictEqual([movie, olderMovie])
+    expect(history.hasMore.value).toBe(true)
+    expect(history.hasLoadMoreError.value).toBe(true)
+    expect(history.hasError.value).toBe(false)
+    expect(history.unauthorized.value).toBe(false)
+
+    harness.fetch.mockRejectedValueOnce({ statusCode: 400 }).mockResolvedValueOnce({
+      items: [olderMovie],
+      nextCursor: null
+    })
+
+    await history.loadMore()
+    expect(history.items.value).toStrictEqual([olderMovie])
+    expect(history.hasLoadMoreError.value).toBe(false)
+    expect(history.hasMore.value).toBe(false)
+    expect(harness.fetch.mock.calls[3]?.[1].query).toStrictEqual({ cursor: 'second-page' })
+    expect(harness.fetch.mock.calls[4]?.[1].query).toBeUndefined()
+    expect(harness.fetch.mock.calls[5]?.[1].query).toStrictEqual({ cursor: 'second-page' })
+    expect(harness.fetch.mock.calls[6]?.[1].query).toBeUndefined()
+  })
+
   it.each(['response', 'unauthorized'])('rejects a stale continuation %s after changing accounts', async (failure) => {
     initialResponses()
 

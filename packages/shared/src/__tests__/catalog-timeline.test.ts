@@ -33,7 +33,9 @@ describe('timeline query contracts', () => {
       userId: 'another-account'
     }
   ])('rejects unsupported history queries: %j', input => {
-    expect(v.is(catalogTimelineQuerySchema, input)).toBe(false)
+    const isValidQuery = v.is(catalogTimelineQuerySchema, input)
+
+    expect(isValidQuery).toBe(false)
   })
 
   it.each(['2026-02-29', '2026-02-30', '0000-01-01', '2026-10-25T00:00:00Z'])('rejects an impossible local day: %s', localDate => {
@@ -46,6 +48,8 @@ describe('timeline query contracts', () => {
     }
 
     // Act and assert
-    expect(v.is(catalogTimelineEpisodesQuerySchema, input)).toBe(false)
+    const isValidQuery = v.is(catalogTimelineEpisodesQuerySchema, input)
+
+    expect(isValidQuery).toBe(false)
   })
 })

@@ -29,8 +29,9 @@ async function mockOlderViewing(page: Page, older: CatalogViewing, recent: Catal
     const request = route.request()
     const url = new URL(request.url())
     const target = url.pathname === olderApi
+    const method = request.method()
 
-    if (target && request.method() === 'PATCH') {
+    if (target && method === 'PATCH') {
       const raw: unknown = request.postDataJSON()
       const input = v.parse(catalogViewingUpdateSchema, raw)
 

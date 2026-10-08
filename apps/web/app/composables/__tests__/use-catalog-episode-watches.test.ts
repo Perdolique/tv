@@ -37,6 +37,7 @@ function response(watched = false, currentId: string | null = watched ? viewingI
     id: currentId,
     catalogItemId: itemId,
     status: 'watching',
+    isRewatch: false,
     recordedAt: '2026-10-08T10:00:00.000000Z',
     revision: 1
   }
@@ -254,49 +255,74 @@ describe('current series viewing requests', () => {
     })
   })
 
-  it('starts an empty rewatch with the chosen close status', async () => {
+  it('starts one empty rewatch without a pause or completion and blocks a repeated start', async () => {
     const nextViewingId = '01991a00-0000-7000-8000-000000000006'
     const watched = response(true)
     const rewatch = response(false, nextViewingId, 2)
+
+    assert(rewatch.currentViewing !== null)
+
+    rewatch.currentViewing.isRewatch = true
 
     harness.fetch.mockResolvedValueOnce(watched).mockResolvedValue(rewatch)
 
     const { watches } = setup()
 
     await watches.load()
-    await expect(watches.startRewatch('paused')).resolves.toBe(true)
+    await expect(watches.startRewatch()).resolves.toBe(true)
 
     expect(harness.fetch.mock.calls[1]?.[1].body).toMatchObject({
       currentViewingId: viewingId,
-      contextVersion: 1,
-      closeStatus: 'paused'
+      contextVersion: 1
     })
 
+    expect(harness.fetch.mock.calls[1]?.[1].body).not.toHaveProperty('closeStatus')
+    await expect(watches.startRewatch()).resolves.toBe(false)
+    expect(harness.fetch).toHaveBeenCalledTimes(3)
+    expect(watches.canCancelRewatch.value).toBe(true)
     expect(watches.currentViewingId.value).toBe(nextViewingId)
     expect(watches.watchedCount.value).toBe(0)
   })
 
-  it('aborts pending writes and discards late answers after account change', async () => {
+  it('retries cancellation with the same context and restores earlier marks after confirmation', async () => {
+    const nextViewingId = '01991a00-0000-7000-8000-000000000006'
+    const empty = response(false, nextViewingId, 2)
+    const restored = response(true, viewingId, 3)
     const pending = Promise.withResolvers<unknown>()
-    const empty = response()
-    const watched = response(true)
 
-    harness.fetch.mockResolvedValueOnce(empty).mockReturnValueOnce(pending.promise)
+    assert(empty.currentViewing !== null)
 
-    const current = setup()
+    empty.currentViewing.isRewatch = true
 
-    await current.watches.load()
+    harness.fetch.mockResolvedValueOnce(empty).mockRejectedValueOnce(new Error('lost cancellation answer')).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(restored)
 
-    const mutation = current.watches.toggle(episodeId)
-    const signal = harness.fetch.mock.calls[1]?.[1].signal
+    const { watches } = setup()
 
-    current.account.value = null
+    await watches.load()
+    await expect(watches.cancelRewatch()).resolves.toBe(false)
 
-    expect(signal?.aborted).toBe(true)
-    pending.resolve(watched)
-    await expect(mutation).resolves.toBe(false)
-    expect(current.watches.watchedCount.value).toBe(0)
-    expect(current.watches.status.value).toBe('idle')
+    const body = harness.fetch.mock.calls[1]?.[1].body
+    const cancellation = watches.cancelRewatch()
+
+    expect(watches.watchedCount.value).toBe(0)
+
+    expect(harness.fetch.mock.calls[2]?.[1]).toMatchObject({
+      method: 'DELETE',
+      body
+    })
+
+    expect(body).toStrictEqual({
+      currentViewingId: nextViewingId,
+      contextVersion: 2
+    })
+
+    pending.resolve(restored)
+    await expect(cancellation).resolves.toBe(true)
+    expect(watches.currentViewingId.value).toBe(viewingId)
+    expect(watches.watchedCount.value).toBe(1)
+    expect(watches.canCancelRewatch.value).toBe(false)
+    await expect(watches.cancelRewatch()).resolves.toBe(false)
+    expect(harness.fetch).toHaveBeenCalledTimes(4)
   })
 
   it.each([
@@ -353,6 +379,7 @@ describe('current series viewing requests', () => {
         id: nextViewingId,
         catalogItemId: catalogItemIds[context],
         status: 'watching',
+        isRewatch: false,
         recordedAt: '2026-10-08T12:00:00.000000Z',
         revision: 1
       },

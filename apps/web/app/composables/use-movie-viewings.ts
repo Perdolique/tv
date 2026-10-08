@@ -14,7 +14,7 @@ import {
 } from '@tv/shared/catalog-viewings'
 
 import { isRecord } from '@tv/shared/type-guards'
-import { onScopeDispose, ref, watch, type Ref } from 'vue'
+import { onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
 import * as v from 'valibot'
 import { viewingErrorFields } from '~/utils/viewing-error-fields.ts'
 import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
@@ -57,15 +57,15 @@ function useMovieViewings(
   const items = ref<CatalogViewing[]>([])
   const selectedViewing = ref<CatalogViewing | null>(null)
   const summary = ref({ ...emptySummary })
-  const status = ref<ViewingStatus>('idle')
-  const nextCursor = ref<string | null>(null)
-  const isLoadingMore = ref(false)
-  const isSaving = ref(false)
-  const readError = ref('')
-  const pointError = ref('')
-  const saveError = ref('')
+  const status = shallowRef<ViewingStatus>('idle')
+  const nextCursor = shallowRef<string | null>(null)
+  const isLoadingMore = shallowRef(false)
+  const isSaving = shallowRef(false)
+  const readError = shallowRef('')
+  const pointError = shallowRef('')
+  const saveError = shallowRef('')
   const fields = ref<Record<string, string>>({})
-  const unauthorized = ref<'load' | 'mutation' | null>(null)
+  const unauthorized = shallowRef<'load' | 'mutation' | null>(null)
   let generation = 0
   let disposed = false
   const pendingCreations = new Map<string, CatalogViewingCreateInput>()
@@ -125,7 +125,9 @@ function useMovieViewings(
         signal: request.signal
       })
 
-      if (!points.isCurrent(request)) {
+      const isCurrent = points.isCurrent(request)
+
+      if (!isCurrent) {
         return null
       }
 
@@ -135,11 +137,15 @@ function useMovieViewings(
 
       return parsed.viewing
     } catch (error) {
-      if (!points.isCurrent(request)) {
+      const isCurrent = points.isCurrent(request)
+
+      if (!isCurrent) {
         return null
       }
 
-      if (isRecord(error) && error.statusCode === 401) {
+      const isErrorRecord = isRecord(error)
+
+      if (isErrorRecord && error.statusCode === 401) {
         unauthorized.value = 'load'
       } else {
         globalThis.console.warn({
@@ -181,7 +187,9 @@ function useMovieViewings(
         signal: request.signal
       })
 
-      if (!reads.isCurrent(request)) {
+      const isCurrent = reads.isCurrent(request)
+
+      if (!isCurrent) {
         return false
       }
 
@@ -197,11 +205,15 @@ function useMovieViewings(
 
       return true
     } catch (error) {
-      if (!reads.isCurrent(request)) {
+      const isCurrent = reads.isCurrent(request)
+
+      if (!isCurrent) {
         return false
       }
 
-      if (isRecord(error) && error.statusCode === 401) {
+      const isErrorRecord = isRecord(error)
+
+      if (isErrorRecord && error.statusCode === 401) {
         unauthorized.value = 'load'
       } else {
         globalThis.console.warn({
@@ -218,7 +230,9 @@ function useMovieViewings(
 
       return false
     } finally {
-      if (reads.finish(request)) {
+      const isFinished = reads.finish(request)
+
+      if (isFinished) {
         isLoadingMore.value = false
       }
     }
@@ -270,7 +284,8 @@ function useMovieViewings(
   }
 
   function handleMutationError(error: unknown, method: string, body: CatalogViewingCreateInput | CatalogViewingUpdateInput | { revision: number }): void {
-    const code = isRecord(error) ? error.statusCode : undefined
+    const isErrorRecord = isRecord(error)
+    const code = isErrorRecord ? error.statusCode : undefined
 
     if (code === 401) {
       unauthorized.value = 'mutation'
@@ -321,7 +336,9 @@ function useMovieViewings(
         signal: request.signal
       })
 
-      if (!writes.isCurrent(request)) {
+      const isCurrent = writes.isCurrent(request)
+
+      if (!isCurrent) {
         return false
       }
 
@@ -331,15 +348,21 @@ function useMovieViewings(
 
       await fetchHistory()
 
-      if (!writes.isCurrent(request) || generation !== requestGeneration) { return false }
+      const isCurrentAfterRefresh = writes.isCurrent(request)
+
+      if (!isCurrentAfterRefresh || generation !== requestGeneration) { return false }
 
       if (selectedId.value !== null && selectedId.value !== id && selectedViewing.value === null) {
         await loadPoint()
       }
 
-      return writes.isCurrent(request) && generation === requestGeneration
+      const isCurrentAfterPoint = writes.isCurrent(request)
+
+      return isCurrentAfterPoint && generation === requestGeneration
     } catch (error) {
-      if (!writes.isCurrent(request)) {
+      const isCurrent = writes.isCurrent(request)
+
+      if (!isCurrent) {
         return false
       }
 
@@ -347,7 +370,9 @@ function useMovieViewings(
 
       return false
     } finally {
-      if (writes.finish(request)) {
+      const isFinished = writes.finish(request)
+
+      if (isFinished) {
         isSaving.value = false
       }
     }
@@ -359,18 +384,20 @@ function useMovieViewings(
     let pending = pendingCreations.get(key)
 
     if (pending === undefined) {
+      const requestId = globalThis.crypto.randomUUID()
+
       pending = mode === 'current'
         ? {
           startedOn: dates.startedOn,
           completedOn: dates.completedOn,
-          requestId: globalThis.crypto.randomUUID(),
+          requestId,
           mode,
           contextVersion: summary.value.contextVersion
         }
         : {
           startedOn: dates.startedOn,
           completedOn: dates.completedOn,
-          requestId: globalThis.crypto.randomUUID(),
+          requestId,
           mode
         }
 

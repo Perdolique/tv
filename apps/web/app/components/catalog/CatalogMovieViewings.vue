@@ -19,7 +19,7 @@
       <AppButton v-if="showSaveRefresh" variant="secondary" :disabled="isSaving" @click="refresh">Refresh viewings</AppButton>
       <div v-if="isAdding" :class="$style.form">
         <h3>Add past viewing</h3>
-        <CatalogViewingDatesForm :initial="unknownDates" :fields="fields" :is-saving="isSaving" @save="add" @cancel="close" />
+        <CatalogViewingDatesForm :initial="unknownDates" :fields="fields" :is-saving="isSaving" @save="add" @cancel="close()" />
       </div>
       <p v-if="isEmpty">No viewings recorded yet.</p>
       <ul :class="$style.list" aria-label="Movie viewings">
@@ -34,18 +34,18 @@
           </dl>
           <p :class="$style.supporting">Recorded <NuxtTime :datetime="viewing.record.recordedAt" date-style="medium" time-style="short" /></p>
           <template v-if="viewing.isEditing">
-            <CatalogViewingDatesForm :initial="viewing.record" :fields="fields" :is-saving="isSaving" @save="dates => edit(viewing.record, dates)" @cancel="close" />
+            <CatalogViewingDatesForm :initial="viewing.record" :fields="fields" :is-saving="isSaving" @save="dates => edit(viewing.record, dates)" @cancel="close()" />
           </template>
           <div v-else-if="viewing.isDeleting" :class="$style.confirmation">
             <p>Delete this viewing? This cannot be undone.</p>
             <div :class="$style.actions">
               <AppButton variant="secondary" :class="$style.danger" :disabled="isSaving" @click="remove(viewing.record)">{{ deleteLabel }}</AppButton>
-              <AppButton variant="secondary" :disabled="isSaving" @click="close">Cancel</AppButton>
+              <AppButton variant="secondary" :disabled="isSaving" @click="close()">Cancel</AppButton>
             </div>
           </div>
           <div v-else :class="$style.actions">
-            <AppButton variant="secondary" :disabled="isSaving" @click="open(viewing.id)">Edit dates</AppButton>
-            <AppButton variant="secondary" :class="$style.danger" :disabled="isSaving" @click="confirmDelete(viewing.id)">Delete</AppButton>
+            <AppButton variant="secondary" :disabled="areMutationsDisabled" @click="open(viewing.id)">Edit dates</AppButton>
+            <AppButton variant="secondary" :class="$style.danger" :disabled="areMutationsDisabled" @click="confirmDelete(viewing.id)">Delete</AppButton>
           </div>
         </li>
       </ul>
@@ -56,7 +56,7 @@
 
 <script lang="ts" setup>
   import { NuxtLink, NuxtTime } from '#components'
-  import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, ref, shallowRef, useId, useTemplateRef, watch } from 'vue'
   import type { RouteLocationRaw } from 'vue-router'
   import type { CatalogViewing, CatalogViewingDates } from '@tv/shared/catalog-viewings'
   import type { MovieViewingsState } from '~/composables/use-movie-viewings.ts'
@@ -83,9 +83,9 @@
   const headingId = useId()
   const heading = useTemplateRef('heading')
   const addButton = useTemplateRef('addButton')
-  const form = ref<string | null>(null)
-  const deletingId = ref<string | null>(null)
-  const announcement = ref('')
+  const form = shallowRef<string | null>(null)
+  const deletingId = shallowRef<string | null>(null)
+  const announcement = shallowRef('')
   const activeViewing = ref<CatalogViewing | null>(null)
 
   const unknownDates = {
@@ -108,6 +108,7 @@
   const canRetryLinked = computed(() => Boolean(pointError.value) && selectedId !== null)
   const showSaveRefresh = computed(() => Boolean(saveError.value) && !readError.value)
   const isMoreBusy = computed(() => isLoadingMore.value || isSaving.value)
+  const areMutationsDisabled = computed(() => isSaving.value || status.value !== 'loaded')
   const deleteLabel = computed(() => isSaving.value ? 'Deleting…' : 'Delete viewing')
   const moreLabel = computed(() => isLoadingMore.value ? 'Loading…' : 'Load more viewings')
 
@@ -115,13 +116,16 @@
     const extra: CatalogViewing[] = []
     const ids = items.value.map(item => item.id)
     const known = new Set(ids)
+    const hasSelectedViewing = selectedViewing.value !== null && !known.has(selectedViewing.value.id)
 
-    if (selectedViewing.value !== null && !known.has(selectedViewing.value.id)) {
+    if (hasSelectedViewing && selectedViewing.value !== null) {
       extra.push(selectedViewing.value)
       known.add(selectedViewing.value.id)
     }
 
-    if (activeViewing.value !== null && !known.has(activeViewing.value.id)) {
+    const hasActiveViewing = activeViewing.value !== null && !known.has(activeViewing.value.id)
+
+    if (hasActiveViewing && activeViewing.value !== null) {
       extra.push(activeViewing.value)
     }
 
@@ -160,7 +164,7 @@
     saveError.value = ''
     fields.value = {}
   }
-  async function close(): Promise<void> {
+  async function close(owner: Element | null = globalThis.document.activeElement): Promise<void> {
     const wasAdding = form.value === 'add'
 
     form.value = null
@@ -168,6 +172,11 @@
     activeViewing.value = null
 
     await nextTick()
+
+    const { activeElement, body } = globalThis.document
+    const ownsFocus = activeElement === owner || activeElement === body
+
+    if (!ownsFocus) { return }
 
     if (wasAdding) {
       addButton.value?.focus()
@@ -195,6 +204,8 @@
     if (deletingId.value !== null && !isSaving.value) { void close() }
   }
   async function add(dates: CatalogViewingDates): Promise<void> {
+    const owner = globalThis.document.activeElement
+
     announcement.value = ''
 
     const saved = await state.create('history', dates)
@@ -204,10 +215,12 @@
 
       announcement.value = 'Past viewing saved.'
 
-      await close()
+      await close(owner)
     }
   }
   async function edit(viewing: CatalogViewing, dates: CatalogViewingDates): Promise<void> {
+    const owner = globalThis.document.activeElement
+
     announcement.value = ''
 
     const saved = await state.update(viewing, dates)
@@ -217,10 +230,12 @@
 
       announcement.value = 'Viewing dates saved.'
 
-      await close()
+      await close(owner)
     }
   }
   async function remove(viewing: CatalogViewing): Promise<void> {
+    const owner = globalThis.document.activeElement
+
     announcement.value = ''
 
     const saved = await state.remove(viewing)
@@ -230,7 +245,7 @@
 
       announcement.value = 'Viewing deleted.'
 
-      await close()
+      await close(owner)
     }
   }
   async function more(): Promise<void> {
@@ -269,7 +284,11 @@
   }
 
   watch([() => selectedId, records], async () => {
-    if (selectedId === null || !records.value.some(record => record.id === selectedId)) {
+    if (selectedId === null) { return }
+
+    const hasSelectedViewing = records.value.some(record => record.id === selectedId)
+
+    if (!hasSelectedViewing) {
       return
     }
 

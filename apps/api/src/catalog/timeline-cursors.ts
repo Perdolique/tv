@@ -51,13 +51,20 @@ interface TimelineEpisodesCursor extends TimelineGroupScope {
 type TimelineCursor = TimelinePageCursor | TimelineGroupCursor | TimelineEpisodesCursor
 
 function isExactTimestamp(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(value) || value.startsWith('0000')) {
+  const hasTimestampFormat = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(value)
+
+  if (!hasTimestampFormat) { return false }
+
+  const hasZeroYear = value.startsWith('0000')
+
+  if (hasZeroYear) {
     return false
   }
 
   const milliseconds = Date.parse(value)
+  const hasFiniteTimestamp = Number.isFinite(milliseconds)
 
-  if (!Number.isFinite(milliseconds)) {
+  if (!hasFiniteTimestamp) {
     return false
   }
 
@@ -147,7 +154,13 @@ function decodeTimelineCursor(value: string): TimelineCursor {
     const json: unknown = JSON.parse(payload)
     const parsed = v.safeParse(cursorSchema, json)
 
-    if (!parsed.success || encodeBase64Url(bytes) !== value) {
+    if (!parsed.success) {
+      throw invalidCursor()
+    }
+
+    const canonicalValue = encodeBase64Url(bytes)
+
+    if (canonicalValue !== value) {
       throw invalidCursor()
     }
 
@@ -173,7 +186,9 @@ function matchesScope(cursor: TimelineScope, scope: TimelineScope): boolean {
 }
 
 function matchesGroup(cursor: TimelineGroupScope, scope: TimelineGroupScope): boolean {
-  return matchesScope(cursor, scope) && cursor.viewingId === scope.viewingId && cursor.localDate === scope.localDate
+  const hasSameScope = matchesScope(cursor, scope)
+
+  return hasSameScope && cursor.viewingId === scope.viewingId && cursor.localDate === scope.localDate
 }
 
 function readTimelinePageCursor(value: string | null, scope: TimelineScope): TimelinePageCursor | null {
@@ -183,7 +198,13 @@ function readTimelinePageCursor(value: string | null, scope: TimelineScope): Tim
 
   const cursor = decodeTimelineCursor(value)
 
-  if (cursor.kind !== 'timeline' || !matchesScope(cursor, scope)) {
+  if (cursor.kind !== 'timeline') {
+    throw invalidCursor()
+  }
+
+  const hasValidScope = matchesScope(cursor, scope)
+
+  if (!hasValidScope) {
     throw invalidCursor()
   }
 
@@ -193,7 +214,13 @@ function readTimelinePageCursor(value: string | null, scope: TimelineScope): Tim
 function readTimelineGroupCursor(value: string, scope: TimelineGroupScope): TimelineGroupCursor {
   const cursor = decodeTimelineCursor(value)
 
-  if (cursor.kind !== 'group' || !matchesGroup(cursor, scope)) {
+  if (cursor.kind !== 'group') {
+    throw invalidCursor()
+  }
+
+  const hasValidGroup = matchesGroup(cursor, scope)
+
+  if (!hasValidGroup) {
     throw invalidCursor()
   }
 
@@ -207,7 +234,13 @@ function readTimelineEpisodesCursor(value: string | null, group: TimelineGroupCu
 
   const cursor = decodeTimelineCursor(value)
 
-  if (cursor.kind !== 'episodes' || !matchesGroup(cursor, group) || cursor.upper.id !== group.upper.id || cursor.upper.occurredAt !== group.upper.occurredAt) {
+  if (cursor.kind !== 'episodes') {
+    throw invalidCursor()
+  }
+
+  const hasValidGroup = matchesGroup(cursor, group)
+
+  if (!hasValidGroup || cursor.upper.id !== group.upper.id || cursor.upper.occurredAt !== group.upper.occurredAt) {
     throw invalidCursor()
   }
 

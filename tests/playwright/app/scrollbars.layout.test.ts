@@ -56,7 +56,7 @@ async function fitViewportBetweenTabs(page: Page, width: number): Promise<number
   await page.getByRole('tab', { name: 'Episodes' }).click()
 
   await expect(page.getByRole('button', {
-    name: 'Mark all released episodes',
+    name: 'Mark season 1 watched',
     exact: true
   })).toBeVisible()
 

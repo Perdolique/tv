@@ -1,14 +1,22 @@
 import * as v from 'valibot'
 
 function isCalendarDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value) || value.startsWith('0000')) {
+  const hasDateFormat = /^\d{4}-\d{2}-\d{2}$/u.test(value)
+
+  if (!hasDateFormat) { return false }
+
+  const hasZeroYear = value.startsWith('0000')
+
+  if (hasZeroYear) {
     return false
   }
 
-  const date = new Date(`${value}T00:00:00.000Z`)
+  const timestampValue = `${value}T00:00:00.000Z`
+  const date = new Date(timestampValue)
   const timestamp = date.getTime()
+  const hasFiniteTimestamp = Number.isFinite(timestamp)
 
-  if (!Number.isFinite(timestamp)) { return false }
+  if (!hasFiniteTimestamp) { return false }
 
   const isoDate = date.toISOString()
   const normalized = isoDate.slice(0, 10)

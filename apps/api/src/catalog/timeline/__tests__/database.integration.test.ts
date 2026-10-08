@@ -354,11 +354,6 @@ describe('private title timeline reads', () => {
     const result = await client.query<{ id: string }>('INSERT INTO catalog_viewings (user_id, catalog_item_id, started_on, recorded_at) VALUES ($1, $2, \'2024-02-29\', \'2026-01-01T12:00:00.123456Z\') RETURNING id', [userId, movieId])
     const viewingId = result.rows[0]?.id
 
-    await client.query(`
-      INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, viewing_id, occurred_at)
-      VALUES ($1, $2, 'movie_viewing', $3, '2026-01-01T12:00:00.123456Z');
-    `, [userId, movieId, viewingId])
-
     await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, occurred_at, previous_score, score) VALUES ($1, $2, \'rating_changed\', \'2026-01-02T12:00:00.123456Z\', 7, null)', [userId, movieId])
     await client.query('UPDATE catalog_viewings SET started_on = \'2024-03-01\', completed_on = \'2024-03-02\' WHERE id = $1', [viewingId])
 
