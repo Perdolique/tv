@@ -606,7 +606,7 @@ describe('postgreSQL catalog movie watches', () => {
     }
   })
 
-  it('prevents direct series watches and later type changes for watched movies', async () => {
+  it('allows completed series viewings while preserving movie watch, status and type guards', async () => {
     await assertDisposableTestDatabase(client)
 
     const userId = '50000000-0000-4000-8000-000000000001'
@@ -630,20 +630,46 @@ describe('postgreSQL catalog movie watches', () => {
         VALUES ($1, 'en', 'Movie invariant fixture', true)
       `, [movieId])
 
-      await expect(client.query(`
-        INSERT INTO catalog_viewings (user_id, catalog_item_id)
-        VALUES ($1, $2)
-      `, [userId, seriesId])).rejects.toMatchObject({ code: '23514' })
+      const seriesViewing = await client.query<{ status: string }>(`
+        INSERT INTO catalog_viewings (user_id, catalog_item_id, status)
+        VALUES ($1, $2, 'completed') RETURNING status
+      `, [userId, seriesId])
+
+      expect(seriesViewing.rows).toStrictEqual([{ status: 'completed' }])
+
+      const invalidMovieStatuses = ['watching', 'paused']
+
+      const statusGuards = invalidMovieStatuses.map(async status => {
+        await expect(client.query(`
+          INSERT INTO catalog_viewings (user_id, catalog_item_id, status)
+          VALUES ($1, $2, $3)
+        `, [userId, movieId, status])).rejects.toMatchObject({ code: '23514' })
+      })
+
+      await Promise.all(statusGuards)
+
+      const requestId = randomUUID()
 
       await createMovieViewing(database, {
         userId,
         catalogItemId: movieId
       }, {
-        requestId: randomUUID(),
+        requestId,
         mode: 'current',
         contextVersion: 0,
         startedOn: null,
         completedOn: null
+      })
+
+      const movieWatches = await client.query<{ catalog_item_id: string }>(`
+        SELECT catalog_item_id FROM catalog_movie_watches WHERE user_id = $1
+      `, [userId])
+
+      expect(movieWatches.rows).toStrictEqual([{ catalog_item_id: movieId }])
+
+      await expect(findCatalogItemWatchState(database, userId, seriesId)).resolves.toStrictEqual({
+        type: 'series',
+        watched: false
       })
 
       await expect(client.query(`

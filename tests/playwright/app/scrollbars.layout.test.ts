@@ -46,6 +46,42 @@ async function prepareTitle(page: Page): Promise<void> {
   await page.getByRole('tab', { name: 'Overview' }).click()
 }
 
+async function fitViewportBetweenTabs(page: Page, width: number): Promise<number> {
+  const timeline = page.getByRole('region', { name: 'Your timeline' })
+
+  await expect(timeline.getByText('Your activity for this title will appear here.', { exact: true })).toBeVisible()
+
+  const overviewHeight = await page.evaluate(() => globalThis.document.documentElement.scrollHeight)
+
+  await page.getByRole('tab', { name: 'Episodes' }).click()
+
+  await expect(page.getByRole('button', {
+    name: 'Mark all released episodes',
+    exact: true
+  })).toBeVisible()
+
+  await expect(page.getByRole('region', {
+    name: 'Episodes',
+    exact: true
+  }).getByRole('listitem')).toHaveCount(5)
+
+  const episodesHeight = await page.evaluate(() => globalThis.document.documentElement.scrollHeight)
+
+  expect(episodesHeight).toBeGreaterThan(overviewHeight)
+
+  const midpoint = (overviewHeight + episodesHeight) / 2
+  const height = Math.floor(midpoint)
+
+  await page.setViewportSize({
+    width,
+    height
+  })
+
+  await page.getByRole('tab', { name: 'Overview' }).click()
+
+  return height
+}
+
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`keeps the signed-in catalog aligned with mobile navigation in ${colorScheme}`, async ({ context, page }) => {
     await context.addCookies([{
@@ -95,6 +131,8 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme })
     await prepareTitle(page)
 
+    const viewportHeight = await fitViewportBetweenTabs(page, 390)
+    const bottomEdge = viewportHeight - 10
     const header = page.getByRole('banner')
     const navigation = page.getByRole('navigation', { name: 'Main navigation' })
 
@@ -113,19 +151,14 @@ for (const colorScheme of ['light', 'dark'] as const) {
       exact: true
     })
 
-    const hasInitialScrollbar = await hasVerticalScrollbar(page)
-
-    expect(hasInitialScrollbar).toBe(false)
+    await expect.poll(async () => hasVerticalScrollbar(page)).toBe(false)
     await expectEdgePaint(header, 40)
-    await expectEdgePaint(navigation, 890)
+    await expectEdgePaint(navigation, bottomEdge)
 
     const before = await Promise.all([readInlineBox(heading), readInlineBox(dashboard)])
 
     await page.getByRole('tab', { name: 'Episodes' }).click()
-
-    const hasEpisodesScrollbar = await hasVerticalScrollbar(page)
-
-    expect(hasEpisodesScrollbar).toBe(true)
+    await expect.poll(async () => hasVerticalScrollbar(page)).toBe(true)
 
     const withScrollbar = await Promise.all([readInlineBox(heading), readInlineBox(dashboard)])
 
@@ -148,7 +181,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     const navigationBottom = await navigation.evaluate(element => element.getBoundingClientRect().bottom)
 
-    expect(navigationBottom).toBe(900)
+    expect(navigationBottom).toBe(viewportHeight)
     await page.evaluate(() => { globalThis.scrollTo(0, 0) })
     await rate.click()
 
@@ -167,7 +200,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     const headingWithSheet = await readInlineBox(heading)
 
     expect(headingWithSheet).toEqual(before[0])
-    await expectEdgePaint(sheet, 890)
+    await expectEdgePaint(sheet, bottomEdge)
     await page.mouse.move(200, 200)
     await page.mouse.wheel(0, 400)
     await expect.poll(async () => page.evaluate(() => globalThis.scrollY)).toBe(0)
@@ -180,7 +213,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     expect(afterSheet).toEqual(before)
     await page.getByRole('tab', { name: 'Overview' }).click()
     await expectEdgePaint(header, 40)
-    await expectEdgePaint(navigation, 890)
+    await expectEdgePaint(navigation, bottomEdge)
     await expectNoHorizontalOverflow(page)
   })
 
