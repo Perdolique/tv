@@ -34,6 +34,9 @@ These user-confirmed decisions override only the stated parts of the reference i
 - **Title details — movie viewings:** The title-details references show a single watched action and no movie history block. For #89, show the viewing count beside `Mark as watched` or `Watched again`, and place a visible `Your viewings` section below `Overview`. Use inline forms for past viewings and date edits, and inline confirmation for deletion. Keep ratings independent. Confirmed by the user on 2026-10-06.
 - **Dashboard — movie history:** Each movie viewing has its own row, recording time and direct link. Use `Movie viewings` for the metric. The reference images show a movie-based summary; repeat viewings are separate entries in #89. Confirmed by the user on 2026-10-06.
 
+- **Title details — timeline disclosure and placement:** For #89, show the first six activity rows, then `Show full history`, cursor-based `Load more`, and inline episode groups with their own pagination. On desktop, place the timeline below ratings. On mobile and tablet, place it after the main content; for movies, after `Your viewings`. The timeline image shows only the desktop activity block. Confirmed in the approved #89 plan on 2026-10-08.
+- **Title details — series viewings and released episode actions:** The original images have individual watched controls only. For #89, add selected-season and whole-series actions that explicitly include only released episodes with a known air date in the browser time zone. After the first viewing, show `Start rewatch` in the title actions. An active viewing closes through a dialog with pause, complete, and cancel choices; previous marks stay in history. Confirmed in the approved #89 plan on 2026-10-08.
+
 ## Visual language
 
 - TV is a movie and series catalog and tracking product. Large artwork sets the mood; titles, dates, episode numbers, and actions stay easy to read.

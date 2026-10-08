@@ -26,6 +26,19 @@
     </div>
     <template v-else>
       <slot name="season-rating" :season-number="selectedSeason" />
+      <section v-if="showBulkActions" :class="$style.bulk" aria-label="Mark released episodes">
+        <p :class="$style.supportingText">Only episodes with a known air date up to today in your time zone are included.</p>
+        <div :class="$style.bulkActions">
+          <AppButton variant="secondary" :disabled="isWatchedDisabled" :aria-busy="isSaving || undefined" @click="emit('markReleased', selectedSeason)">Mark released episodes in season {{ selectedSeason }}</AppButton>
+          <AppButton variant="secondary" :disabled="isWatchedDisabled" @click="emit('markReleased', null)">Mark all released episodes</AppButton>
+        </div>
+        <p v-if="isBulkSaving" :class="$style.supportingText" role="status">Saving released episodes…</p>
+        <AppMessage v-if="actionError" role="alert" tone="danger">{{ actionError }}</AppMessage>
+      </section>
+      <div v-if="showReadError" :class="$style.privateError">
+        <AppMessage role="alert" tone="danger">{{ readError }}</AppMessage>
+        <AppButton variant="secondary" :disabled="isSaving" @click="emit('retryWatched')">Retry watched status</AppButton>
+      </div>
       <div v-if="hasWatchedError" :class="$style.privateError">
         <AppMessage role="alert" tone="danger">We couldn’t load your watched episodes. The episode list is still available.</AppMessage>
         <AppButton variant="secondary" @click="emit('retryWatched')">Retry watched status</AppButton>
@@ -42,7 +55,7 @@
       >
         <template #default="{ ratings, summaries }">
           <ul :class="$style.episodeList">
-            <li v-for="{ episode, headingId, isWatched } in selectedEpisodeRows" :key="episode.id" :class="$style.episode">
+            <li v-for="{ episode, headingId, isWatched, isEpisodeSaving } in selectedEpisodeRows" :key="episode.id" :class="$style.episode">
               <div :class="$style.episodeIdentity">
                 <p :class="$style.episodeNumber"><span :class="$style.accessible">Season {{ episode.seasonNumber }}, </span>E{{ episode.episodeNumber }}</p>
                 <div>
@@ -60,6 +73,7 @@
                 :sign-in-location="signInLocation"
                 :ratings="ratings"
                 :summaries="summaries"
+                @saved="emit('ratingSaved')"
               />
               <NuxtLink v-if="isAnonymous" :class="$style.signInLink" :to="signInLocation" :aria-describedby="headingId" aria-label="Sign in to mark watched">
                 <span :class="$style.accessible">Sign in to mark watched</span>
@@ -85,7 +99,8 @@
                 variant="secondary"
                 @click="emit('toggleWatched', episode.id)"
               >
-                <Icon v-if="isWatched" aria-hidden="true" mode="svg" name="hugeicons:tick-02" />
+                <span v-if="isEpisodeSaving" :class="$style.savingIndicator" aria-hidden="true" />
+                <Icon v-else-if="isWatched" aria-hidden="true" mode="svg" name="hugeicons:tick-02" />
               </AppButton>
               <AppMessage v-if="saveErrorFor(episode.id) !== ''" :class="$style.episodeError" role="alert" tone="danger">
                 {{ saveErrorFor(episode.id) }}
@@ -115,6 +130,7 @@
     episode: CatalogEpisode;
     headingId: string;
     isWatched: boolean;
+    isEpisodeSaving: boolean;
   }
 
   interface Props {
@@ -128,6 +144,8 @@
     isEpisodesEmpty: boolean;
     isEpisodesLoading: boolean;
     isSaving: boolean;
+    actionError: string;
+    readError: string;
     saveErrorFor: (episodeId: string) => string;
     savingEpisodeId: string | null;
     signInLocation: RouteLocationRaw;
@@ -138,12 +156,14 @@
 
   interface Emits {
     ratingUnauthorized: [reason: 'load' | 'mutation'];
+    ratingSaved: [];
+    markReleased: [seasonNumber: number | null];
     retryEpisodes: [];
     retryWatched: [];
     toggleWatched: [episodeId: string];
   }
 
-  const { catalogItemId, episodes, hasSessionError, isAnonymous, isSaving, savingEpisodeId, watchedCount, watchedEpisodeIds, watchedStatus } = defineProps<Props>()
+  const { catalogItemId, episodes, hasSessionError, isAnonymous, isSaving, readError, savingEpisodeId, watchedCount, watchedEpisodeIds, watchedStatus } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const selectedSeason = ref(1)
   let hasSelectedInitialSeason = false
@@ -154,6 +174,7 @@
     return [...numbers].toSorted((first, second) => first - second)
   })
 
+  const showBulkActions = computed(() => !isAnonymous && !hasSessionError && watchedStatus === 'loaded')
   const showSeasonHeading = computed(() => episodes.length > 0)
   const hasSeasonSelector = computed(() => seasonNumbers.value.length > 1)
   const newestSeason = computed(() => seasonNumbers.value.at(-1) ?? 1)
@@ -165,11 +186,13 @@
       if (episode.seasonNumber === selectedSeason.value) {
         const headingId = `episode-${episode.id}`
         const isWatched = watchedEpisodeIds.includes(episode.id)
+        const isEpisodeSaving = isSaving && savingEpisodeId === episode.id
 
         rows.push({
           episode,
           headingId,
-          isWatched
+          isWatched,
+          isEpisodeSaving
         })
       }
     }
@@ -190,6 +213,8 @@
   ))
 
   const hasWatchedError = computed(() => watchedStatus === 'error')
+  const showReadError = computed(() => readError !== '' && !hasWatchedError.value)
+  const isBulkSaving = computed(() => isSaving && savingEpisodeId === null)
   const isWatchedDisabled = computed(() => watchedStatus !== 'loaded' || isSaving)
   const showWatchedStatus = computed(() => isWatchedLoading.value || watchedStatus === 'loaded')
 
@@ -243,6 +268,8 @@
 
   @layer components {
     .component { container: episodes / inline-size; display: grid; gap: var(--space-5); }
+    .bulk { display: grid; gap: var(--space-3); }
+    .bulkActions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
     .header {
       display: flex;
       flex-wrap: wrap;
@@ -304,6 +331,9 @@
       background: var(--color-surface-selected);
       color: var(--color-accent);
     }
+    .savingIndicator { inline-size: 1.25rem; block-size: 1.25rem; border: 0.125rem solid currentcolor; border-inline-end-color: transparent; border-radius: var(--radius-round); animation: saving-spin 0.8s linear infinite; }
+    @keyframes saving-spin { to { transform: rotate(1turn); } }
+    @media (prefers-reduced-motion: reduce) { .savingIndicator { animation: none; } }
     .episodeError { grid-column: 1 / -1; }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     .signInLink {

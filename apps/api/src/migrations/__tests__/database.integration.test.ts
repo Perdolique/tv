@@ -291,8 +291,9 @@ describe('persisted UUIDv7 and title metadata migration', () => {
         'catalog_releases_catalog_item_id_catalog_items_id_fkey',
         'catalog_viewings_user_id_users_id_fkey',
         'catalog_viewings_catalog_item_id_catalog_items_id_fkey',
-        'catalog_episode_watches_user_id_users_id_fkey',
-        'catalog_episode_watches_ynhUEcsHjZFY_fkey',
+        'catalog_viewing_episode_watches_user_id_users_id_fkey',
+        'catalog_viewing_episode_watches_viewing_fk',
+        'catalog_viewing_episode_watches_episode_fk',
         'catalog_episodes_catalog_item_id_catalog_items_id_fkey'
       ]))
 
@@ -793,9 +794,9 @@ describe('movie viewing migration', () => {
 
       const rows = await fixture.client.query<{ id: string }>(`SELECT id, status, started_on, completed_on, revision,
         to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at
-        FROM catalog_viewings WHERE user_id = $1`, [firstUserId])
+        FROM catalog_viewings WHERE user_id = $1 AND catalog_item_id = $2`, [firstUserId, movieId])
 
-      const context = await fixture.client.query('SELECT current_viewing_id, context_version FROM catalog_viewing_contexts WHERE user_id = $1', [firstUserId])
+      const context = await fixture.client.query('SELECT current_viewing_id, context_version FROM catalog_viewing_contexts WHERE user_id = $1 AND catalog_item_id = $2', [firstUserId, movieId])
 
       expect(rows.rows).toMatchObject([{
         status: 'completed',
@@ -831,12 +832,12 @@ describe('movie viewing migration', () => {
         await expect(fixture.client.query(query, [firstUserId, movieId])).rejects.toMatchObject({ code: '55000' })
       }))
 
-      const preserved = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1', [firstUserId])
+      const preserved = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1 AND catalog_item_id = $2', [firstUserId, movieId])
 
       expect(preserved.rows).toHaveLength(1)
       await migrate(fixture.database, { migrationsFolder })
 
-      const repeated = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1', [firstUserId])
+      const repeated = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1 AND catalog_item_id = $2', [firstUserId, movieId])
 
       expect(repeated.rows).toHaveLength(1)
     })

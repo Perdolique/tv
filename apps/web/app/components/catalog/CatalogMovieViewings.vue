@@ -73,7 +73,12 @@
     signInLocation: RouteLocationRaw;
   }
 
+  interface Emits {
+    saved: [];
+  }
+
   const { state, selectedId, isAnonymous } = defineProps<Props>()
+  const emit = defineEmits<Emits>()
   const { fields, items, isLoadingMore, isSaving, nextCursor, pointError, readError, saveError, selectedViewing, status, summary } = state
   const headingId = useId()
   const heading = useTemplateRef('heading')
@@ -195,6 +200,8 @@
     const saved = await state.create('history', dates)
 
     if (saved) {
+      emit('saved')
+
       announcement.value = 'Past viewing saved.'
 
       await close()
@@ -206,6 +213,8 @@
     const saved = await state.update(viewing, dates)
 
     if (saved) {
+      emit('saved')
+
       announcement.value = 'Viewing dates saved.'
 
       await close()
@@ -217,6 +226,8 @@
     const saved = await state.remove(viewing)
 
     if (saved) {
+      emit('saved')
+
       announcement.value = 'Viewing deleted.'
 
       await close()

@@ -12,6 +12,7 @@ import {
 } from '../../../../scripts/catalog-episode-snapshot.ts'
 
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
+import { insertSeriesEpisodeWatches } from '../../../testing/series-watch-fixtures.ts'
 
 const databaseUrl = env.TEST_DATABASE_URL
 
@@ -176,14 +177,42 @@ describe('catalog episode snapshot migration', () => {
     await client.query(`
       INSERT INTO users (id, email)
       VALUES ('72000000-0000-7000-8000-000000000001', 'snapshot-watch@example.com');
-      INSERT INTO catalog_episode_watches (user_id, catalog_episode_id, marked_at)
-      VALUES ('72000000-0000-7000-8000-000000000001', '30000000-0000-7000-8000-000000000001', '2026-09-21T12:00:00Z');
     `)
 
+    await insertSeriesEpisodeWatches(client, '72000000-0000-7000-8000-000000000001', {
+      episodeIds: ['30000000-0000-7000-8000-000000000001'],
+      markedAt: '2026-09-21T12:00:00Z'
+    })
+
+    await insertSeriesEpisodeWatches(client, '72000000-0000-7000-8000-000000000001', {
+      episodeIds: ['30000000-0000-7000-8000-000000000001'],
+      markedAt: '2020-09-21T12:00:00.123456Z',
+      status: 'paused'
+    })
+
     const oldEpisodes = await client.query('SELECT * FROM catalog_episodes ORDER BY id')
-    const oldWatches = await client.query('SELECT * FROM catalog_episode_watches ORDER BY user_id, catalog_episode_id')
+
+    // Read exact database text because JavaScript Date drops microseconds.
+    const oldWatches = await client.query<{ marked_at_exact: string }>(`
+      SELECT *, to_char(marked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS marked_at_exact
+      FROM catalog_viewing_episode_watches ORDER BY id
+    `)
+
+    const oldViewings = await client.query<{ recorded_at_exact: string }>(`
+      SELECT *, to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at_exact
+      FROM catalog_viewings ORDER BY id
+    `)
+
+    const oldEvents = await client.query<{ occurred_at_exact: string }>(`
+      SELECT *, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at_exact
+      FROM catalog_timeline_events ORDER BY id
+    `)
+
     const oldReleases = await client.query('SELECT * FROM catalog_releases ORDER BY id')
 
+    expect(oldWatches.rows.map(watch => watch.marked_at_exact)).toContain('2020-09-21T12:00:00.123456Z')
+    expect(oldViewings.rows.map(viewing => viewing.recorded_at_exact)).toContain('2020-09-21T12:00:00.123456Z')
+    expect(oldEvents.rows.map(event => event.occurred_at_exact)).toContain('2020-09-21T12:00:00.123456Z')
     await client.query(migration)
 
     const preserved = await client.query(`
@@ -200,11 +229,28 @@ describe('catalog episode snapshot migration', () => {
     await client.query(migration)
 
     const repeated = await client.query('SELECT * FROM catalog_episodes ORDER BY id')
-    const watches = await client.query('SELECT * FROM catalog_episode_watches ORDER BY user_id, catalog_episode_id')
+
+    const watches = await client.query(`
+      SELECT *, to_char(marked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS marked_at_exact
+      FROM catalog_viewing_episode_watches ORDER BY id
+    `)
+
+    const viewings = await client.query(`
+      SELECT *, to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at_exact
+      FROM catalog_viewings ORDER BY id
+    `)
+
+    const events = await client.query(`
+      SELECT *, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at_exact
+      FROM catalog_timeline_events ORDER BY id
+    `)
+
     const releases = await client.query('SELECT * FROM catalog_releases ORDER BY id')
 
     expect(repeated.rows).toStrictEqual(firstImport.rows)
     expect(watches.rows).toStrictEqual(oldWatches.rows)
+    expect(viewings.rows).toStrictEqual(oldViewings.rows)
+    expect(events.rows).toStrictEqual(oldEvents.rows)
     expect(releases.rows).toStrictEqual(oldReleases.rows)
   })
 

@@ -1,8 +1,17 @@
 import type { Database } from '@tv/database'
-import { catalogEpisodes, catalogItemRatings, catalogItems, catalogItemTitles } from '@tv/database/schema'
+
+import {
+  catalogEpisodes,
+  catalogItemRatings,
+  catalogItems,
+  catalogItemTitles,
+  catalogTimelineEvents
+} from '@tv/database/schema'
+
 import type { CatalogEpisodeRating, CatalogEpisodeRatingSummary } from '@tv/shared/catalog'
-import { and, avg, count, eq } from 'drizzle-orm'
+import { and, avg, count, eq, sql } from 'drizzle-orm'
 import { hasCatalogSeason } from './ratings-repository.ts'
+import { lockPersonalCatalogContext } from './personal-context.ts'
 
 type EpisodeRatingScope = { episodeId: string } | { catalogItemId: string; seasonNumber: number }
 
@@ -148,12 +157,39 @@ async function setCatalogEpisodeRating(database: Database, userId: string, { epi
         eq(catalogEpisodes.id, episodeId)
       )
       .limit(1)
-      .for('key share', { of: [catalogEpisodes, catalogItems, catalogItemTitles] })
 
     const [episode] = episodes
 
     if (episode === undefined) {
       return false
+    }
+
+    const item = await lockPersonalCatalogContext(transaction, userId, episode.catalogItemId)
+
+    if (item?.type !== 'series') {
+      return false
+    }
+
+    const targets = await transaction.select({ id: catalogEpisodes.id }).from(catalogEpisodes)
+      .where(
+        and(eq(catalogEpisodes.id, episodeId), eq(catalogEpisodes.catalogItemId, episode.catalogItemId))
+      )
+      .for('key share')
+
+    if (targets[0] === undefined) {
+      return false
+    }
+
+    const previousRows = await transaction.select({ score: catalogItemRatings.score }).from(catalogItemRatings)
+      .where(
+        and(eq(catalogItemRatings.userId, userId), eq(catalogItemRatings.catalogEpisodeId, episodeId))
+      )
+      .for('update')
+
+    const previousScore = previousRows[0]?.score ?? null
+
+    if (previousScore === score) {
+      return true
     }
 
     if (score === null) {
@@ -179,6 +215,16 @@ async function setCatalogEpisodeRating(database: Database, userId: string, { epi
           set: { score }
         })
     }
+
+    await transaction.insert(catalogTimelineEvents).values({
+      userId,
+      catalogItemId: episode.catalogItemId,
+      kind: 'rating_changed',
+      occurredAt: sql`clock_timestamp()`,
+      catalogEpisodeId: episodeId,
+      previousScore,
+      score
+    })
 
     return true
   })
