@@ -39,14 +39,20 @@ async function expectEpisodeLayout(page: Page, inlineControls: boolean): Promise
 
   await expect(cards).toHaveCount(5)
 
+  await expect(cards.first().getByRole('region', {
+    name: 'Viewer rating for season 1, episode 1',
+    exact: true
+  }).getByText('Not rated', { exact: true })).toBeVisible()
+
   const list = page.getByRole('region', {
     name: 'Episodes',
     exact: true
   }).getByRole('list')
 
-  const listBox = await readGeometry(list)
-  const first = await readGeometry(cards.nth(0))
-  const second = await readGeometry(cards.nth(1))
+  const [listBox, first, second] = await Promise.all([
+    readGeometry(list), readGeometry(cards.nth(0)), readGeometry(cards.nth(1))
+  ])
+
   const widthDifference = Math.abs(first.width - listBox.width)
   const leftDifference = Math.abs(first.left - second.left)
 
@@ -96,7 +102,7 @@ async function fitViewportBetweenTabs(page: Page): Promise<void> {
   await openEpisodes(page)
 
   await expect(page.getByRole('button', {
-    name: 'Mark all released episodes',
+    name: 'Mark all episodes watched',
     exact: true
   })).toBeVisible()
 

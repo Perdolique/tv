@@ -9,7 +9,9 @@
         v-else
         ref="trigger"
         :class="$style.trigger"
+        :size="triggerSize"
         :variant="triggerVariant"
+        icon="hugeicons:star"
         :disabled="isTriggerDisabled"
         :aria-busy="isBusy || undefined"
         :aria-label="accessibleTriggerLabel"
@@ -19,7 +21,6 @@
         type="button"
         @click="activate"
       >
-        <Icon :class="$style.star" aria-hidden="true" mode="svg" name="hugeicons:star" />
         {{ triggerLabel }}
       </AppButton>
     </div>
@@ -90,6 +91,7 @@
     targetKey: string | null;
     hasSessionError: boolean;
     isAnonymous: boolean;
+    isActive?: boolean;
     isSaving: boolean;
     load: () => Promise<void>;
     save: (nextScore: number | null) => Promise<boolean>;
@@ -104,7 +106,7 @@
     saved: [targetKey: string];
   }
 
-  const { label = 'Your rating', actionLabel = 'Rate', showScore, compact, showLoadError = true, accountId, targetKey, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
+  const { label = 'Your rating', actionLabel = 'Rate', showScore, compact, showLoadError = true, isActive = true, accountId, targetKey, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const currentAccountId = computed(() => accountId)
   const currentTargetKey = computed(() => targetKey)
@@ -125,7 +127,7 @@
   const hasLoadError = computed(() => !isAnonymous && !hasSessionError && status === 'error')
   const showRatingLoadError = computed(() => hasLoadError.value && showLoadError)
   const hasScore = computed(() => score !== null)
-  const canEdit = computed(() => accountId !== null && !hasSessionError && isLoaded.value && !isSaving)
+  const canEdit = computed(() => isActive && accountId !== null && !hasSessionError && isLoaded.value && !isSaving)
   const isBusy = computed(() => isLoading.value || isSaving)
   const isTriggerDisabled = computed(() => !canEdit.value && !hasLoadError.value)
   const controlledPanelId = computed(() => isEditing.value ? panelId : undefined)
@@ -134,6 +136,7 @@
   const popoverMode = computed(() => isMobile.value ? undefined : 'manual')
   const visibleActionLabel = computed(() => compact ? 'Rate' : actionLabel)
   const triggerVariant = computed(() => compact ? 'secondary' : 'primary')
+  const triggerSize = computed(() => compact ? 'small' : 'medium')
 
   const choices = computed(() => options.map(option => {
     const choiceLabel = `${option} out of 10`
@@ -241,7 +244,7 @@
     const { activeElement, body: documentBody } = globalThis.document
     const ownsFocus = activeElement === owner || activeElement === documentBody || activeElement === panel.value
 
-    return ownsFocus
+    return isActive && ownsFocus
   }
 
   async function activate(): Promise<void> {
@@ -370,6 +373,15 @@
     notice.value = ''
   }, { flush: 'sync' })
 
+  watch(() => isActive, active => {
+    if (!active) {
+      hidePanel()
+
+      isEditing.value = false
+      notice.value = ''
+    }
+  }, { flush: 'sync' })
+
   watch([isEditing, isMobile], () => {
     scrollLocked.value = isEditing.value && isMobile.value
 
@@ -419,11 +431,7 @@
     .component { display: grid; align-content: start; gap: var(--space-2); min-inline-size: 0; }
     .anchor { inline-size: 100%; }
     .trigger, .link {
-      min-block-size: 3rem;
       inline-size: 100%;
-      padding: var(--space-3) var(--space-5);
-      font-size: 1rem;
-      font-weight: 600;
       text-decoration: none;
     }
     .trigger { anchor-name: var(--rating-anchor); }
@@ -432,21 +440,23 @@
       align-items: center;
       justify-content: center;
       gap: var(--space-2);
-      border: 0;
+      min-block-size: 3rem;
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid transparent;
       border-radius: var(--radius-md);
       background: var(--color-accent-fill);
       color: var(--color-on-accent);
+      font-weight: 600;
       cursor: pointer;
     }
     .link:hover { filter: brightness(0.96); }
-    .star { flex: 0 0 auto; inline-size: 1.5rem; block-size: 1.5rem; }
+    .star { flex: 0 0 auto; inline-size: 1.25rem; block-size: 1.25rem; }
     .component:global(.is-compact) {
-      .trigger, .link { min-block-size: 2.75rem; padding: var(--space-2); border-radius: var(--radius-sm); font-size: 0.875rem; }
+      .link { min-block-size: 2.75rem; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: 0.875rem; }
       .trigger { font-variant-numeric: tabular-nums; }
       .link { border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text-primary); }
-      .star { inline-size: 1.125rem; block-size: 1.125rem; }
       &:global(.is-rated) .trigger { border-color: var(--color-accent); background: var(--color-surface-selected); color: var(--color-text-primary); }
-      &:global(.is-rated) .star { color: var(--color-accent); }
+      &:global(.is-rated) .trigger :global(svg) { color: var(--color-accent); }
     }
     .loadError { max-inline-size: 18rem; margin-block-start: var(--space-3); }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

@@ -21,7 +21,13 @@
         <header :class="$style.hero">
           <CatalogPoster :key="posterKey" :class="$style.poster" :poster-url="item.posterUrl" :title="item.title" />
           <div :class="$style.information">
-            <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
+            <div :class="$style.titleHeading">
+              <h1 ref="heading" :class="$style.heading" :lang="item.titleLocale" tabindex="-1">{{ item.title }}</h1>
+              <p v-if="seriesViewingStatus" :class="$style.viewingStatus" :data-tone="seriesViewingStatus.tone" role="status">
+                <Icon aria-hidden="true" mode="svg" :name="seriesViewingStatus.icon" />
+                {{ seriesViewingStatus.label }}
+              </p>
+            </div>
             <p :class="$style.metadata">{{ metadata }}</p>
             <p v-if="showOriginalTitle" :class="$style.originalTitle" :lang="item.originalTitleLocale">{{ item.originalTitle }}</p>
             <CatalogRatingSummary
@@ -50,10 +56,10 @@
               />
               <section :class="$style.personalAction" aria-label="Follow action">
                 <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Follow</NuxtLink>
-                <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Follow unavailable</AppButton>
+                <AppButton v-else-if="hasSessionError" :class="$style.actionButton" size="medium" disabled variant="secondary">Follow unavailable</AppButton>
                 <template v-else-if="isAuthenticated && followStatus === 'error'">
                   <AppMessage role="alert" tone="danger">We couldn’t check your follow status. Try again.</AppMessage>
-                  <AppButton ref="followRetryButton" aria-label="Retry follow status" :class="$style.actionButton" variant="secondary" @click="retryFollow">Retry</AppButton>
+                  <AppButton ref="followRetryButton" aria-label="Retry follow status" :class="$style.actionButton" size="medium" variant="secondary" @click="retryFollow">Retry</AppButton>
                 </template>
                 <template v-else>
                   <AppButton
@@ -63,6 +69,7 @@
                     :aria-pressed="followPressed"
                     :class="$style.actionButton"
                     :disabled="isFollowBusy"
+                    size="medium"
                     variant="secondary"
                     @click="toggleFollow"
                   >
@@ -77,10 +84,10 @@
               </section>
               <section v-if="isMovie" :class="$style.watchedAction" aria-label="Watched action">
                 <NuxtLink v-if="isAnonymous" :class="$style.actionLink" data-variant="secondary" :to="signInLocation">Mark as watched</NuxtLink>
-                <AppButton v-else-if="hasSessionError" :class="$style.actionButton" disabled variant="secondary">Watched unavailable</AppButton>
+                <AppButton v-else-if="hasSessionError" :class="$style.actionButton" size="medium" disabled variant="secondary">Watched unavailable</AppButton>
                 <template v-else-if="isAuthenticated && watchedStatus === 'error'">
                   <p :class="$style.supportingText">Your viewings are unavailable.</p>
-                  <AppButton ref="watchedRetryButton" aria-label="Retry viewing history" :class="$style.actionButton" variant="secondary" @click="retryWatched">Retry</AppButton>
+                  <AppButton ref="watchedRetryButton" aria-label="Retry viewing history" :class="$style.actionButton" size="medium" variant="secondary" @click="retryWatched">Retry</AppButton>
                 </template>
                 <template v-else>
                   <AppButton
@@ -89,6 +96,7 @@
                     :aria-label="watchedActionLabel"
                     :class="[$style.actionButton, { 'is-watched': watched }]"
                     :disabled="isWatchedBusy"
+                    size="medium"
                     variant="secondary"
                     @click="recordCurrentViewing"
                   >
@@ -104,7 +112,7 @@
                   <p v-if="showViewingCount" :class="$style.supportingText" role="status">{{ viewingCountLabel }}</p>
                 </template>
               </section>
-              <CatalogSeriesRewatch v-if="showSeriesRewatch" :class="$style.watchedAction" :state="episodeWatches" />
+              <CatalogSeriesRewatch v-if="showSeriesRewatch" :class="$style.personalAction" :state="episodeWatches" />
             </div>
           </div>
         </header>
@@ -200,6 +208,7 @@
               :read-error="episodeReadError"
               :save-error-for="episodeSaveErrorFor"
               :saving-episode-id="savingEpisodeId"
+              :saving-action="episodeWatches.savingAction.value"
               :sign-in-location="signInLocation"
               :watched-count="watchedEpisodeCount"
               :watched-episode-ids="watchedEpisodeIds"
@@ -211,10 +220,10 @@
               @rating-saved="refreshTimeline"
               @rating-unauthorized="handleSeasonRatingUnauthorized"
             >
-              <template #season-rating="{ seasonNumber }">
+              <template #season-rating="{ seasonNumber, isActive }">
                 <CatalogSeasonRating
-                  v-if="isEpisodesTabActive"
                   :key="seasonRatingKey(item.id, seasonNumber)"
+                  :is-active="isActive"
                   :catalog-item-id="item.id"
                   :season-number="seasonNumber"
                   :account-id="accountId"
@@ -551,6 +560,34 @@
   const episodeWatches = useCatalogEpisodeWatches(episodeCatalogItemId, accountId, { timeZone })
   const showSeriesRewatch = computed(() => isSeries.value && isAuthenticated.value && episodeWatches.currentViewing.value !== null)
 
+  const seriesViewingStatus = computed(() => {
+    const viewing = episodeWatches.currentViewing.value
+
+    if (!showSeriesRewatch.value || episodeWatches.status.value !== 'loaded' || viewing === null) { return null }
+
+    const labels = {
+      watching: {
+        label: viewing.isRewatch ? 'Rewatching' : 'Watching',
+        icon: viewing.isRewatch ? 'hugeicons:reload' : 'hugeicons:play-circle',
+        tone: 'info'
+      },
+
+      paused: {
+        label: 'Paused',
+        icon: 'hugeicons:pause-circle',
+        tone: 'warning'
+      },
+
+      completed: {
+        label: 'Completed',
+        icon: 'hugeicons:checkmark-circle-02',
+        tone: 'success'
+      }
+    }
+
+    return labels[viewing.status]
+  })
+
   const timeline = useTitleTimeline(catalogItemId, accountId, {
     timeZone,
     viewingContext: episodeWatches.contextKey
@@ -819,20 +856,24 @@
       gap: var(--space-4);
     }
     .heading { margin-block-end: var(--space-3); font-size: 1.75rem; font-weight: 600; line-height: 1.15; }
+    .titleHeading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block-end: var(--space-3); }
+    .titleHeading .heading { margin-block-end: 0; }
+    .viewingStatus { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border: 1px solid; border-radius: var(--radius-round); font-size: 0.75rem; font-weight: 600; }
+    .viewingStatus :global(svg) { inline-size: 1rem; block-size: 1rem; }
+    .viewingStatus[data-tone='info'] { border-color: var(--color-status-info-border); background: var(--color-status-info-background); color: var(--color-info); }
+    .viewingStatus[data-tone='warning'] { border-color: var(--color-status-warning-border); background: var(--color-status-warning-background); color: var(--color-warning); }
+    .viewingStatus[data-tone='success'] { border-color: var(--color-status-success-border); background: var(--color-status-success-background); color: var(--color-success); }
     .metadata, .originalTitle, .supportingText { color: var(--color-text-secondary); }
     .metadata { font-size: 0.875rem; }
     .originalTitle { margin-block-start: var(--space-2); }
     .inlineRating { margin-block-start: var(--space-4); }
     .personalActions { display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-2); margin-block-start: var(--space-4); }
-    .ratingAction, .personalAction, .watchedAction { flex: 1 1 6.5rem; min-inline-size: 0; }
+    .ratingAction, .personalAction, .watchedAction { flex: 1 1 max-content; min-inline-size: min-content; }
     .personalAction, .watchedAction { display: grid; gap: var(--space-3); }
     .watchedAction { flex-basis: 12rem; }
     .actionButton, .actionLink { inline-size: 100%; }
     .actionButton {
       --action-progress-delay: 1s;
-      min-block-size: 3rem;
-      padding: var(--space-3);
-      font-weight: 600;
       .watchedAction > & { display: grid; grid-template-columns: minmax(0, 1fr); }
       &[aria-pressed='true'], &:global(.is-watched),
       &[aria-pressed='true']:disabled, &:global(.is-watched):disabled {
@@ -889,9 +930,9 @@
       align-items: center;
       justify-content: center;
       min-block-size: 3rem;
-      padding: var(--space-3);
+      padding: var(--space-2) var(--space-3);
       border-radius: var(--radius-md);
-      font-weight: 700;
+      font-weight: 600;
       text-decoration: none;
       transition:
         filter var(--duration-fast) var(--ease-standard),
@@ -1008,12 +1049,13 @@
     @media (width >= 64rem) {
       .component { padding: 0 var(--layout-page-wide) var(--space-16); }
       .details, .loading { grid-template-columns: minmax(0, 1fr) var(--layout-rail); gap: var(--space-12) var(--space-8); }
+      .details { grid-template-rows: auto min-content minmax(0, 1fr); }
       .hero { grid-column: 1 / -1; grid-template-columns: 13rem minmax(0, 1fr); gap: var(--space-6); }
       .information, .loadingCopy { padding-block: var(--space-6); }
       .heading { font-size: 3rem; line-height: 1.08; }
       .metadata { font-size: 1rem; }
       .personalActions { gap: var(--space-3); margin-block-start: var(--space-6); }
-      .ratingAction, .personalAction, .watchedAction { flex: 0 1 10rem; }
+      .ratingAction, .personalAction, .watchedAction { flex: 0 1 11rem; }
       .watchedAction { flex-basis: 12rem; }
       .ratingsRail { grid-column: 2; grid-row: 2; align-self: start; margin-block-start: calc(-1 * var(--space-8)); }
       .personalRating { padding: var(--space-3); }
@@ -1025,6 +1067,7 @@
     }
     @container (width < 38rem) {
       .details, .loading { grid-template-columns: minmax(0, 1fr); }
+      .details { grid-template-rows: none; }
       .hero { grid-column: 1; }
       .ratingsRail { grid-column: 1; grid-row: auto; margin-block-start: 0; }
       .seriesContent, .movieOverview, .movieViewings, .timeline { grid-column: 1; grid-row: auto; }

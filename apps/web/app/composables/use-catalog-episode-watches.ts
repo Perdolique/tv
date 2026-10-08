@@ -1,8 +1,9 @@
+/* oxlint-disable eslint/max-lines -- One current-viewing owner keeps mutation retry keys, cancellation and confirmed marks in the same request boundary. */
 import { useRequestFetch } from '#app'
 
 import {
   catalogSeriesWatchesResponseSchema,
-  type CatalogSeriesRewatchInput,
+  type CatalogSeriesCancelRewatchInput,
   type CatalogSeriesUnwatchInput,
   type CatalogSeriesWatchInput,
   type CatalogSeriesWatchesResponse
@@ -15,7 +16,7 @@ import { useRequestCancellation } from '~/composables/use-request-cancellation.t
 
 type EpisodeWatchesStatus = 'idle' | 'loading' | 'loaded' | 'error'
 type EpisodeWatchesUnauthorized = 'load' | 'mutation' | null
-type SeriesMutationBody = CatalogSeriesWatchInput | CatalogSeriesUnwatchInput | CatalogSeriesRewatchInput
+type SeriesMutationBody = CatalogSeriesWatchInput | CatalogSeriesUnwatchInput | CatalogSeriesCancelRewatchInput
 
 interface SeriesMutation {
   action: string;
@@ -54,6 +55,7 @@ function useCatalogEpisodeWatches(
   const unauthorized = ref<EpisodeWatchesUnauthorized>(null)
   const pendingRequests = new Map<string, SeriesMutationBody>()
   const watchedCount = computed(() => watchedEpisodeIds.value.length)
+  const canCancelRewatch = computed(() => currentViewing.value?.isRewatch === true && watchedCount.value === 0)
   const currentViewingId = computed(() => currentViewing.value?.id ?? null)
   const contextKey = computed(() => `${currentViewingId.value ?? 'none'}:${contextVersion.value}`)
 
@@ -305,34 +307,42 @@ function useCatalogEpisodeWatches(
     })
   }
 
-  async function startRewatch(closeStatus?: 'paused' | 'completed'): Promise<boolean> {
+  async function changeRewatch(mode: 'start' | 'cancel'): Promise<boolean> {
     const itemId = catalogItemId.value
+    const viewingId = currentViewingId.value
 
-    if (itemId === null || currentViewingId.value === null || isSaving.value || status.value !== 'loaded') { return false }
+    if (itemId === null || viewingId === null || isSaving.value || status.value !== 'loaded') { return false }
 
-    const action = `rewatch:${closeStatus ?? 'closed'}`
+    const action = `rewatch:${mode}`
     let body = pendingRequests.get(action)
 
     if (body === undefined) {
-      const base = newBody()
+      if (mode === 'cancel') {
+        if (!canCancelRewatch.value) { return false }
 
-      if (base === null) { return false }
+        body = {
+          currentViewingId: viewingId,
+          contextVersion: contextVersion.value
+        }
+      } else {
+        if (watchedCount.value === 0) { return false }
 
-      body = closeStatus === undefined ? base : {
-        ...base,
-        closeStatus
+        body = newBody() ?? undefined
       }
+
+      if (body === undefined) { return false }
 
       pendingRequests.set(action, body)
     }
 
     const encodedId = encodeURIComponent(itemId)
     const url = `/api/catalog/items/${encodedId}/rewatch`
+    const method = mode === 'start' ? 'POST' : 'DELETE'
 
     return mutate({
       action,
       url,
-      method: 'POST',
+      method,
       body,
       episodeId: null
     })
@@ -352,6 +362,8 @@ function useCatalogEpisodeWatches(
 
   return {
     actionError,
+    canCancelRewatch,
+    cancelRewatch: async () => changeRewatch('cancel'),
     rewatchError,
     clearUnauthorized,
     contextKey,
@@ -366,7 +378,7 @@ function useCatalogEpisodeWatches(
     saveErrorFor,
     savingAction,
     savingEpisodeId,
-    startRewatch,
+    startRewatch: async () => changeRewatch('start'),
     status,
     toggle,
     unauthorized,

@@ -1096,6 +1096,7 @@ function seriesWatches(request: Request, itemId: string, watchedIds: Set<string>
     id: itemId,
     catalogItemId: itemId,
     status: 'watching',
+    isRewatch: false,
     recordedAt: '2026-10-08T10:00:00.000000Z',
     revision: 1
   } : null
@@ -1216,6 +1217,7 @@ async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<
     id: itemId,
     catalogItemId: itemId,
     status: 'watching',
+    isRewatch: false,
     recordedAt: '2026-10-08T10:00:00.000000Z',
     revision: 1
   }

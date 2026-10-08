@@ -190,12 +190,17 @@ test('renders empty data and missing title, date and future-season variants', as
   await expect(page.getByRole('link', { name: 'Episode data from TVMaze' })).toHaveAttribute('href', 'https://www.tvmaze.com/')
   await expect(page.getByText('Season 2, E1', { exact: true })).toBeVisible()
 
-  const selector = page.getByRole('combobox', {
-    name: 'Season',
+  const firstSeasonToggle = page.getByRole('button', {
+    name: 'Season 1',
     exact: true
   })
 
-  await expect(selector).toHaveValue('2')
+  const secondSeasonToggle = page.getByRole('button', {
+    name: 'Season 2',
+    exact: true
+  })
+
+  await expect(secondSeasonToggle).toHaveAttribute('aria-expanded', 'true')
 
   await expect(page.getByRole('heading', {
     name: 'Season 2',
@@ -212,8 +217,14 @@ test('renders empty data and missing title, date and future-season variants', as
     exact: true
   })).toBeVisible()
 
-  await expect(watchedButton(episodeCard(page, 'A future title'))).toBeEnabled()
-  await selector.selectOption('1')
+  await expect(watchedButton(episodeCard(page, 'A future title'))).toHaveCount(0)
+
+  await expect(page.getByRole('button', {
+    name: 'Mark all episodes watched',
+    exact: true
+  })).toHaveCount(0)
+
+  await firstSeasonToggle.click()
   await expect(page.getByText('Season 1, E1', { exact: true })).toBeVisible()
   await expect(page.getByText('Season 1, E2', { exact: true })).toBeVisible()
 
@@ -233,6 +244,8 @@ test('renders empty data and missing title, date and future-season variants', as
   })).toBeVisible()
 
   await expect(episodeCard(page, 'Episode 1').locator('time')).toHaveCount(0)
+  await expect(watchedButton(episodeCard(page, 'Episode 1'))).toHaveCount(0)
+
 })
 
 test.describe('independent public episode recovery', () => {

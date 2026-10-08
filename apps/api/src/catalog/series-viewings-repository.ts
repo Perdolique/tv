@@ -15,6 +15,8 @@ import {
 
 import type {
   CatalogSeriesBulkWatchInput,
+  CatalogSeriesCancelRewatchInput,
+  CatalogSeriesViewing,
   CatalogSeriesRewatchInput,
   CatalogSeriesUnwatchInput,
   CatalogSeriesWatchInput,
@@ -45,13 +47,14 @@ interface SeriesEpisode {
 
 interface SeriesRequest {
   action: string;
-  input: CatalogSeriesWatchInput | CatalogSeriesRewatchInput;
+  input: CatalogSeriesWatchInput;
 }
 
 interface SeriesRequestResult {
   request: SeriesRequest;
   result: CatalogSeriesWatchesResponse;
   watchIds: string[];
+  previousStatus?: CatalogSeriesViewing['status'];
 }
 
 interface SeriesViewingCreation {
@@ -114,7 +117,7 @@ async function readSeriesWatches(database: SeriesReader, owner: SeriesOwner): Pr
   const result = await database.execute<CatalogSeriesWatchesResponse & Record<string, unknown>>(sql`
     SELECT coalesce(context.context_version, 0) AS "contextVersion",
       CASE WHEN viewing.id IS NULL THEN NULL ELSE json_build_object('id', viewing.id, 'catalogItemId', viewing.catalog_item_id,
-        'status', viewing.status, 'recordedAt', to_char(viewing.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), 'revision', viewing.revision) END AS "currentViewing",
+        'status', viewing.status, 'isRewatch', EXISTS (SELECT 1 FROM catalog_timeline_events WHERE viewing_id = viewing.id AND kind = 'rewatch_started'), 'recordedAt', to_char(viewing.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), 'revision', viewing.revision) END AS "currentViewing",
       coalesce((SELECT json_agg(watches.catalog_episode_id ORDER BY episodes.season_number, episodes.episode_number, watches.id)
         FROM catalog_viewing_episode_watches watches JOIN catalog_episodes episodes ON episodes.id = watches.catalog_episode_id
         WHERE watches.user_id = ${owner.userId}::uuid AND watches.catalog_item_id = ${owner.catalogItemId}::uuid AND watches.viewing_id = context.current_viewing_id), '[]'::json) AS "watchedEpisodeIds",
@@ -210,7 +213,15 @@ async function replaySeriesRequest(transaction: SeriesTransaction, owner: Series
 }
 
 async function recordSeriesRequest(transaction: SeriesTransaction, owner: SeriesOwner, record: SeriesRequestResult): Promise<void> {
-  const { request, result, watchIds } = record
+  const { request, result, watchIds, previousStatus } = record
+
+  const storedResult = previousStatus === undefined ? result : {
+    watchedEpisodeIds: result.watchedEpisodeIds,
+    watches: result.watches,
+    currentViewing: result.currentViewing,
+    contextVersion: result.contextVersion,
+    previousStatus
+  }
 
   const rows = await transaction.insert(catalogSeriesRequests).values({
     userId: owner.userId,
@@ -218,7 +229,7 @@ async function recordSeriesRequest(transaction: SeriesTransaction, owner: Series
     catalogItemId: owner.catalogItemId,
     action: request.action,
     input: request.input,
-    result,
+    result: storedResult,
     viewingId: result.currentViewing?.id ?? null,
     watchIds
   }).onConflictDoNothing().returning({ requestId: catalogSeriesRequests.requestId })
@@ -632,45 +643,25 @@ async function startSeriesRewatch(database: Database, owner: SeriesOwner, input:
       throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { currentViewingId: 'Mark an episode before starting a rewatch.' } })
     }
 
-    const rows = await transaction.select({
-      status: catalogViewings.status,
-      revision: catalogViewings.revision
-    })
-      .from(catalogViewings)
-      .where(
-        eq(catalogViewings.id, context.currentViewingId)
-      )
+    const previous = await readSeriesWatches(transaction, owner)
+    const viewing = previous.currentViewing
 
-    const [viewing] = rows
+    if (viewing === null) { throw new Error('Current series viewing is missing') }
 
-    if (viewing === undefined) {
-      throw new Error('Current series viewing is missing')
+    if (previous.watches.length === 0) {
+      throw new CatalogHttpError('CONFLICT', 409, { fields: { currentViewingId: 'Watch an episode before starting another viewing.' } })
     }
 
     const actionAt = await captureSeriesActionTime(transaction)
 
     if (viewing.status === 'watching') {
-      if (input.closeStatus === undefined) {
-        throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { closeStatus: 'Choose paused or completed for the current viewing.' } })
-      }
-
+      // A new viewing takes over the active context without recording a user pause or completion.
       await transaction.update(catalogViewings).set({
-        status: input.closeStatus,
+        status: 'paused',
         revision: viewing.revision + 1
-      })
-        .where(
-          eq(catalogViewings.id, context.currentViewingId)
-        )
-
-      const kind = input.closeStatus === 'paused' ? 'series_paused' : 'series_completed'
-
-      await transaction.insert(catalogTimelineEvents).values({
-        userId: owner.userId,
-        catalogItemId: owner.catalogItemId,
-        viewingId: context.currentViewingId,
-        kind,
-        occurredAt: sql`${actionAt}::timestamptz`
-      })
+      }).where(
+        eq(catalogViewings.id, context.currentViewingId)
+      )
     }
 
     await createSeriesViewing(transaction, owner, {
@@ -684,11 +675,95 @@ async function startSeriesRewatch(database: Database, owner: SeriesOwner, input:
     await recordSeriesRequest(transaction, owner, {
       request,
       result: response,
-      watchIds: []
+      watchIds: [],
+      previousStatus: viewing.status
     })
 
     return response
   })
 }
 
-export { findSeriesWatches, markSeriesEpisodeWatched, markSeriesEpisodesWatched, startSeriesRewatch, unmarkSeriesEpisodeWatched }
+async function cancelSeriesRewatch(database: Database, owner: SeriesOwner, input: CatalogSeriesCancelRewatchInput): Promise<CatalogSeriesWatchesResponse> {
+  return database.transaction(async transaction => {
+    const context = await lockSeriesContext(transaction, owner)
+    const target = and(eq(catalogViewings.userId, owner.userId), eq(catalogViewings.catalogItemId, owner.catalogItemId), eq(catalogViewings.id, input.currentViewingId))
+
+    const targets = await transaction.select({
+      recordedAt: sql<string>`to_char(${catalogViewings.recordedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+    }).from(catalogViewings).where(target).for('update')
+
+    const [viewing] = targets
+
+    // A repeated cancellation must not touch a later viewing.
+    if (viewing === undefined) { return readSeriesWatches(transaction, owner) }
+
+    assertCurrentContext(context, input)
+
+    const current = await readSeriesWatches(transaction, owner)
+
+    if (current.currentViewing?.isRewatch !== true || current.watches.length > 0) {
+      throw new CatalogHttpError('CONFLICT', 409, { fields: { currentViewingId: 'Only an empty new viewing can be canceled.' } })
+    }
+
+    const requests = await transaction.select({
+      previousViewingId: sql<string | null>`${catalogSeriesRequests.input}->>'currentViewingId'`,
+      previousStatus: sql<CatalogSeriesViewing['status'] | null>`${catalogSeriesRequests.result}->>'previousStatus'`,
+      hadCloseStatus: sql<boolean>`${catalogSeriesRequests.input} ? 'closeStatus'`
+    }).from(catalogSeriesRequests).where(
+      and(eq(catalogSeriesRequests.userId, owner.userId), eq(catalogSeriesRequests.catalogItemId, owner.catalogItemId), eq(catalogSeriesRequests.viewingId, input.currentViewingId), eq(catalogSeriesRequests.action, 'rewatch'), eq(catalogSeriesRequests.tombstoned, false))
+    ).limit(1)
+
+    const [creation] = requests
+
+    if (creation?.previousViewingId === undefined || creation.previousViewingId === null) {
+      throw new CatalogHttpError('CONFLICT', 409)
+    }
+
+    const previousTarget = and(eq(catalogViewings.userId, owner.userId), eq(catalogViewings.catalogItemId, owner.catalogItemId), eq(catalogViewings.id, creation.previousViewingId))
+
+    const previousRows = await transaction.select({
+      status: sql<CatalogSeriesViewing['status']>`${catalogViewings.status}`,
+      revision: catalogViewings.revision,
+
+      hasClosingEvent: sql<boolean>`EXISTS (SELECT 1 FROM catalog_timeline_events
+        WHERE viewing_id = ${creation.previousViewingId}::uuid AND kind IN ('series_paused', 'series_completed')
+        AND occurred_at = ${viewing.recordedAt}::timestamptz)`
+    }).from(catalogViewings).where(previousTarget).for('update')
+
+    const [previous] = previousRows
+
+    if (previous === undefined) { throw new CatalogHttpError('CONFLICT', 409) }
+
+    const previousStatus = creation.previousStatus ?? (creation.hadCloseStatus && previous.hasClosingEvent ? 'watching' : previous.status)
+    const condition = ownerCondition(owner)
+
+    await transaction.update(catalogViewingContexts).set({
+      currentViewingId: creation.previousViewingId,
+      contextVersion: context.contextVersion + 1
+    }).where(condition)
+
+    await transaction.update(catalogSeriesRequests).set({ tombstoned: true }).where(
+      and(eq(catalogSeriesRequests.userId, owner.userId), eq(catalogSeriesRequests.catalogItemId, owner.catalogItemId), eq(catalogSeriesRequests.viewingId, input.currentViewingId))
+    )
+
+    await transaction.delete(catalogViewings).where(target)
+
+    if (previous.status !== previousStatus) {
+      await transaction.update(catalogViewings).set({
+        status: previousStatus,
+        revision: previous.revision + 1
+      }).where(previousTarget)
+    }
+
+    if (creation.hadCloseStatus) {
+      // Earlier clients recorded a closing event and the new start at the same action time.
+      await transaction.delete(catalogTimelineEvents).where(
+        and(eq(catalogTimelineEvents.viewingId, creation.previousViewingId), sql`${catalogTimelineEvents.kind} IN ('series_paused', 'series_completed')`, sql`${catalogTimelineEvents.occurredAt} = ${viewing.recordedAt}::timestamptz`)
+      )
+    }
+
+    return readSeriesWatches(transaction, owner)
+  })
+}
+
+export { cancelSeriesRewatch, findSeriesWatches, markSeriesEpisodeWatched, markSeriesEpisodesWatched, startSeriesRewatch, unmarkSeriesEpisodeWatched }

@@ -59,6 +59,7 @@
     --shadow-float: 0 1rem 2.5rem light-dark(rgb(20 24 28 / 12%), rgb(0 0 0 / 28%));
 
     --duration-fast: 120ms;
+    --duration-disclosure: 240ms;
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 
     --layout-page-mobile: 1rem;

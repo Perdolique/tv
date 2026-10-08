@@ -16,6 +16,7 @@
     <CatalogRating
       :class="$style.editor"
       :account-id="accountId"
+      :is-active="isActive"
       :target-key="targetKey"
       :label="editorLabel"
       :action-label="actionLabel"
@@ -47,6 +48,7 @@
     accountId: string | null;
     catalogItemId: string;
     hasSessionError: boolean;
+    isActive: boolean;
     isAnonymous: boolean;
     seasonNumber: number;
     signInLocation: RouteLocationRaw;

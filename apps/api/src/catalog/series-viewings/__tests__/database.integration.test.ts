@@ -8,6 +8,7 @@ import { afterAll, afterEach, assert, beforeEach, describe, expect, it } from 'v
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
 
 import {
+  cancelSeriesRewatch,
   findSeriesWatches,
   markSeriesEpisodeWatched,
   markSeriesEpisodesWatched,
@@ -255,8 +256,7 @@ describe('series viewing persistence', () => {
       requestId: rewatchRequestId,
       currentViewingId: firstId,
       contextVersion: 1,
-      timeZone: 'UTC',
-      closeStatus: 'paused' as const
+      timeZone: 'UTC'
     }
 
     const second = await startSeriesRewatch(database, owner, rewatchInput)
@@ -272,9 +272,15 @@ describe('series viewing persistence', () => {
       requestId: completedRewatchRequestId,
       currentViewingId: secondId,
       contextVersion: 2,
-      timeZone: 'UTC',
-      closeStatus: 'completed' as const
+      timeZone: markInput.timeZone
     }
+
+    await expect(startSeriesRewatch(database, owner, completedRewatchInput)).rejects.toMatchObject({ status: 409 })
+
+    await markSeriesEpisodeWatched(database, userId, episodeIds[0], {
+      ...completedRewatchInput,
+      requestId: randomUUID()
+    })
 
     const third = await startSeriesRewatch(database, owner, completedRewatchInput)
     const markReplay = await markSeriesEpisodeWatched(database, userId, episodeIds[0], markInput)
@@ -285,12 +291,12 @@ describe('series viewing persistence', () => {
 
     const watches = await client.query('SELECT id FROM catalog_viewing_episode_watches WHERE user_id = $1', [userId])
 
-    expect(watches.rows).toHaveLength(1)
+    expect(watches.rows).toHaveLength(2)
 
     const active = await client.query('SELECT id FROM catalog_viewings WHERE user_id = $1 AND status = \'watching\'', [userId])
 
     expect(active.rows).toHaveLength(1)
-    await expect(events()).resolves.toStrictEqual(['series_started', 'episode_watched', 'series_paused', 'rewatch_started', 'series_completed', 'rewatch_started'])
+    await expect(events()).resolves.toStrictEqual(['series_started', 'episode_watched', 'rewatch_started', 'episode_watched', 'rewatch_started'])
 
     const staleRequestId = randomUUID()
 
@@ -403,6 +409,153 @@ describe('series viewing persistence', () => {
       await client.query('ROLLBACK')
       await writer.end()
     }
+  })
+
+  it('cancels an empty rewatch atomically, restores marks, and rejects late retries that could recreate it', async () => {
+    const first = await markSeriesEpisodeWatched(database, userId, firstEpisodeId, initialInput())
+    const firstId = first.currentViewing?.id
+
+    assert(firstId !== undefined)
+
+    const input = {
+      requestId: randomUUID(),
+      currentViewingId: firstId,
+      contextVersion: 1,
+      timeZone: 'UTC'
+    }
+
+    const next = await startSeriesRewatch(database, owner, input)
+    const nextId = next.currentViewing?.id
+
+    assert(nextId !== undefined)
+    expect(next.currentViewing?.isRewatch).toBe(true)
+    await expect(events()).resolves.toStrictEqual(['series_started', 'episode_watched', 'rewatch_started'])
+
+    const cancellation = {
+      currentViewingId: nextId,
+      contextVersion: 2
+    }
+
+    await expect(cancelSeriesRewatch(database, owner, {
+      ...cancellation,
+      contextVersion: 1
+    })).rejects.toMatchObject({ status: 409 })
+
+    await client.query('CREATE FUNCTION fail_rewatch_cancel() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION \'cancel rollback probe\'; END $$')
+    await client.query('CREATE TRIGGER fail_rewatch_cancel BEFORE DELETE ON catalog_viewings FOR EACH ROW EXECUTE FUNCTION fail_rewatch_cancel()')
+
+    try {
+      await expect(cancelSeriesRewatch(database, owner, cancellation)).rejects.toMatchObject({ cause: { message: 'cancel rollback probe' } })
+      await expect(findSeriesWatches(database, owner)).resolves.toStrictEqual(next)
+    } finally {
+      await client.query('DROP TRIGGER fail_rewatch_cancel ON catalog_viewings')
+      await client.query('DROP FUNCTION fail_rewatch_cancel()')
+    }
+
+    const restored = await cancelSeriesRewatch(database, owner, cancellation)
+
+    expect(restored.watches).toStrictEqual(first.watches)
+    expect(restored.currentViewing?.id).toBe(firstId)
+    expect(restored.currentViewing?.status).toBe('watching')
+    expect(restored.currentViewing?.isRewatch).toBe(false)
+    expect(restored.contextVersion).toBe(3)
+    await expect(events()).resolves.toStrictEqual(['series_started', 'episode_watched'])
+    await expect(cancelSeriesRewatch(database, owner, cancellation)).resolves.toStrictEqual(restored)
+    await expect(startSeriesRewatch(database, owner, input)).rejects.toMatchObject({ status: 409 })
+
+    await expect(markSeriesEpisodeWatched(database, userId, secondEpisodeId, {
+      requestId: randomUUID(),
+      currentViewingId: nextId,
+      contextVersion: 2,
+      timeZone: 'UTC'
+    })).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('does not cancel a rewatch once an episode has been marked', async () => {
+    const first = await markSeriesEpisodeWatched(database, userId, firstEpisodeId, initialInput())
+    const firstId = first.currentViewing?.id
+
+    assert(firstId !== undefined)
+
+    const next = await startSeriesRewatch(database, owner, {
+      requestId: randomUUID(),
+      currentViewingId: firstId,
+      contextVersion: 1,
+      timeZone: 'UTC'
+    })
+
+    const nextId = next.currentViewing?.id
+
+    assert(nextId !== undefined)
+
+    const marked = await markSeriesEpisodeWatched(database, userId, firstEpisodeId, {
+      requestId: randomUUID(),
+      currentViewingId: nextId,
+      contextVersion: 2,
+      timeZone: 'UTC'
+    })
+
+    await expect(cancelSeriesRewatch(database, owner, {
+      currentViewingId: nextId,
+      contextVersion: 2
+    })).rejects.toMatchObject({ status: 409 })
+
+    await expect(findSeriesWatches(database, owner)).resolves.toStrictEqual(marked)
+  })
+
+  it.each([{
+    name: 'automatic pause',
+    closeStatus: 'paused',
+    kind: 'series_paused',
+    restoredStatus: 'watching'
+  }, {
+    name: 'automatic completion',
+    closeStatus: 'completed',
+    kind: 'series_completed',
+    restoredStatus: 'watching'
+  }, {
+    name: 'previously completed viewing without an automatic close',
+    closeStatus: 'completed',
+    kind: null,
+    restoredStatus: 'completed'
+  }] as const)('cancels an older empty rewatch and restores its prior status: $name', async ({ closeStatus, kind, restoredStatus }) => {
+    const first = await markSeriesEpisodeWatched(database, userId, firstEpisodeId, initialInput())
+    const firstId = first.currentViewing?.id
+
+    assert(firstId !== undefined)
+
+    const nextId = randomUUID()
+    const requestId = randomUUID()
+    const captured = await client.query<{ action_at: string }>('SELECT to_char(clock_timestamp() AT TIME ZONE \'UTC\', \'YYYY-MM-DD"T"HH24:MI:SS.US"Z"\') AS action_at')
+    const actionAt = captured.rows[0]?.action_at
+
+    assert(actionAt !== undefined)
+    await client.query('UPDATE catalog_viewings SET status = $2, revision = revision + 1 WHERE id = $1', [firstId, closeStatus])
+    await client.query('INSERT INTO catalog_viewings (id, user_id, catalog_item_id, status, recorded_at) VALUES ($1, $2, $3, \'watching\', $4)', [nextId, userId, catalogItemId, actionAt])
+    await client.query('UPDATE catalog_viewing_contexts SET current_viewing_id = $3, context_version = 2 WHERE user_id = $1 AND catalog_item_id = $2', [userId, catalogItemId, nextId])
+    await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, viewing_id, kind, occurred_at) SELECT $1::uuid, $2::uuid, $3::uuid, $4::text, $5::timestamptz WHERE $4::text IS NOT NULL', [userId, catalogItemId, firstId, kind, actionAt])
+    await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, viewing_id, kind, occurred_at) VALUES ($1, $2, $3, \'rewatch_started\', $4)', [userId, catalogItemId, nextId, actionAt])
+
+    const input = {
+      requestId,
+      currentViewingId: firstId,
+      contextVersion: 1,
+      timeZone: 'UTC',
+      closeStatus
+    }
+
+    const next = await findSeriesWatches(database, owner)
+
+    await client.query('INSERT INTO catalog_series_requests (user_id, request_id, catalog_item_id, action, input, result, viewing_id, watch_ids) VALUES ($1, $2, $3, \'rewatch\', $4::jsonb, $5::jsonb, $6, \'[]\'::jsonb)', [userId, requestId, catalogItemId, JSON.stringify(input), JSON.stringify(next), nextId])
+
+    const restored = await cancelSeriesRewatch(database, owner, {
+      currentViewingId: nextId,
+      contextVersion: 2
+    })
+
+    expect(restored.currentViewing?.status).toBe(restoredStatus)
+    expect(restored.watches).toStrictEqual(first.watches)
+    await expect(events()).resolves.toStrictEqual(['series_started', 'episode_watched'])
   })
 
   it('enforces owner, episode item, series status and the single active viewing in PostgreSQL', async () => {

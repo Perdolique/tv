@@ -37,15 +37,18 @@ const catalogSeriesUnwatchSchema = v.strictObject({
   watchId: idSchema
 })
 
-const catalogSeriesRewatchSchema = v.strictObject({
-  ...requestEntries,
-  closeStatus: v.optional(v.picklist(['paused', 'completed']))
+const catalogSeriesRewatchSchema = v.strictObject(requestEntries)
+
+const catalogSeriesCancelRewatchSchema = v.strictObject({
+  currentViewingId: idSchema,
+  contextVersion: versionSchema
 })
 
 const catalogSeriesViewingSchema = v.strictObject({
   id: idSchema,
   catalogItemId: idSchema,
   status: v.picklist(['watching', 'paused', 'completed']),
+  isRewatch: v.boolean(),
   recordedAt: v.pipe(v.string(), v.isoTimestamp()),
   revision: v.pipe(v.number(), v.integer(), v.minValue(1))
 })
@@ -67,6 +70,7 @@ const catalogSeriesWatchesResponseSchema = v.strictObject({
 type CatalogSeriesWatchInput = v.InferOutput<typeof catalogSeriesWatchSchema>
 type CatalogSeriesBulkWatchInput = v.InferOutput<typeof catalogSeriesBulkWatchSchema>
 type CatalogSeriesUnwatchInput = v.InferOutput<typeof catalogSeriesUnwatchSchema>
+type CatalogSeriesCancelRewatchInput = v.InferOutput<typeof catalogSeriesCancelRewatchSchema>
 type CatalogSeriesRewatchInput = v.InferOutput<typeof catalogSeriesRewatchSchema>
 type CatalogSeriesViewing = v.InferOutput<typeof catalogSeriesViewingSchema>
 type CatalogSeriesEpisodeWatch = v.InferOutput<typeof catalogSeriesEpisodeWatchSchema>
@@ -74,6 +78,7 @@ type CatalogSeriesWatchesResponse = v.InferOutput<typeof catalogSeriesWatchesRes
 
 export {
   catalogSeriesBulkWatchSchema,
+  catalogSeriesCancelRewatchSchema,
   catalogSeriesRewatchSchema,
   catalogSeriesUnwatchSchema,
   catalogSeriesWatchSchema,
@@ -83,6 +88,7 @@ export {
 
 export type {
   CatalogSeriesBulkWatchInput,
+  CatalogSeriesCancelRewatchInput,
   CatalogSeriesEpisodeWatch,
   CatalogSeriesRewatchInput,
   CatalogSeriesUnwatchInput,

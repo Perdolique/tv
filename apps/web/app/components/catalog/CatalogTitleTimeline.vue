@@ -11,6 +11,7 @@
       <h3 :class="$style.date"><time :datetime="day.date">{{ day.label }}</time></h3>
       <ol :class="$style.entries">
         <li v-for="row in day.rows" :key="row.key" :class="$style.entry">
+          <span :class="$style.marker" aria-hidden="true" />
           <span :class="[$style.icon, { 'is-accent': row.isRating }]" aria-hidden="true"><Icon mode="svg" :name="row.icon" /></span>
           <div :class="$style.copy">
             <div :class="$style.rowHeader">
@@ -19,37 +20,18 @@
               <p v-if="row.rating" :class="$style.rating">{{ row.rating.previous }}<span v-if="row.rating.hasPrevious"> → </span><span :class="[$style.newScore, { 'is-changed': row.rating.hasPrevious }]">{{ row.rating.current }}</span><span v-if="row.rating.showScale"> / 10</span></p>
             </div>
             <p v-if="row.detail" :class="$style.supporting">{{ row.detail }}</p>
-            <template v-if="row.episodeGroup">
-              <button :id="row.toggleId" :class="$style.linkButton" type="button" :aria-expanded="row.expanded" :aria-controls="row.panelId" @click="toggleGroup(row.episodeGroup)">
-                {{ row.groupLabel }}<Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-down-01" />
-              </button>
-              <div v-if="row.expanded" :id="row.panelId" :class="$style.group" :aria-busy="row.group?.isLoading || undefined">
-                <ol v-if="row.hasEpisodes" :class="$style.episodes">
-                  <li v-for="episode in row.episodes" :key="episode.id" :class="$style.episode">
-                    <span>S{{ episode.seasonNumber }} E{{ episode.episodeNumber }}</span>
-                    <span>{{ episode.title }}</span>
-                  </li>
-                </ol>
-                <p v-if="row.group?.isLoading" :class="$style.supporting" role="status">Loading episodes…</p>
-                <div v-if="row.group?.error" :class="$style.error">
-                  <AppMessage role="alert" tone="danger">{{ row.group.error }}</AppMessage>
-                  <button type="button" :class="$style.linkButton" @click="loadGroup(row.episodeGroup, row.group.isLoaded)">Retry episodes</button>
-                </div>
-                <button v-else-if="row.group?.nextCursor" type="button" :class="$style.linkButton" :disabled="row.group.isLoading" @click="loadGroup(row.episodeGroup, true)">Load more episodes</button>
-              </div>
-            </template>
           </div>
         </li>
       </ol>
     </div>
-    <button v-if="canExpand" :class="$style.footer" type="button" :aria-expanded="showFull" @click="expandHistory">Show full history<Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-right-02" /></button>
-    <button v-else-if="showLoadMore" :class="$style.footer" type="button" :disabled="isLoadingMore" @click="more">{{ loadMoreLabel }}<Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-right-02" /></button>
+    <AppButton v-if="canExpand" :class="$style.footer" size="small" variant="text" :aria-expanded="showFull" @click="expandHistory">Show full history<Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-right-02" /></AppButton>
+    <AppButton v-else-if="showLoadMore" :class="$style.footer" size="small" variant="text" :disabled="isLoadingMore" @click="more">{{ loadMoreLabel }}<Icon aria-hidden="true" mode="svg" name="hugeicons:arrow-right-02" /></AppButton>
     <p :class="$style.accessible" role="status">{{ announcement }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-  import type { CatalogTimelineItem, CatalogTimelineEpisodeSeason } from '@tv/shared/catalog-timeline'
+  import type { CatalogTimelineItem } from '@tv/shared/catalog-timeline'
   import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
   import type { TitleTimelineState } from '~/composables/use-title-timeline.ts'
   import AppButton from '~/components/ui/AppButton.vue'
@@ -76,8 +58,6 @@
   const historyRetry = useTemplateRef('historyRetry')
   const region = useTemplateRef('region')
   const showFull = ref(false)
-  const expandedGroups = new Set<string>()
-  const expanded = ref(expandedGroups)
   const announcement = ref('')
   const isLoading = computed(() => status.value === 'idle' || status.value === 'loading')
   const isEmpty = computed(() => status.value === 'loaded' && items.value.length === 0)
@@ -123,26 +103,6 @@
     return result
   })
 
-  function groupSummary(seasons: CatalogTimelineEpisodeSeason[]): string {
-    const summaries = seasons.map(season => {
-      const ranges = season.ranges.map(range => {
-        const first = `E${range.firstEpisodeNumber}`
-        const rangeLabel = range.firstEpisodeNumber === range.lastEpisodeNumber ? first : `${first}–E${range.lastEpisodeNumber}`
-
-        return rangeLabel
-      })
-
-      const episodes = ranges.join(', ')
-      const summary = `S${season.seasonNumber} ${episodes}`
-
-      return summary
-    })
-
-    const summary = summaries.join(' · ')
-
-    return summary
-  }
-
   function eventCopy(item: CatalogTimelineItem) {
     if (item.kind === 'movie_viewing') {
       const dates: string[] = []
@@ -173,13 +133,12 @@
     if (item.kind === 'episode_group') {
       const noun = item.totalCount === 1 ? 'episode' : 'episodes'
       const label = `Watched ${item.totalCount} ${noun}`
-      const detail = groupSummary(item.seasons)
 
       return {
-      label,
-      detail,
-      icon: 'hugeicons:play-circle'
-    }
+        label,
+        detail: '',
+        icon: 'hugeicons:play-circle'
+      }
     }
 
     if (item.kind === 'rating_changed') {
@@ -201,42 +160,42 @@
       const detail = `Season ${item.seasonNumber}`
 
       return {
-      label: 'Completed season',
-      detail,
-      icon: 'hugeicons:layers-01'
-    }
+        label: 'Completed season',
+        detail,
+        icon: 'hugeicons:layers-01'
+      }
     }
 
     if (item.kind === 'available_completed') {
       return {
-      label: 'Finished watching',
-      detail: 'All available episodes',
-      icon: 'hugeicons:checkmark-circle-02'
-    }
+        label: 'Finished watching',
+        detail: 'All available episodes',
+        icon: 'hugeicons:checkmark-circle-02'
+      }
     }
 
     if (item.kind === 'rewatch_started') {
       return {
-      label: 'Started rewatch',
-      detail: '',
-      icon: 'hugeicons:reload'
-    }
+        label: 'Started rewatch',
+        detail: '',
+        icon: 'hugeicons:reload'
+      }
     }
 
     if (item.kind === 'series_started') {
       return {
-      label: 'Started watching',
-      detail: '',
-      icon: 'hugeicons:play-circle'
-    }
+        label: 'Started watching',
+        detail: '',
+        icon: 'hugeicons:play-circle'
+      }
     }
 
     if (item.kind === 'series_paused') {
       return {
-      label: 'Paused watching',
-      detail: '',
-      icon: 'hugeicons:pause-circle'
-    }
+        label: 'Paused watching',
+        detail: '',
+        icon: 'hugeicons:pause-circle'
+      }
     }
 
     return {
@@ -273,27 +232,8 @@
   function prepareRow(item: CatalogTimelineItem) {
     const key = timelineItemKey(item)
     const copy = eventCopy(item)
-    const episodeGroup = item.kind === 'episode_group' ? item : null
-    const group = episodeGroup === null ? null : state.groupFor(key)
-    const isExpanded = expanded.value.has(key)
-    const groupEpisodes = group?.items ?? []
-
-    const episodes = groupEpisodes.map(episode => {
-      const title = episode.sourceTitle || 'Untitled episode'
-
-      return {
-        id: episode.id,
-        seasonNumber: episode.seasonNumber,
-        episodeNumber: episode.episodeNumber,
-        title
-      }
-    })
-
     const rating = item.kind === 'rating_changed' ? ratingCopy(item) : null
     const movieLocation = item.kind === 'movie_viewing' ? viewingLocation(item) : null
-    const groupLabel = isExpanded ? 'Hide episodes' : 'View episodes'
-    const panelId = `${headingId}-${key}`
-    const toggleId = `${panelId}-toggle`
 
     return {
       key,
@@ -302,51 +242,10 @@
       icon: copy.icon,
       rating,
       movieLocation,
-      isRating: item.kind === 'rating_changed',
-      expanded: isExpanded,
-      episodeGroup,
-      episodes,
-      hasEpisodes: episodes.length > 0,
-      groupLabel,
-      panelId,
-      toggleId,
-      group
+      isRating: item.kind === 'rating_changed'
     }
   }
 
-  async function toggleGroup(item: Extract<CatalogTimelineItem, { kind: 'episode_group' }>): Promise<void> {
-    const key = timelineItemKey(item)
-
-    if (expanded.value.has(key)) {
-      expanded.value.delete(key)
-
-      return
-    }
-
-    expanded.value.add(key)
-
-    const group = state.groupFor(key)
-
-    if (!group.isLoaded) { await state.loadEpisodes(item) }
-  }
-  async function loadGroup(item: Extract<CatalogTimelineItem, { kind: 'episode_group' }>, morePage: boolean): Promise<void> {
-    const key = timelineItemKey(item)
-    const group = state.groupFor(key)
-    const shouldLoadMore = morePage && group.nextCursor !== null
-    const focusOwner = globalThis.document.activeElement
-
-    await state.loadEpisodes(item, shouldLoadMore)
-    await nextTick()
-
-    if (focusOwner !== null && !focusOwner.isConnected && globalThis.document.activeElement === globalThis.document.body) {
-      const rawToggleId = `${headingId}-${key}-toggle`
-      const toggleId = globalThis.CSS.escape(rawToggleId)
-      const selector = `#${toggleId}`
-      const toggle = region.value?.querySelector<HTMLButtonElement>(selector)
-
-      toggle?.focus()
-    }
-  }
   async function expandHistory(): Promise<void> {
     showFull.value = true
 
@@ -377,27 +276,9 @@
     if (focusOwner !== null && !focusOwner.isConnected && globalThis.document.activeElement === globalThis.document.body) { heading.value?.focus() }
   }
 
-  watch(items, async (nextItems, previousItems) => {
+  watch(items, async () => {
     const focusOwner = globalThis.document.activeElement
     const ownedFocus = focusOwner instanceof globalThis.HTMLElement && region.value?.contains(focusOwner)
-
-    for (const id of expanded.value) {
-      const previous = previousItems.find(item => {
-        const key = timelineItemKey(item)
-
-        return key === id
-      })
-
-      const replacement = nextItems.find(item => {
-        const key = timelineItemKey(item)
-
-        return key === id
-      })
-
-      const sameSnapshot = previous?.kind === 'episode_group' && replacement?.kind === 'episode_group' && previous.episodesCursor === replacement.episodesCursor
-
-      if (!sameSnapshot) { expanded.value.delete(id) }
-    }
 
     await nextTick()
 
@@ -415,8 +296,12 @@
     .date, .supporting { color: var(--color-text-secondary); font-size: 0.875rem; }
     .date { font-weight: 400; font-variant-numeric: tabular-nums; }
     .entries { display: grid; padding: 0; list-style: none; }
-    .entry { position: relative; display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: var(--space-3); margin-inline-start: var(--space-4); padding: var(--space-3) 0 var(--space-3) var(--space-4); border-inline-start: 1px solid var(--color-border-strong); }
-    .entry::before { position: absolute; inset-inline-start: -0.25rem; inset-block-start: 1.5rem; inline-size: 0.5rem; block-size: 0.5rem; border-radius: var(--radius-round); background: var(--color-accent-fill); content: ''; }
+    .entry { position: relative; display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: var(--space-3); margin-inline-start: var(--space-4); padding: var(--space-3) 0 var(--space-3) var(--space-4); }
+    .entry::before { position: absolute; inset-inline-start: 0; inset-block: 0; inline-size: 1px; background: var(--color-border-strong); content: ''; }
+    .entry:first-child::before { inset-block-start: 1.75rem; }
+    .entry:last-child::before { inset-block-end: calc(100% - 1.75rem); }
+    .entry:only-child::before { display: none; }
+    .marker { position: absolute; inset-inline-start: calc(-0.25rem + 0.5px); inset-block-start: 1.5rem; inline-size: 0.5rem; block-size: 0.5rem; border-radius: var(--radius-round); background: var(--color-accent-fill); }
     .icon { display: flex; color: var(--color-text-primary); &:global(.is-accent) { color: var(--color-accent); } }
     .icon :global(svg) { inline-size: 1.5rem; block-size: 1.5rem; }
     .copy { display: grid; gap: var(--space-1); }
@@ -425,15 +310,7 @@
     .rating { font-variant-numeric: tabular-nums; }
     .newScore { &:global(.is-changed) { color: var(--color-accent); } }
     .movieLink { color: var(--color-text-primary); text-underline-offset: 0.2em; }
-    .linkButton, .footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-block-size: 2.75rem; padding: 0; border: 0; background: transparent; color: var(--color-accent); text-align: start; cursor: pointer; }
-    .linkButton { justify-self: end; font-size: 0.875rem; }
-    .footer { padding-block-start: var(--space-3); border-block-start: 1px solid var(--color-border); }
-    .linkButton :global(svg), .footer :global(svg) { flex: 0 0 auto; inline-size: 1.25rem; block-size: 1.25rem; }
-    .linkButton:disabled, .footer:disabled { opacity: 0.6; cursor: wait; }
-    .group, .error { display: grid; gap: var(--space-3); }
-    .episodes { display: grid; gap: var(--space-3); padding: 0; list-style: none; }
-    .episode { display: grid; gap: var(--space-1); font-size: 0.875rem; }
-    .episode > :first-child { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+    .footer { justify-content: space-between; inline-size: 100%; padding-block-start: var(--space-4); border-block-start: 1px solid var(--color-border); border-radius: 0; text-align: start; }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   }
 </style>

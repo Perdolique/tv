@@ -11,6 +11,7 @@
     />
     <CatalogRating
       :account-id="accountId"
+      :is-active="isActive"
       :target-key="episode.id"
       :label="editorLabel"
       action-label="Rate episode"
@@ -45,6 +46,7 @@
     accountId: string | null;
     episode: CatalogEpisode;
     hasSessionError: boolean;
+    isActive: boolean;
     isAnonymous: boolean;
     signInLocation: RouteLocationRaw;
     ratings: ReturnType<typeof useCatalogEpisodeRatings>;

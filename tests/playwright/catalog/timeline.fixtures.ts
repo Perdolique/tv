@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import type { CatalogSeriesWatchesResponse } from '../../../packages/shared/src/catalog-series.ts'
-import type { CatalogTimelineItem, CatalogTimelineEpisode } from '../../../packages/shared/src/catalog-timeline.ts'
+import type { CatalogTimelineItem } from '../../../packages/shared/src/catalog-timeline.ts'
 import { expect } from '../fixtures/global.fixtures.ts'
 import { chernobyl } from './details.fixtures.ts'
 
@@ -102,26 +102,6 @@ const history = [
   }
 ] as const satisfies readonly CatalogTimelineItem[]
 
-const groupEpisodes: CatalogTimelineEpisode[] = Array.from({ length: 25 }, (_value, index) => {
-  const sequence = String(index + 100)
-  const suffix = sequence.padStart(12, '0')
-  const id = `50000000-0000-7000-8000-${suffix}`
-  const watchId = `60000000-0000-7000-8000-${suffix}`
-  const catalogEpisodeId = `30000000-0000-7000-8000-${suffix}`
-  const episodeNumber = index === 0 ? 1 : index + 2
-  const sourceTitle = `History episode ${index + 1}`
-
-  return {
-    id,
-    watchId,
-    catalogEpisodeId,
-    seasonNumber: 1,
-    episodeNumber,
-    sourceTitle,
-    markedAt: group.occurredAt
-  }
-})
-
 function seriesResponse(episodeIds: string[] = [], currentId: string | null = null, version = 0): CatalogSeriesWatchesResponse {
   const watches = episodeIds.map(id => {return {
     id,
@@ -134,6 +114,7 @@ function seriesResponse(episodeIds: string[] = [], currentId: string | null = nu
     id: currentId,
     catalogItemId: chernobyl.id,
     status: 'watching',
+    isRewatch: currentId === nextViewingId,
     recordedAt: '2026-10-08T12:00:00.000000Z',
     revision: 1
   }
@@ -148,7 +129,6 @@ function seriesResponse(episodeIds: string[] = [], currentId: string | null = nu
 
 async function mockHistory(page: Page): Promise<void> {
   const historyRoute = `**${timelinePath}?*`
-  const episodesRoute = `**${timelinePath}/episodes?*`
 
   await page.route(historyRoute, async (route) => {
     const request = route.request()
@@ -160,26 +140,6 @@ async function mockHistory(page: Page): Promise<void> {
     const hasCursor = url.searchParams.has('cursor')
     const items = hasCursor ? [] : history
     const nextCursor = hasCursor ? null : 'next-history'
-
-    await route.fulfill({ json: {
-      items,
-      nextCursor
-    } })
-  })
-
-  await page.route(episodesRoute, async (route) => {
-    const request = route.request()
-    const requestUrl = request.url()
-    const url = new URL(requestUrl)
-
-    expect(url.searchParams.get('groupCursor')).toBe('group-snapshot')
-    expect(url.searchParams.get('viewingId')).toBe(viewingId)
-
-    const isMore = url.searchParams.has('cursor')
-    const pageStart = isMore ? 20 : 0
-    const pageEnd = isMore ? undefined : 20
-    const items = groupEpisodes.slice(pageStart, pageEnd)
-    const nextCursor = isMore ? null : 'group-next'
 
     await route.fulfill({ json: {
       items,
@@ -275,25 +235,15 @@ async function mockHistoryWithNextPageFailure(page: Page): Promise<void> {
   })
 }
 
-function rewatchHistory(closeStatus: 'paused' | 'completed', rewatched: boolean, hasMarks: boolean): CatalogTimelineItem[] {
+function rewatchHistory(rewatched: boolean, hasMarks: boolean): CatalogTimelineItem[] {
   if (!rewatched) { return hasMarks ? [group] : [] }
 
-  const kind = closeStatus === 'paused' ? 'series_paused' : 'series_completed'
-
-  return [
-    {
-      id: '50000000-0000-7000-8000-000000000008',
-      kind: 'rewatch_started',
-      occurredAt: '2026-10-08T13:00:00.000000Z',
-      viewingId: nextViewingId
-    },
-    {
-      id: '50000000-0000-7000-8000-000000000009',
-      kind,
-      occurredAt: '2026-10-08T13:00:00.000000Z',
-      viewingId
-    }, group
-  ]
+  return [{
+    id: '50000000-0000-7000-8000-000000000008',
+    kind: 'rewatch_started',
+    occurredAt: '2026-10-08T13:00:00.000000Z',
+    viewingId: nextViewingId
+  }, group]
 }
 
 export { firstEpisodeId, group, history, mockHistory, mockHistoryWithNextPageFailure, mockRatingTimeline, movieViewports, nextViewingId, rewatchHistory, seriesResponse, timelinePath, titlePath, viewingId, watchedPath }

@@ -7,9 +7,14 @@ import { arrival } from './fixtures.ts'
 import { waitForHydration } from './helpers.ts'
 
 async function readHeaderGeometry(poster: Locator, heading: Locator) {
-  const [posterBox, headingBox] = await Promise.all([poster.boundingBox(), heading.boundingBox()])
+  const headingContainer = heading.locator('..')
+  const posterBounds = poster.boundingBox()
+  const headingBounds = heading.boundingBox()
+  const containerBounds = headingContainer.boundingBox()
+  const [posterBox, headingBox, containerBox] = await Promise.all([posterBounds, headingBounds, containerBounds])
+  const hasVisibleHeader = posterBox !== null && headingBox !== null && containerBox !== null
 
-  if (posterBox === null || headingBox === null) {
+  if (!hasVisibleHeader) {
     throw new Error('The title header must be visible before measuring it.')
   }
 
@@ -17,7 +22,7 @@ async function readHeaderGeometry(poster: Locator, heading: Locator) {
     poster: posterBox,
     headingX: headingBox.x,
     headingY: headingBox.y,
-    headingWidth: headingBox.width
+    headingContainerWidth: containerBox.width
   }
 }
 
