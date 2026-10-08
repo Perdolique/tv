@@ -196,7 +196,9 @@ for (const { closeStatus, bulkPath, bulkLabel } of viewingScenarios) {
       exact: true
     })
 
+    await expect(rewatch).toBeEnabled()
     await rewatch.focus()
+    await expect(rewatch).toBeFocused()
     await page.keyboard.press('Enter')
 
     const dialog = page.getByRole('dialog', { name: 'Start a rewatch' })
