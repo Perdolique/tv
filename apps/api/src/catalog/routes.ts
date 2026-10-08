@@ -15,6 +15,8 @@ import { registerCatalogSeasonRatingRoutes } from './season-rating-routes.ts'
 import { registerCatalogImportRoutes } from './import/routes.ts'
 import { registerCatalogViewingRoutes } from './viewing-routes.ts'
 import { registerCatalogMovieViewingRoutes } from './movie-viewing-routes.ts'
+import { registerCatalogSeriesViewingRoutes } from './series-viewing-routes.ts'
+import { registerCatalogTimelineRoutes } from './timeline-routes.ts'
 
 import {
   findCatalogDetailsRows,
@@ -103,6 +105,8 @@ function createCatalogApp(
   registerCatalogEpisodeRatingRoutes(app, dependencies)
   registerCatalogViewingRoutes(app, dependencies)
   registerCatalogMovieViewingRoutes(app, dependencies)
+  registerCatalogSeriesViewingRoutes(app, dependencies)
+  registerCatalogTimelineRoutes(app, dependencies)
 
   app.get('/api/catalog/items/:id/follow', async (context) => {
     const id = validateCatalogItemId(context.req.param('id'))

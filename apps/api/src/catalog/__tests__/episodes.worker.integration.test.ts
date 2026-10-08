@@ -1,14 +1,9 @@
+/* oxlint-disable eslint/max-lines -- Public episode lists and private watch contracts share one Worker session fixture. */
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
-
-import type {
-  CatalogEpisodeWatchesResponse,
-  CatalogEpisodesResponse,
-  CatalogErrorEnvelope,
-  CatalogWatchedResponse
-} from '@tv/shared/catalog'
-
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CatalogEpisodesResponse, CatalogErrorEnvelope } from '@tv/shared/catalog'
+import type { CatalogSeriesWatchesResponse } from '@tv/shared/catalog-series'
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionToken, hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
@@ -49,10 +44,15 @@ async function findCatalogItemId(title: string): Promise<string> {
   })
 }
 
+interface EpisodeRequestOptions {
+  cookie?: string | null;
+  body?: unknown;
+}
+
 async function request(
   path: string,
   method = 'GET',
-  cookie: string | null = FIRST_COOKIE
+  { cookie = FIRST_COOKIE, body }: EpisodeRequestOptions = {}
 ): Promise<Response> {
   const headers = new Headers()
 
@@ -60,10 +60,21 @@ async function request(
     headers.set('Cookie', cookie)
   }
 
-  return exports.default.fetch(new Request(`https://tv-api.test${path}`, {
+  const init: RequestInit = {
     headers,
     method
-  }))
+  }
+
+  if (body !== undefined && method !== 'GET') {
+    headers.set('Content-Type', 'application/json')
+
+    init.body = JSON.stringify(body)
+  }
+
+  const apiUrl = `https://tv-api.test${path}`
+  const apiRequest = new Request(apiUrl, init)
+
+  return exports.default.fetch(apiRequest)
 }
 
 function expectNoStore(response: Response): void {
@@ -96,7 +107,8 @@ describe('catalog episodes Worker contract', () => {
 
   it('serves five ordered Chernobyl episodes publicly without account access', async () => {
     const chernobylId = await findCatalogItemId('Chernobyl')
-    const response = await request(`/api/catalog/items/${chernobylId}/episodes`, 'GET', null)
+    const episodesPath = `/api/catalog/items/${chernobylId}/episodes`
+    const response = await request(episodesPath, 'GET', { cookie: null })
     const body = await response.json<CatalogEpisodesResponse>()
 
     expect(response.status).toBe(200)
@@ -157,12 +169,13 @@ describe('catalog episodes Worker contract', () => {
     })
 
     try {
-      const responses = await Promise.all([
-        request(`/api/catalog/items/${movieId}/episodes`, 'GET', null),
-        request(`/api/catalog/items/${emptySeriesId}/episodes`, 'GET', null)
-      ])
-
-      const bodies = await Promise.all(responses.map(async response => response.json()))
+      const movieEpisodesPath = `/api/catalog/items/${movieId}/episodes`
+      const emptySeriesEpisodesPath = `/api/catalog/items/${emptySeriesId}/episodes`
+      const movieEpisodesRequest = request(movieEpisodesPath, 'GET', { cookie: null })
+      const emptySeriesEpisodesRequest = request(emptySeriesEpisodesPath, 'GET', { cookie: null })
+      const responses = await Promise.all([movieEpisodesRequest, emptySeriesEpisodesRequest])
+      const bodyReads = responses.map(async response => response.json())
+      const bodies = await Promise.all(bodyReads)
 
       for (const [index, response] of responses.entries()) {
         expect(response.status).toBe(200)
@@ -177,8 +190,8 @@ describe('catalog episodes Worker contract', () => {
   })
 
   it('returns structured public invalid and missing title errors', async () => {
-    const invalid = await request('/api/catalog/items/not-a-uuid/episodes', 'GET', null)
-    const missing = await request('/api/catalog/items/01991a00-0000-7000-8000-999999999999/episodes', 'GET', null)
+    const invalid = await request('/api/catalog/items/not-a-uuid/episodes', 'GET', { cookie: null })
+    const missing = await request('/api/catalog/items/01991a00-0000-7000-8000-999999999999/episodes', 'GET', { cookie: null })
 
     expect(invalid.status).toBe(400)
     expect(missing.status).toBe(404)
@@ -194,13 +207,12 @@ describe('catalog episodes Worker contract', () => {
   })
 
   it('authenticates protected requests before validating or revealing episode details', async () => {
-    const responses = await Promise.all([
-      request('/api/catalog/items/not-a-uuid/episodes/watched', 'GET', null),
-      request('/api/catalog/episodes/not-a-uuid/watched', 'PUT', null),
-      request('/api/catalog/episodes/not-a-uuid/watched', 'DELETE', null)
-    ])
-
-    const bodies = await Promise.all(responses.map(async response => response.json()))
+    const watchedListingRequest = request('/api/catalog/items/not-a-uuid/episodes/watched', 'GET', { cookie: null })
+    const markRequest = request('/api/catalog/episodes/not-a-uuid/watched', 'PUT', { cookie: null })
+    const unmarkRequest = request('/api/catalog/episodes/not-a-uuid/watched', 'DELETE', { cookie: null })
+    const responses = await Promise.all([watchedListingRequest, markRequest, unmarkRequest])
+    const bodyReads = responses.map(async response => response.json())
+    const bodies = await Promise.all(bodyReads)
 
     for (const [index, response] of responses.entries()) {
       expect(response.status).toBe(401)
@@ -220,20 +232,77 @@ describe('catalog episodes Worker contract', () => {
     const listingPath = `/api/catalog/items/${chernobylId}/episodes/watched`
     const mutationPath = `/api/catalog/episodes/${episodeId}/watched`
     const initial = await request(listingPath)
-    const marked = await request(mutationPath, 'PUT')
-    const markedAgain = await request(mutationPath, 'PUT')
-    const firstAccount = await request(listingPath)
-    const secondAccount = await request(listingPath, 'GET', SECOND_COOKIE)
-    const unmarked = await request(mutationPath, 'DELETE')
-    const unmarkedAgain = await request(mutationPath, 'DELETE')
+    const requestId = crypto.randomUUID()
 
-    await expect(initial.json<CatalogEpisodeWatchesResponse>()).resolves.toStrictEqual({ watchedEpisodeIds: [] })
-    await expect(marked.json<CatalogWatchedResponse>()).resolves.toStrictEqual({ watched: true })
-    await expect(markedAgain.json<CatalogWatchedResponse>()).resolves.toStrictEqual({ watched: true })
-    await expect(firstAccount.json<CatalogEpisodeWatchesResponse>()).resolves.toStrictEqual({ watchedEpisodeIds: [episodeId] })
-    await expect(secondAccount.json<CatalogEpisodeWatchesResponse>()).resolves.toStrictEqual({ watchedEpisodeIds: [] })
-    await expect(unmarked.json<CatalogWatchedResponse>()).resolves.toStrictEqual({ watched: false })
-    await expect(unmarkedAgain.json<CatalogWatchedResponse>()).resolves.toStrictEqual({ watched: false })
+    const input = {
+      requestId,
+      currentViewingId: null,
+      contextVersion: 0,
+      timeZone: 'UTC'
+    }
+
+    const marked = await request(mutationPath, 'PUT', { body: input })
+    const markedBody = await marked.json<CatalogSeriesWatchesResponse>()
+    const viewingId = markedBody.currentViewing?.id
+    const watchId = markedBody.watches[0]?.id
+
+    assert(viewingId !== undefined)
+    assert(watchId !== undefined)
+
+    const markedAgain = await request(mutationPath, 'PUT', { body: input })
+    const firstAccount = await request(listingPath)
+    const secondAccount = await request(listingPath, 'GET', { cookie: SECOND_COOKIE })
+
+    const unwatch = {
+      currentViewingId: viewingId,
+      contextVersion: markedBody.contextVersion,
+      watchId
+    }
+
+    const unmarked = await request(mutationPath, 'DELETE', { body: unwatch })
+    const unmarkedAgain = await request(mutationPath, 'DELETE', { body: unwatch })
+
+    const emptyState = {
+      watchedEpisodeIds: [],
+      watches: [],
+      currentViewing: null,
+      contextVersion: 0
+    }
+
+    await expect(initial.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(emptyState)
+    expect(markedBody.watchedEpisodeIds).toStrictEqual([episodeId])
+    expect(markedBody.watches).toHaveLength(1)
+
+    expect(markedBody.watches[0]).toMatchObject({
+      id: watchId,
+      catalogEpisodeId: episodeId,
+      viewingId
+    })
+
+    expect(markedBody.watches[0]?.markedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
+
+    expect(markedBody.currentViewing).toMatchObject({
+      id: viewingId,
+      catalogItemId: chernobylId,
+      status: 'watching',
+      revision: 1
+    })
+
+    expect(markedBody.contextVersion).toBe(1)
+    await expect(markedAgain.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(markedBody)
+    await expect(firstAccount.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(markedBody)
+    await expect(secondAccount.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(emptyState)
+
+    const unmarkedBody = await unmarked.json<CatalogSeriesWatchesResponse>()
+
+    expect(unmarkedBody).toStrictEqual({
+      watchedEpisodeIds: [],
+      watches: [],
+      currentViewing: markedBody.currentViewing,
+      contextVersion: markedBody.contextVersion
+    })
+
+    await expect(unmarkedAgain.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(unmarkedBody)
 
     for (const response of [initial, marked, markedAgain, firstAccount, secondAccount, unmarked, unmarkedAgain]) {
       expect(response.status).toBe(200)
@@ -243,9 +312,15 @@ describe('catalog episodes Worker contract', () => {
 
   it('rejects a movie watched list and invalid or missing episode mutations', async () => {
     const movieId = await findCatalogItemId('Dead Man')
-    const movie = await request(`/api/catalog/items/${movieId}/episodes/watched`)
+    const movieWatchedPath = `/api/catalog/items/${movieId}/episodes/watched`
+    const movie = await request(movieWatchedPath)
     const invalid = await request('/api/catalog/episodes/not-a-uuid/watched', 'PUT')
-    const missing = await request('/api/catalog/episodes/01991a00-0000-7000-8000-999999999999/watched', 'DELETE')
+
+    const missing = await request('/api/catalog/episodes/01991a00-0000-7000-8000-999999999999/watched', 'DELETE', { body: {
+      currentViewingId: '71000000-0000-7000-8000-000000000004',
+      contextVersion: 1,
+      watchId: '71000000-0000-7000-8000-000000000005'
+    } })
 
     expect(movie.status).toBe(400)
     expect(invalid.status).toBe(400)
@@ -260,6 +335,26 @@ describe('catalog episodes Worker contract', () => {
     await expect(missing.json()).resolves.toMatchObject({ error: { code: 'NOT_FOUND' } })
   })
 
+  it.each(['PUT', 'DELETE'])('rejects a legacy bodyless %s before changing episode watches', async (method) => {
+    const chernobylId = await findCatalogItemId('Chernobyl')
+    const episodeId = '30000000-0000-7000-8000-000000000001'
+    const mutationPath = `/api/catalog/episodes/${episodeId}/watched`
+    const listingPath = `/api/catalog/items/${chernobylId}/episodes/watched`
+    const response = await request(mutationPath, method)
+    const state = await request(listingPath)
+
+    expect(response.status).toBe(409)
+    expectNoStore(response)
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'CONFLICT' } })
+
+    await expect(state.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual({
+      watchedEpisodeIds: [],
+      watches: [],
+      currentViewing: null,
+      contextVersion: 0
+    })
+  })
+
   it('returns a safe 503 and keeps the raw database error in structured logs', async () => {
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {
       // Expected failure is inspected below.
@@ -271,7 +366,8 @@ describe('catalog episodes Worker contract', () => {
       await client.query('ALTER TABLE catalog_episodes RENAME TO catalog_episodes_unavailable')
 
       try {
-        const response = await request(`/api/catalog/items/${chernobylId}/episodes`, 'GET', null)
+        const episodesPath = `/api/catalog/items/${chernobylId}/episodes`
+        const response = await request(episodesPath, 'GET', { cookie: null })
         const body = await response.json<CatalogErrorEnvelope>()
 
         expect(response.status).toBe(503)

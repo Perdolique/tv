@@ -54,11 +54,6 @@ interface CatalogEpisodeListing {
   type: CatalogItemType;
 }
 
-interface CatalogEpisodeWatchListing {
-  type: CatalogItemType;
-  watchedEpisodeIds: string[];
-}
-
 interface CatalogReleaseRange {
   from: string;
   to: string;
@@ -82,7 +77,6 @@ export type {
   CatalogDetailsRows,
   CatalogEpisodeListing,
   CatalogEpisodeRow,
-  CatalogEpisodeWatchListing,
   CatalogReleaseRange,
   CatalogReleaseCursor,
   CatalogReleaseRow,

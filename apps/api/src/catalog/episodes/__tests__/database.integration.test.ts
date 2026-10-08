@@ -1,15 +1,16 @@
+/* oxlint-disable eslint/max-lines -- Episode snapshots and private watch persistence share one seeded catalog fixture. */
 import { env } from 'node:process'
 import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, assert, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
+import { findCatalogEpisodeListing } from '../../episodes-repository.ts'
 
 import {
-  findCatalogEpisodeListing,
-  findCatalogEpisodeWatchListing,
-  markCatalogEpisodeWatched,
-  unmarkCatalogEpisodeWatched
-} from '../../episodes-repository.ts'
+  findSeriesWatches,
+  markSeriesEpisodeWatched,
+  unmarkSeriesEpisodeWatched
+} from '../../series-viewings-repository.ts'
 
 import { followCatalogItem } from '../../repository.ts'
 import { createMovieViewing } from '../../movie-viewings-repository.ts'
@@ -181,7 +182,15 @@ describe('postgreSQL catalog episodes and watches', () => {
         VALUES ($1, 'first-episode-watch@example.com'), ($2, 'second-episode-watch@example.com')
       `, [firstUserId, secondUserId])
 
-      await markCatalogEpisodeWatched(database, firstUserId, episodeId)
+      const markRequestId = crypto.randomUUID()
+
+      const marked = await markSeriesEpisodeWatched(database, firstUserId, episodeId, {
+        requestId: markRequestId,
+        currentViewingId: null,
+        contextVersion: 0,
+        timeZone: 'UTC'
+      })
+
       await followCatalogItem(database, secondUserId, chernobylId)
 
       await createMovieViewing(database, {
@@ -194,14 +203,21 @@ describe('postgreSQL catalog episodes and watches', () => {
         completedOn: null
       })
 
-      await expect(findCatalogEpisodeWatchListing(database, firstUserId, chernobylId)).resolves.toStrictEqual({
-        type: 'series',
-        watchedEpisodeIds: [episodeId]
-      })
+      await expect(findSeriesWatches(database, {
+        userId: firstUserId,
+        catalogItemId: chernobylId
+      })).resolves.toStrictEqual(marked)
 
-      await expect(findCatalogEpisodeWatchListing(database, secondUserId, chernobylId)).resolves.toStrictEqual({
-        type: 'series',
-        watchedEpisodeIds: []
+      expect(marked.watchedEpisodeIds).toStrictEqual([episodeId])
+
+      await expect(findSeriesWatches(database, {
+        userId: secondUserId,
+        catalogItemId: chernobylId
+      })).resolves.toStrictEqual({
+        watchedEpisodeIds: [],
+        watches: [],
+        currentViewing: null,
+        contextVersion: 0
       })
     } finally {
       await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[firstUserId, secondUserId]])
@@ -227,21 +243,63 @@ describe('postgreSQL catalog episodes and watches', () => {
         ) VALUES ($1, $2, 2, 1, 'Future episode', '2099-01-01')
       `, [episodeId, chernobylId])
 
-      await expect(markCatalogEpisodeWatched(database, userId, episodeId)).resolves.toBe('marked')
+      const markRequestId = crypto.randomUUID()
+
+      const marked = await markSeriesEpisodeWatched(database, userId, episodeId, {
+        requestId: markRequestId,
+        currentViewingId: null,
+        contextVersion: 0,
+        timeZone: 'UTC'
+      })
+
+      const viewingId = marked.currentViewing?.id
+      const watchId = marked.watches[0]?.id
+
+      assert(viewingId !== undefined)
+      assert(watchId !== undefined)
+      expect(marked.watchedEpisodeIds).toStrictEqual([episodeId])
 
       const initialTimestamp = await findMarkedAt(userId, episodeId)
 
       await client.query('SELECT pg_sleep(0.01)')
-      await expect(markCatalogEpisodeWatched(database, userId, episodeId)).resolves.toBe('marked')
+
+      const repeatRequestId = crypto.randomUUID()
+
+      const repeated = await markSeriesEpisodeWatched(database, userId, episodeId, {
+        requestId: repeatRequestId,
+        currentViewingId: viewingId,
+        contextVersion: marked.contextVersion,
+        timeZone: 'UTC'
+      })
+
+      expect(repeated.watches).toStrictEqual(marked.watches)
       await expect(findMarkedAt(userId, episodeId)).resolves.toStrictEqual(initialTimestamp)
-      await expect(unmarkCatalogEpisodeWatched(database, userId, episodeId)).resolves.toBe(true)
-      await expect(unmarkCatalogEpisodeWatched(database, userId, episodeId)).resolves.toBe(true)
+
+      const unwatch = {
+        currentViewingId: viewingId,
+        contextVersion: marked.contextVersion,
+        watchId
+      }
+
+      const unmarked = await unmarkSeriesEpisodeWatched(database, userId, episodeId, unwatch)
+
+      expect(unmarked.watchedEpisodeIds).toStrictEqual([])
+      await expect(unmarkSeriesEpisodeWatched(database, userId, episodeId, unwatch)).resolves.toStrictEqual(unmarked)
       await client.query('SELECT pg_sleep(0.01)')
-      await markCatalogEpisodeWatched(database, userId, episodeId)
+
+      const renewRequestId = crypto.randomUUID()
+
+      const renewed = await markSeriesEpisodeWatched(database, userId, episodeId, {
+        requestId: renewRequestId,
+        currentViewingId: viewingId,
+        contextVersion: marked.contextVersion,
+        timeZone: 'UTC'
+      })
 
       const renewedTimestamp = await findMarkedAt(userId, episodeId)
 
       expect(renewedTimestamp.getTime()).toBeGreaterThan(initialTimestamp.getTime())
+      expect(renewed.watches[0]?.id).not.toBe(watchId)
     } finally {
       await client.query('DELETE FROM catalog_episodes WHERE id = $1', [episodeId])
       await client.query('DELETE FROM users WHERE id = $1', [userId])
@@ -279,11 +337,19 @@ describe('postgreSQL catalog episodes and watches', () => {
       VALUES ('tvmaze', 'episode', '9000033', $1)
     `, [episodeId])
 
-    await markCatalogEpisodeWatched(database, userId, episodeId)
+    const firstMarkRequestId = crypto.randomUUID()
+
+    await markSeriesEpisodeWatched(database, userId, episodeId, {
+      requestId: firstMarkRequestId,
+      currentViewingId: null,
+      contextVersion: 0,
+      timeZone: 'UTC'
+    })
+
     await client.query('DELETE FROM catalog_items WHERE id = $1', [seriesId])
 
     const afterSeriesDelete = await client.query<{ count: string }>(`
-      SELECT count(*) FROM catalog_episode_watches WHERE user_id = $1
+      SELECT count(*) FROM catalog_viewing_episode_watches WHERE user_id = $1
     `, [userId])
 
     const linksAfterSeriesDelete = await client.query<{ count: string }>(`
@@ -294,16 +360,24 @@ describe('postgreSQL catalog episodes and watches', () => {
     expect(afterSeriesDelete.rows[0]?.count).toBe('0')
     expect(linksAfterSeriesDelete.rows[0]?.count).toBe('0')
 
-    await markCatalogEpisodeWatched(
+    const nextMarkRequestId = crypto.randomUUID()
+
+    await markSeriesEpisodeWatched(
       database,
       userId,
-      '30000000-0000-7000-8000-000000000001'
+      '30000000-0000-7000-8000-000000000001',
+      {
+        requestId: nextMarkRequestId,
+        currentViewingId: null,
+        contextVersion: 0,
+        timeZone: 'UTC'
+      }
     )
 
     await client.query('DELETE FROM users WHERE id = $1', [userId])
 
     const afterUserDelete = await client.query<{ count: string }>(`
-      SELECT count(*) FROM catalog_episode_watches WHERE user_id = $1
+      SELECT count(*) FROM catalog_viewing_episode_watches WHERE user_id = $1
     `, [userId])
 
     expect(afterUserDelete.rows[0]?.count).toBe('0')

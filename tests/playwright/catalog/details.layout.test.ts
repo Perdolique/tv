@@ -325,6 +325,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
         const watched = watchedButton(page)
         const progress = loadingIndicator(watched)
+
+        await expect(follow).toBeEnabled()
+        await expect(watched).toBeEnabled()
+        await page.evaluate(async () => globalThis.document.fonts.ready)
+
         const before = await readPersonalActionGeometry(page)
 
         await watched.click()

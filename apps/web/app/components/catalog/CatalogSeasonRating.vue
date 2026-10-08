@@ -29,7 +29,7 @@
       :sign-in-location="signInLocation"
       :status="status"
       @clear-error="clearError"
-      @saved="ready.execute({ dedupe: 'cancel' })"
+      @saved="handleSaved"
     />
   </section>
 </template>
@@ -54,6 +54,7 @@
 
   interface Emits {
     unauthorized: [reason: 'load' | 'mutation'];
+    saved: [];
   }
 
   const { accountId, catalogItemId, hasSessionError, isAnonymous, seasonNumber } = defineProps<Props>()
@@ -101,6 +102,12 @@
       emit('unauthorized', reason)
     }
   }, { flush: 'sync' })
+
+  function handleSaved(): void {
+    void ready.execute({ dedupe: 'cancel' })
+
+    emit('saved')
+  }
 
   function clearError(): void {
     saveError.value = ''

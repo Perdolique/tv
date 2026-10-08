@@ -80,10 +80,6 @@ interface CatalogEpisodesResponse {
   items: CatalogEpisode[];
 }
 
-interface CatalogEpisodeWatchesResponse {
-  watchedEpisodeIds: string[];
-}
-
 interface CatalogWatchlistItem extends CatalogSearchItem {
   posterUrl: string | null;
 }
@@ -160,7 +156,6 @@ export type {
   CatalogEpisodeRatingSummary,
   CatalogEpisodeRatingSummariesResponse,
   CatalogEpisodesResponse,
-  CatalogEpisodeWatchesResponse,
   CatalogErrorCode,
   CatalogErrorEnvelope,
   CatalogFollowResponse,

@@ -6,6 +6,7 @@ import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, afterEach, assert, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../../testing/test-database.ts'
+import { insertSeriesEpisodeWatches } from '../../../../testing/series-watch-fixtures.ts'
 import { movieResponse, seriesResponse, showResponse } from '../../../../testing/import-fixtures.ts'
 import { createImportPreview, openImportPreview, type ImportSession } from '../../service.ts'
 import { selectImportTarget } from '../../target.ts'
@@ -107,8 +108,10 @@ async function snapshot() {
     (SELECT jsonb_agg(t ORDER BY id) FROM catalog_import_fields t) AS fields,
     (SELECT jsonb_agg(t ORDER BY id) FROM catalog_releases t) AS releases,
     (SELECT jsonb_agg(t ORDER BY user_id, catalog_item_id) FROM catalog_item_follows t) AS follows,
-    (SELECT jsonb_agg(t ORDER BY user_id, catalog_item_id) FROM catalog_viewings t) AS watches,
-    (SELECT jsonb_agg(t ORDER BY user_id, catalog_episode_id) FROM catalog_episode_watches t) AS episode_watches`)
+    (SELECT jsonb_agg(t ORDER BY user_id, catalog_item_id, id) FROM catalog_viewings t) AS watches,
+    (SELECT jsonb_agg(t ORDER BY id) FROM catalog_viewing_episode_watches t) AS episode_watches,
+    (SELECT jsonb_agg(t ORDER BY user_id, catalog_item_id) FROM catalog_viewing_contexts t) AS viewing_contexts,
+    (SELECT jsonb_agg(t ORDER BY id) FROM catalog_timeline_events t) AS timeline_events`)
 
   const [row] = result.rows
 
@@ -617,7 +620,13 @@ describe('saved import target selection', () => {
     const episodeId = randomUUID()
 
     await client.query('INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, source_title, air_date) VALUES ($1, $2, 1, 1, \'Manual pilot\', \'2026-09-28\')', [episodeId, id])
-    await client.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) VALUES ($1, $2)', [session.user.id, episodeId])
+    await insertSeriesEpisodeWatches(client, session.user.id, { episodeIds: [episodeId] })
+
+    await insertSeriesEpisodeWatches(client, session.user.id, {
+      episodeIds: [episodeId],
+      status: 'paused'
+    })
+
     await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, id])
 
     const original = await preview('series')

@@ -5,7 +5,8 @@ import {
   catalogItemTitles,
   catalogViewings,
   catalogViewingContexts,
-  catalogViewingCreations
+  catalogViewingCreations,
+  catalogTimelineEvents
 } from '@tv/database/schema'
 
 import type {
@@ -222,6 +223,14 @@ async function createMovieViewing(database: Database, owner: ViewingOwner, input
     if (id === undefined) {
       throw new Error('Created movie viewing is missing')
     }
+
+    await transaction.insert(catalogTimelineEvents).values({
+      userId: owner.userId,
+      catalogItemId: owner.catalogItemId,
+      kind: 'movie_viewing',
+      viewingId: id,
+      occurredAt: sql`(SELECT recorded_at FROM catalog_viewings WHERE id = ${id}::uuid)`
+    })
 
     const keys = await transaction.insert(catalogViewingCreations).values({
       userId: owner.userId,

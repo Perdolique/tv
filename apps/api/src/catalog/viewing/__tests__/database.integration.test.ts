@@ -3,6 +3,7 @@ import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, assert, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
+import { insertSeriesEpisodeWatches } from '../../../testing/series-watch-fixtures.ts'
 import { createViewingHistoryResponse, decodeViewingCursor } from '../../viewing-history.ts'
 import { findViewingHistoryRows, findViewingSummary } from '../../viewing-repository.ts'
 import { createMovieViewing, deleteMovieViewing } from '../../movie-viewings-repository.ts'
@@ -19,11 +20,13 @@ async function seedMarks(): Promise<void> {
     FROM catalog_items WHERE type = 'movie' ORDER BY id LIMIT 2
   `, [userId])
 
-  await client.query(`
-    INSERT INTO catalog_episode_watches (user_id, catalog_episode_id, marked_at)
-    SELECT $1, id, '2026-09-22T13:00:00.123456Z'::timestamptz
-    FROM catalog_episodes ORDER BY id LIMIT 23
-  `, [userId])
+  const episodes = await client.query<{ id: string }>('SELECT id FROM catalog_episodes ORDER BY id LIMIT 23')
+  const episodeIds = episodes.rows.map(episode => episode.id)
+
+  await insertSeriesEpisodeWatches(client, userId, {
+    episodeIds,
+    markedAt: '2026-09-22T13:00:00.123456Z'
+  })
 }
 
 describe('private viewing data', () => {
@@ -84,10 +87,10 @@ describe('private viewing data', () => {
 
     assert(secondSeriesEpisode !== undefined, 'Second series fixture is missing')
 
-    await client.query(`
-      INSERT INTO catalog_episode_watches (user_id, catalog_episode_id, marked_at)
-      SELECT $1, unnest($2::uuid[]), '2026-09-22T13:00:00.123456Z'::timestamptz
-    `, [userId, [firstSeriesEpisode.id, secondSeriesEpisode.id, anotherFirstSeriesEpisode.id]])
+    await insertSeriesEpisodeWatches(client, userId, {
+      episodeIds: [firstSeriesEpisode.id, secondSeriesEpisode.id, anotherFirstSeriesEpisode.id],
+      markedAt: '2026-09-22T13:00:00.123456Z'
+    })
 
     const tied = await findViewingSummary(database, userId, 'en')
 
@@ -97,7 +100,7 @@ describe('private viewing data', () => {
     ])
 
     await client.query(`
-      UPDATE catalog_episode_watches SET marked_at = '2026-09-22T13:00:00.123457Z'
+      UPDATE catalog_viewing_episode_watches SET marked_at = '2026-09-22T13:00:00.123457Z'
       WHERE user_id = $1 AND catalog_episode_id = $2
     `, [userId, firstSeriesEpisode.id])
 
@@ -122,8 +125,10 @@ describe('private viewing data', () => {
           const result = await run()
 
           // Commit after the first read, before a possible second read in the same response.
-          await writer.query(`INSERT INTO catalog_episode_watches (user_id, catalog_episode_id)
-            SELECT $1, id FROM catalog_episodes ORDER BY id LIMIT 1`, [userId])
+          const episodes = await writer.query<{ id: string }>('SELECT id FROM catalog_episodes ORDER BY id LIMIT 1')
+          const episodeIds = episodes.rows.map(episode => episode.id)
+
+          await insertSeriesEpisodeWatches(writer, userId, { episodeIds })
 
           return result
         })
@@ -154,12 +159,13 @@ describe('private viewing data', () => {
 
     const firstRows = await findViewingHistoryRows(database, userId, null)
     const first = createViewingHistoryResponse(firstRows, 'en')
-    const cursor = decodeViewingCursor(first.nextCursor)
+    const cursor = decodeViewingCursor(first.nextCursor, 3)
+    const expectedWatches = await client.query<{ id: string }>('SELECT id FROM catalog_viewing_episode_watches WHERE user_id = $1 ORDER BY id DESC', [userId])
 
     expect(first.items).toHaveLength(20)
     expect(first.items.every(item => item.kind === 'episode')).toBe(true)
     expect(cursor).not.toBeNull()
-    await client.query('DELETE FROM catalog_episode_watches WHERE user_id = $1 AND catalog_episode_id = $2', [userId, cursor?.entryId])
+    await client.query('DELETE FROM catalog_viewing_episode_watches WHERE user_id = $1 AND id = $2', [userId, cursor?.entryId])
 
     const nextRows = await findViewingHistoryRows(database, userId, cursor)
     const next = createViewingHistoryResponse(nextRows, 'en')
@@ -169,8 +175,7 @@ describe('private viewing data', () => {
     expect(next.nextCursor).toBeNull()
     expect(new Set(allItems.map(item => `${item.kind}:${item.entryId}`)).size).toBe(25)
 
-    const expectedEpisodes = await client.query<{ id: string }>('SELECT id FROM catalog_episodes ORDER BY id LIMIT 23')
-    const descendingIds = expectedEpisodes.rows.map(row => row.id).toReversed()
+    const descendingIds = expectedWatches.rows.map(row => row.id)
 
     expect(allItems.filter(item => item.kind === 'episode').map(item => item.entryId)).toStrictEqual(descendingIds)
   })
@@ -179,14 +184,14 @@ describe('private viewing data', () => {
     await seedMarks()
 
     await client.query(`
-      UPDATE catalog_episode_watches SET marked_at = '2026-09-22T13:00:00.123455Z'
-      WHERE user_id = $1 AND catalog_episode_id IN
-        (SELECT catalog_episode_id FROM catalog_episode_watches WHERE user_id = $1 ORDER BY catalog_episode_id LIMIT 3)
+      UPDATE catalog_viewing_episode_watches SET marked_at = '2026-09-22T13:00:00.123455Z'
+      WHERE user_id = $1 AND id IN
+        (SELECT id FROM catalog_viewing_episode_watches WHERE user_id = $1 ORDER BY id LIMIT 3)
     `, [userId])
 
     const firstRows = await findViewingHistoryRows(database, userId, null)
     const first = createViewingHistoryResponse(firstRows, 'en')
-    const cursor = decodeViewingCursor(first.nextCursor)
+    const cursor = decodeViewingCursor(first.nextCursor, 3)
     const secondRows = await findViewingHistoryRows(database, userId, cursor)
     const second = createViewingHistoryResponse(secondRows, 'en')
 
@@ -238,5 +243,53 @@ describe('private viewing data', () => {
     const remaining = await findViewingHistoryRows(database, userId, null)
 
     expect(createViewingHistoryResponse(remaining, 'en').items.map(row => row.entryId)).toStrictEqual([first.viewing.id])
+  })
+
+  it('counts repeat episode watches separately and excludes completed series from movie counts', async () => {
+    const episode = await client.query<{ id: string; catalog_item_id: string }>('SELECT id, catalog_item_id FROM catalog_episodes ORDER BY id LIMIT 1')
+    const [selected] = episode.rows
+
+    assert(selected !== undefined)
+
+    const current = await insertSeriesEpisodeWatches(client, userId, {
+      episodeIds: [selected.id],
+      markedAt: '2026-09-22T13:00:00.123456Z'
+    })
+
+    const historical = await insertSeriesEpisodeWatches(client, userId, {
+      episodeIds: [selected.id],
+      status: 'completed',
+      markedAt: '2020-09-22T13:00:00.123456Z'
+    })
+
+    const summary = await findViewingSummary(database, userId, 'en')
+    const rows = await findViewingHistoryRows(database, userId, null)
+    const history = createViewingHistoryResponse(rows, 'en')
+
+    expect(summary.watchedMovieCount).toBe(0)
+    expect(summary.watchedEpisodeCount).toBe(2)
+
+    expect(summary.series).toMatchObject([{
+      id: selected.catalog_item_id,
+      watchedEpisodeCount: 2
+    }])
+
+    const historyIdentities = history.items.map(item => [item.kind, item.entryId])
+
+    expect(historyIdentities).toStrictEqual([
+      ['episode', current[0]?.id],
+      ['episode', historical[0]?.id]
+    ])
+
+    await client.query('DELETE FROM catalog_viewing_episode_watches WHERE id = $1', [current[0]?.id])
+
+    const remaining = await findViewingHistoryRows(database, userId, null)
+    const remainingSummary = await findViewingSummary(database, userId, 'en')
+    const remainingHistory = createViewingHistoryResponse(remaining, 'en')
+    const remainingIds = remainingHistory.items.map(item => item.entryId)
+
+    expect(remainingIds).toStrictEqual([historical[0]?.id])
+    expect(remainingSummary.watchedEpisodeCount).toBe(1)
+    expect(remainingSummary.watchedMovieCount).toBe(0)
   })
 })

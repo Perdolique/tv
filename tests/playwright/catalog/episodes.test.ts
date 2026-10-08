@@ -110,7 +110,14 @@ test('unmarks a loaded episode with DELETE and keeps it unmarked after reload', 
 
   await addCookie(context, 'tv_session', 'e2e-session')
 
-  const response = await context.request.put(watchedUrl)
+  const requestId = globalThis.crypto.randomUUID()
+
+  const response = await context.request.put(watchedUrl, { data: {
+    requestId,
+    currentViewingId: null,
+    contextVersion: 0,
+    timeZone: 'Europe/Tallinn'
+  } })
 
   expect(response.status()).toBe(200)
   await page.goto(chernobylPath)
@@ -310,13 +317,13 @@ test.describe('independent private watched recovery', () => {
   })
 })
 
-test.describe('optimistic episode rollback', () => {
+test.describe('confirmed episode changes', () => {
   test.use({ expectedHttpErrors: { values: [{
     pathname: '/api/catalog/episodes/30000000-0000-7000-8000-000000000001/watched',
     status: 503
   }] } })
 
-  test('blocks other episodes during one mutation and rolls back the failed mark', async ({ context, page }) => {
+  test('blocks other episodes during saving and keeps a failed mark unchanged', async ({ context, page }) => {
     await addCookie(context, 'tv_session', 'e2e-session')
     await addCookie(context, 'fail_episode_watched', '1')
     await page.goto(chernobylPath)
@@ -326,12 +333,12 @@ test.describe('optimistic episode rollback', () => {
     const second = watchedButton(episodeCard(page, 'Please Remain Calm'))
 
     await first.click()
-    await expect(first).toHaveAttribute('aria-pressed', 'true')
+    await expect(first).toHaveAttribute('aria-pressed', 'false')
     await expect(first).toHaveAttribute('aria-busy', 'true')
     await expect(second).toBeDisabled()
-    await expect(page.getByText('1 watched episode', { exact: true })).toBeVisible()
+    await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
     await expect(first).toHaveAttribute('aria-pressed', 'false')
-    await expect(page.getByText('We couldn’t update this episode. Try again.', { exact: true })).toBeVisible()
+    await expect(page.getByText('We couldn’t save this change. Try again.', { exact: true })).toBeVisible()
     await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
   })
 })

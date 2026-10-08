@@ -1,8 +1,17 @@
 import type { Database } from '@tv/database'
-import { catalogEpisodes, catalogItemRatings, catalogItems, catalogItemTitles } from '@tv/database/schema'
+
+import {
+  catalogEpisodes,
+  catalogItemRatings,
+  catalogItems,
+  catalogItemTitles,
+  catalogTimelineEvents
+} from '@tv/database/schema'
+
 import type { CatalogRatingResponse, CatalogRatingSummaryResponse, CatalogRatingTarget } from '@tv/shared/catalog'
 import { and, avg, count, eq, isNull, sql } from 'drizzle-orm'
 import { CatalogHttpError } from './errors.ts'
+import { lockPersonalCatalogContext } from './personal-context.ts'
 
 // Seasons use catalog coordinates; checking existence must not multiply aggregate votes.
 async function hasCatalogSeason(database: Database, catalogItemId: string, seasonNumber: number): Promise<boolean> {
@@ -145,31 +154,14 @@ async function setCatalogItemRating(
   { catalogItemId, score, seasonNumber = null }: CatalogRatingChange
 ): Promise<boolean> {
   return database.transaction(async (transaction) => {
-    const items = await transaction
-      .select({
-        id: catalogItems.id,
-        type: catalogItems.type
-      })
-      .from(catalogItems)
-      .innerJoin(
-        catalogItemTitles,
-        and(
-          eq(catalogItemTitles.catalogItemId, catalogItems.id),
-          eq(catalogItemTitles.isOriginal, true)
-        )
-      )
-      .where(
-        eq(catalogItems.id, catalogItemId)
-      )
-      .limit(1)
-      .for('key share', { of: [catalogItems, catalogItemTitles] })
+    const item = await lockPersonalCatalogContext(transaction, userId, catalogItemId)
 
-    if (items[0] === undefined) {
+    if (item === null) {
       return false
     }
 
     if (seasonNumber !== null) {
-      if (items[0].type !== 'series') {
+      if (item.type !== 'series') {
         throw new CatalogHttpError('INVALID_REQUEST', 400)
       }
 
@@ -191,6 +183,19 @@ async function setCatalogItemRating(
     }
 
     const seasonFilter = seasonNumber === null ? isNull(catalogItemRatings.seasonNumber) : eq(catalogItemRatings.seasonNumber, seasonNumber)
+
+    const previousRows = await transaction.select({ score: catalogItemRatings.score })
+      .from(catalogItemRatings)
+      .where(
+        and(eq(catalogItemRatings.userId, userId), eq(catalogItemRatings.catalogItemId, catalogItemId), isNull(catalogItemRatings.catalogEpisodeId), seasonFilter)
+      )
+      .for('update')
+
+    const previousScore = previousRows[0]?.score ?? null
+
+    if (previousScore === score) {
+      return true
+    }
 
     if (score === null) {
       await transaction
@@ -217,6 +222,16 @@ async function setCatalogItemRating(
           set: { score }
         })
     }
+
+    await transaction.insert(catalogTimelineEvents).values({
+      userId,
+      catalogItemId,
+      kind: 'rating_changed',
+      occurredAt: sql`clock_timestamp()`,
+      seasonNumber,
+      previousScore,
+      score
+    })
 
     return true
   })

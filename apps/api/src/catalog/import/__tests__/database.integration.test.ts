@@ -6,6 +6,7 @@ import type { ImportSelection, ImportPreviewData } from '@tv/database/import-pre
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
+import { insertSeriesEpisodeWatches } from '../../../testing/series-watch-fixtures.ts'
 import { findImportCatalogMatches } from '../matches.ts'
 import { inspectCatalogState, readCatalogState } from '../catalog-state.ts'
 import { deleteExpiredImportPreviews, PREVIEW_LIFETIME_MS } from '../repository.ts'
@@ -117,9 +118,16 @@ async function seedUserActivity(): Promise<void> {
   await client.query(`INSERT INTO catalog_viewing_creations (user_id, request_id, catalog_item_id, input, viewing_id)
     VALUES ($1, $2, $3, jsonb_build_object('requestId', $2::uuid, 'mode', 'current', 'contextVersion', 1, 'startedOn', NULL, 'completedOn', NULL), $4)`, [session.user.id, randomUUID(), itemId, currentId])
 
-  const watches = await client.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) SELECT $1, id FROM catalog_episodes ORDER BY id LIMIT 1 RETURNING catalog_episode_id', [session.user.id])
+  const episodes = await client.query<{ id: string }>('SELECT id FROM catalog_episodes ORDER BY id LIMIT 1')
+  const episodeIds = episodes.rows.map(episode => episode.id)
+  const watches = await insertSeriesEpisodeWatches(client, session.user.id, { episodeIds })
 
-  expect(watches.rowCount).toBe(1)
+  await insertSeriesEpisodeWatches(client, session.user.id, {
+    episodeIds,
+    status: 'completed'
+  })
+
+  expect(watches).toHaveLength(1)
 }
 
 async function catalogSnapshot() {
@@ -134,7 +142,8 @@ async function catalogSnapshot() {
       (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_item_id, id) FROM catalog_viewings AS watch) AS movies,
       (SELECT jsonb_agg(to_jsonb(context) ORDER BY user_id, catalog_item_id) FROM catalog_viewing_contexts AS context) AS viewing_contexts,
       (SELECT jsonb_agg(to_jsonb(creation) ORDER BY user_id, request_id) FROM catalog_viewing_creations AS creation) AS viewing_creations,
-      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_episode_id) FROM catalog_episode_watches AS watch) AS watches,
+      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY id) FROM catalog_viewing_episode_watches AS watch) AS watches,
+      (SELECT jsonb_agg(to_jsonb(event) ORDER BY id) FROM catalog_timeline_events AS event) AS timeline_events,
       (SELECT jsonb_agg(to_jsonb(account) ORDER BY id) FROM users AS account) AS users
   `)
 

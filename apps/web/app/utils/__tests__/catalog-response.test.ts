@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { catalogSeriesWatchesResponseSchema } from '@tv/shared/catalog-series'
 import * as v from 'valibot'
 
 import {
   catalogDetailsResponseSchema,
   catalogEpisodesResponseSchema,
-  catalogEpisodeWatchesResponseSchema,
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
@@ -142,15 +142,39 @@ describe('catalog episode response contracts', () => {
     }).success).toBe(false)
   })
 
-  it('accepts watched episode IDs and rejects malformed or extra data', () => {
-    const response = { watchedEpisodeIds: [episode.id] }
+  it('accepts watched episode context and rejects legacy, malformed, or extra data', () => {
+    const response = {
+      watchedEpisodeIds: [episode.id],
 
-    expect(v.parse(catalogEpisodeWatchesResponseSchema, response)).toStrictEqual(response)
-    expect(v.safeParse(catalogEpisodeWatchesResponseSchema, { watchedEpisodeIds: ['bad-id'] }).success).toBe(false)
+      watches: [{
+        id: '01991a00-0000-7000-8000-000000000003',
+        catalogEpisodeId: episode.id,
+        viewingId: '01991a00-0000-7000-8000-000000000004',
+        markedAt: '2026-10-08T07:00:00.123456Z'
+      }],
 
-    expect(v.safeParse(catalogEpisodeWatchesResponseSchema, {
-      extra: true,
-      watchedEpisodeIds: []
+      currentViewing: {
+        id: '01991a00-0000-7000-8000-000000000004',
+        catalogItemId: '01991a00-0000-7000-8000-000000000005',
+        status: 'watching',
+        recordedAt: '2026-10-08T07:00:00.123456Z',
+        revision: 1
+      },
+
+      contextVersion: 1
+    }
+
+    expect(v.parse(catalogSeriesWatchesResponseSchema, response)).toStrictEqual(response)
+    expect(v.safeParse(catalogSeriesWatchesResponseSchema, { watchedEpisodeIds: [] }).success).toBe(false)
+
+    expect(v.safeParse(catalogSeriesWatchesResponseSchema, {
+      ...response,
+      watchedEpisodeIds: ['bad-id']
+    }).success).toBe(false)
+
+    expect(v.safeParse(catalogSeriesWatchesResponseSchema, {
+      ...response,
+      extra: true
     }).success).toBe(false)
   })
 

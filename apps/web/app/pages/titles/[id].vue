@@ -104,6 +104,7 @@
                   <p v-if="showViewingCount" :class="$style.supportingText" role="status">{{ viewingCountLabel }}</p>
                 </template>
               </section>
+              <CatalogSeriesRewatch v-if="showSeriesRewatch" :class="$style.watchedAction" :state="episodeWatches" />
             </div>
           </div>
         </header>
@@ -142,6 +143,7 @@
           :has-session-error="hasSessionError"
           :sign-in-location="signInLocation"
           :selected-id="selectedViewingId"
+          @saved="refreshTimeline"
         />
         <section v-if="isSeries" :class="$style.seriesContent" aria-label="Series details">
           <div :class="$style.tabs" role="tablist" aria-label="Series information">
@@ -194,6 +196,8 @@
               :is-episodes-empty="isEpisodesEmpty"
               :is-episodes-loading="isEpisodesLoading"
               :is-saving="isSavingEpisode"
+              :action-error="episodeActionError"
+              :read-error="episodeReadError"
               :save-error-for="episodeSaveErrorFor"
               :saving-episode-id="savingEpisodeId"
               :sign-in-location="signInLocation"
@@ -203,6 +207,8 @@
               @retry-episodes="retryEpisodes"
               @retry-watched="retryEpisodeWatches"
               @toggle-watched="toggleEpisodeWatched"
+              @mark-released="episodeWatches.markReleased"
+              @rating-saved="refreshTimeline"
               @rating-unauthorized="handleSeasonRatingUnauthorized"
             >
               <template #season-rating="{ seasonNumber }">
@@ -216,6 +222,7 @@
                   :has-session-error="hasSessionError"
                   :sign-in-location="signInLocation"
                   @unauthorized="handleSeasonRatingUnauthorized"
+                  @saved="refreshTimeline"
                 />
               </template>
             </CatalogEpisodeList>
@@ -235,6 +242,14 @@
             </section>
           </div>
         </section>
+        <CatalogTitleTimeline
+          v-if="isAuthenticated"
+          :key="viewingComponentKey"
+          :class="$style.timeline"
+          :catalog-item-id="item.id"
+          :state="timeline"
+          :time-zone="timeZone"
+        />
         <section v-if="hasSourceLinks" :class="$style.credits" aria-label="Sources and credits">
           <h2 :class="$style.subheading">Sources and credits</h2>
           <ul :class="$style.sourceList">
@@ -275,6 +290,10 @@
   import { useCatalogEpisodeWatches } from '~/composables/use-catalog-episode-watches.ts'
   import { useCatalogFollow } from '~/composables/use-catalog-follow.ts'
   import { useMovieViewings } from '~/composables/use-movie-viewings.ts'
+  import CatalogTitleTimeline from '~/components/catalog/CatalogTitleTimeline.vue'
+  import CatalogSeriesRewatch from '~/components/catalog/CatalogSeriesRewatch.vue'
+  import { useTitleTimeline } from '~/composables/use-title-timeline.ts'
+  import { useBrowserTimeZone } from '~/composables/use-browser-time-zone.ts'
   import CatalogMovieViewings from '~/components/catalog/CatalogMovieViewings.vue'
   import { normalizeSearchQuery } from '~/utils/catalog-response.ts'
 
@@ -306,6 +325,7 @@
     seasonNumber: null
   })
 
+  const { timeZone } = useBrowserTimeZone()
   const accountId = computed(() => sessionState.value.status === 'authenticated' ? sessionState.value.user.id : null)
   const catalogItemId = computed(() => item.value?.id ?? null)
 
@@ -528,7 +548,17 @@
     reload: reloadEpisodes
   } = useCatalogEpisodes(episodeCatalogItemId, id)
 
+  const episodeWatches = useCatalogEpisodeWatches(episodeCatalogItemId, accountId, { timeZone })
+  const showSeriesRewatch = computed(() => isSeries.value && isAuthenticated.value && episodeWatches.currentViewing.value !== null)
+
+  const timeline = useTitleTimeline(catalogItemId, accountId, {
+    timeZone,
+    viewingContext: episodeWatches.contextKey
+  })
+
   const {
+    actionError: episodeActionError,
+    readError: episodeReadError,
     clearUnauthorized: clearEpisodeWatchesUnauthorized,
     isSaving: isSavingEpisode,
     load: loadEpisodeWatches,
@@ -539,7 +569,10 @@
     unauthorized: episodeWatchesUnauthorized,
     watchedCount: watchedEpisodeCount,
     watchedEpisodeIds
-  } = useCatalogEpisodeWatches(episodeCatalogItemId, accountId)
+  } = episodeWatches
+
+  watch(episodeWatches.mutationVersion, () => { void timeline.load() })
+  watch(timeline.unauthorized, (value) => { if (value) { setAnonymous() } }, { flush: 'sync' })
 
   watch(episodeWatchesUnauthorized, async (reason) => {
     if (reason === null) {
@@ -593,8 +626,12 @@
     ratingSaveError.value = ''
   }
 
+  function refreshTimeline(): void { void timeline.load() }
+
   function handleRatingSaved(savedItemId: string): void {
     if (savedItemId === item.value?.id) {
+      refreshTimeline()
+
       void ratingSummaryReady.execute({ dedupe: 'cancel' })
     }
   }
@@ -677,8 +714,10 @@
 
   async function recordCurrentViewing(): Promise<void> {
     const focusOwner = globalThis.document.activeElement
+    const saved = await movieViewings.create('current')
 
-    await movieViewings.create('current')
+    if (saved) { refreshTimeline() }
+
     await nextTick()
 
     if (!canRestoreActionFocus(focusOwner)) {
@@ -866,6 +905,7 @@
     .actionLink:hover { filter: brightness(0.96); }
     .actionLink:active { transform: translateY(0.0625rem); }
     .movieViewings { grid-column: 1 / -1; }
+    .timeline { grid-column: 1 / -1; }
 
     .overview, .movieOverview {
       padding-block-start: var(--space-6);
@@ -873,6 +913,7 @@
     }
     .seriesContent {
       display: grid;
+      align-content: start;
       gap: var(--space-6);
     }
     .tabs {
@@ -974,18 +1015,19 @@
       .personalActions { gap: var(--space-3); margin-block-start: var(--space-6); }
       .ratingAction, .personalAction, .watchedAction { flex: 0 1 10rem; }
       .watchedAction { flex-basis: 12rem; }
-      .ratingsRail { grid-column: 2; grid-row: 2 / span 2; align-self: start; margin-block-start: calc(-1 * var(--space-8)); }
+      .ratingsRail { grid-column: 2; grid-row: 2; align-self: start; margin-block-start: calc(-1 * var(--space-8)); }
       .personalRating { padding: var(--space-3); }
       .seriesContent, .movieOverview { grid-column: 1; grid-row: 2; }
       .movieViewings { grid-column: 1; grid-row: 3; }
-      .seriesContent { margin-block-start: var(--space-2); }
+      .timeline { grid-column: 2; grid-row: 3; align-self: start; }
+      .seriesContent { grid-row: 2 / span 2; margin-block-start: var(--space-2); }
       .credits { grid-column: 1; }
     }
     @container (width < 38rem) {
       .details, .loading { grid-template-columns: minmax(0, 1fr); }
       .hero { grid-column: 1; }
       .ratingsRail { grid-column: 1; grid-row: auto; margin-block-start: 0; }
-      .seriesContent, .movieOverview, .movieViewings { grid-column: 1; grid-row: auto; }
+      .seriesContent, .movieOverview, .movieViewings, .timeline { grid-column: 1; grid-row: auto; }
     }
     @container (width < 18rem) {
       .hero { grid-template-columns: minmax(0, 1fr); }

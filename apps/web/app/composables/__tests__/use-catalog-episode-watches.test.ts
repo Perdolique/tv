@@ -1,323 +1,373 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
+import type { CatalogSeriesWatchesResponse } from '@tv/shared/catalog-series'
+import { isRecord } from '@tv/shared/type-guards'
 
 interface RequestOptions {
+  body?: unknown;
   method?: string;
   retry: number;
   signal: AbortSignal;
 }
 
-interface SetupOptions {
-  automaticLoad?: boolean;
-  initialAccountId?: string | null;
-  initialItemId?: string | null;
-}
+const harness = vi.hoisted(() => { return { fetch: vi.fn<(url: string, options: RequestOptions) => Promise<unknown>>() } })
 
-const harness = vi.hoisted(() => {
-  return { fetch: vi.fn<(url: string, options: RequestOptions) => Promise<unknown>>() }
-})
-
-// oxlint-disable-next-line vitest/prefer-import-in-mock -- Nuxt's virtual alias has no runtime module in this Node unit test.
-vi.mock('#app', () => {
-  return { useRequestFetch: () => harness.fetch }
-})
+// oxlint-disable-next-line vitest/prefer-import-in-mock -- Nuxt's virtual module is not available in Node.
+vi.mock('#app', () => { return { useRequestFetch: () => harness.fetch } })
 
 const { useCatalogEpisodeWatches } = await import('../use-catalog-episode-watches.ts')
-const firstItemId = '01991a00-0000-7000-8000-000000000001'
-const secondItemId = '01991a00-0000-7000-8000-000000000002'
-const firstAccountId = '01991a00-0000-7000-8000-000000000003'
-const secondAccountId = '01991a00-0000-7000-8000-000000000004'
-const firstEpisodeId = '30000000-0000-7000-8000-000000000001'
-const secondEpisodeId = '30000000-0000-7000-8000-000000000002'
+const itemId = '01991a00-0000-7000-8000-000000000001'
+const accountId = '01991a00-0000-7000-8000-000000000002'
+const episodeId = '01991a00-0000-7000-8000-000000000003'
+const viewingId = '01991a00-0000-7000-8000-000000000004'
+const watchId = '01991a00-0000-7000-8000-000000000005'
 const scopes: ReturnType<typeof effectScope>[] = []
 
-function setup({
-  automaticLoad = false,
-  initialAccountId = firstAccountId,
-  initialItemId = firstItemId
-}: SetupOptions = {}) {
+function response(watched = false, currentId: string | null = watched ? viewingId : null, version = watched ? 1 : 0): CatalogSeriesWatchesResponse {
+  const watchedEpisodeIds = watched ? [episodeId] : []
+
+  const watches = watched ? [{
+    id: watchId,
+    catalogEpisodeId: episodeId,
+    viewingId,
+    markedAt: '2026-10-08T10:00:00.000000Z'
+  }] : []
+
+  const currentViewing: CatalogSeriesWatchesResponse['currentViewing'] = currentId === null ? null : {
+    id: currentId,
+    catalogItemId: itemId,
+    status: 'watching',
+    recordedAt: '2026-10-08T10:00:00.000000Z',
+    revision: 1
+  }
+
+  return {
+    watchedEpisodeIds,
+    watches,
+    currentViewing,
+    contextVersion: version
+  }
+}
+
+function setup(automaticLoad = false, initialTimeZone: string | null = 'Europe/Tallinn') {
   const scope = effectScope()
-  const item = ref<string | null>(initialItemId)
-  const account = ref<string | null>(initialAccountId)
+  const item = ref<string | null>(itemId)
+  const account = ref<string | null>(accountId)
+  const timeZone = ref<string | null>(initialTimeZone)
 
   const watches = scope.run(() => useCatalogEpisodeWatches(item, account, {
-    automaticLoad
+    automaticLoad,
+    timeZone
   }))
 
   scopes.push(scope)
 
-  if (watches === undefined) {
-    throw new Error('The catalog episode watches scope did not start')
-  }
+  if (watches === undefined) { throw new Error('Scope did not start') }
 
   return {
     account,
     item,
+    timeZone,
     watches
   }
 }
 
-describe('private catalog episode watches lifecycle', () => {
-  beforeEach(() => { harness.fetch.mockReset() })
+describe('current series viewing requests', () => {
+  beforeEach(() => {
+    harness.fetch.mockReset()
+
+    const warn = vi.spyOn(globalThis.console, 'warn')
+
+    warn.mockImplementation(() => {
+      // Expected failures retain raw telemetry.
+    })
+  })
 
   afterEach(() => {
-    for (const scope of scopes.splice(0)) {
-      scope.stop()
-    }
+    const finishedScopes = scopes.splice(0)
+
+    for (const scope of finishedScopes) { scope.stop() }
 
     vi.restoreAllMocks()
   })
 
-  it('loads all watched episode IDs in one request', async () => {
-    harness.fetch.mockResolvedValue({ watchedEpisodeIds: [firstEpisodeId, secondEpisodeId] })
+  it('waits for account and browser time zone before loading private data', async () => {
+    const empty = response()
 
-    const { watches } = setup()
+    harness.fetch.mockResolvedValue(empty)
 
-    await watches.load()
-    expect(watches.status.value).toBe('loaded')
-    expect(watches.watchedEpisodeIds.value).toStrictEqual([firstEpisodeId, secondEpisodeId])
-    expect(watches.watchedCount.value).toBe(2)
+    const current = setup(true, null)
 
-    expect(harness.fetch).toHaveBeenCalledExactlyOnceWith(
-      `/api/catalog/items/${firstItemId}/episodes/watched`,
-      expect.objectContaining({ retry: 0 })
-    )
-  })
+    expect(harness.fetch).not.toHaveBeenCalled()
 
-  it('marks optimistically, updates the total and blocks every repeated mutation', async () => {
-    const pending = Promise.withResolvers<unknown>()
+    current.timeZone.value = 'Europe/Tallinn'
 
-    harness.fetch
-      .mockResolvedValueOnce({ watchedEpisodeIds: [] })
-      .mockReturnValueOnce(pending.promise)
-
-    const { watches } = setup()
-
-    await watches.load()
-
-    const firstMutation = watches.toggle(firstEpisodeId)
-    const repeatedMutation = watches.toggle(secondEpisodeId)
-
-    expect(watches.watchedEpisodeIds.value).toContain(firstEpisodeId)
-    expect(watches.watchedCount.value).toBe(1)
-    expect(watches.isSaving.value).toBe(true)
-    expect(watches.savingEpisodeId.value).toBe(firstEpisodeId)
-    expect(harness.fetch).toHaveBeenCalledTimes(2)
-    pending.resolve({ watched: true })
-    await Promise.all([firstMutation, repeatedMutation])
-    expect(watches.watchedEpisodeIds.value).toContain(firstEpisodeId)
-    expect(watches.watchedEpisodeIds.value).not.toContain(secondEpisodeId)
-    expect(watches.isSaving.value).toBe(false)
-  })
-
-  it('unmarks a loaded episode with DELETE and preserves other watched episodes', async () => {
-    const pending = Promise.withResolvers<unknown>()
-
-    harness.fetch
-      .mockResolvedValueOnce({ watchedEpisodeIds: [firstEpisodeId, secondEpisodeId] })
-      .mockReturnValueOnce(pending.promise)
-
-    const { watches } = setup()
-
-    await watches.load()
-
-    const mutation = watches.toggle(firstEpisodeId)
-
-    expect(watches.watchedEpisodeIds.value).toStrictEqual([secondEpisodeId])
-    expect(watches.watchedCount.value).toBe(1)
-    expect(watches.isSaving.value).toBe(true)
-
-    expect(harness.fetch).toHaveBeenLastCalledWith(
-      `/api/catalog/episodes/${firstEpisodeId}/watched`,
-      expect.objectContaining({
-        method: 'DELETE',
-        retry: 0
-      })
-    )
-
-    pending.resolve({ watched: false })
-
-    await mutation
-
-    expect(watches.watchedEpisodeIds.value).toStrictEqual([secondEpisodeId])
-    expect(watches.watchedCount.value).toBe(1)
-    expect(watches.isSaving.value).toBe(false)
-    expect(watches.saveErrorFor(firstEpisodeId)).toBe('')
-  })
-
-  it('restores a loaded mark after a failed DELETE and allows retry', async () => {
-    const failure = new Error('controlled unmark failure')
-
-    vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {
-      // This test checks rollback and retry after the failed request.
-    })
-
-    harness.fetch
-      .mockResolvedValueOnce({ watchedEpisodeIds: [firstEpisodeId] })
-      .mockRejectedValueOnce(failure)
-      .mockResolvedValueOnce({ watched: false })
-
-    const { watches } = setup()
-
-    await watches.load()
-    await watches.toggle(firstEpisodeId)
-    expect(watches.watchedEpisodeIds.value).toStrictEqual([firstEpisodeId])
-    expect(watches.watchedCount.value).toBe(1)
-    expect(watches.saveErrorFor(firstEpisodeId)).toBe('We couldn’t update this episode. Try again.')
-    await watches.toggle(firstEpisodeId)
-
-    expect(harness.fetch).toHaveBeenLastCalledWith(
-      `/api/catalog/episodes/${firstEpisodeId}/watched`,
-      expect.objectContaining({ method: 'DELETE' })
-    )
-
-    expect(watches.watchedEpisodeIds.value).toStrictEqual([])
-    expect(watches.watchedCount.value).toBe(0)
-    expect(watches.saveErrorFor(firstEpisodeId)).toBe('')
-  })
-
-  it('rolls back a transport failure and retries the same episode', async () => {
-    const failure = new Error('controlled watched failure')
-
-    const telemetry = vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {
-      // The raw failure is asserted below.
-    })
-
-    harness.fetch
-      .mockResolvedValueOnce({ watchedEpisodeIds: [] })
-      .mockRejectedValueOnce(failure)
-      .mockResolvedValueOnce({ watched: true })
-
-    const { watches } = setup()
-
-    await watches.load()
-    await watches.toggle(firstEpisodeId)
-    expect(watches.watchedEpisodeIds.value).not.toContain(firstEpisodeId)
-    expect(watches.watchedCount.value).toBe(0)
-    expect(watches.saveErrorFor(firstEpisodeId)).toBe('We couldn’t update this episode. Try again.')
-    await watches.toggle(firstEpisodeId)
-    expect(watches.watchedEpisodeIds.value).toContain(firstEpisodeId)
-    expect(watches.saveErrorFor(firstEpisodeId)).toBe('')
-
-    expect(telemetry).toHaveBeenCalledWith({
-      error: failure,
-      message: 'Catalog episode watched update request failed.'
-    })
-  })
-
-  it('rolls back an unexpected mutation response', async () => {
-    const telemetry = vi.spyOn(globalThis.console, 'error').mockImplementation(() => {
-      // The mismatch is asserted below.
-    })
-
-    harness.fetch
-      .mockResolvedValueOnce({ watchedEpisodeIds: [] })
-      .mockResolvedValueOnce({ watched: false })
-
-    const { watches } = setup()
-
-    await watches.load()
-    await watches.toggle(firstEpisodeId)
-    expect(watches.watchedEpisodeIds.value).not.toContain(firstEpisodeId)
-    expect(watches.saveErrorFor(firstEpisodeId)).not.toBe('')
-    expect(telemetry).toHaveBeenCalledWith('Catalog episode watched response did not match the requested state.')
-  })
-
-  it('rolls back a mutation 401 and exposes the redirect reason', async () => {
-    harness.fetch
-      .mockResolvedValueOnce({ watchedEpisodeIds: [] })
-      .mockRejectedValueOnce({ statusCode: 401 })
-
-    const { watches } = setup()
-
-    await watches.load()
-    await watches.toggle(firstEpisodeId)
-    expect(watches.watchedEpisodeIds.value).not.toContain(firstEpisodeId)
-    expect(watches.unauthorized.value).toBe('mutation')
-    expect(watches.saveErrorFor(firstEpisodeId)).toBe('')
-    watches.clearUnauthorized()
-    expect(watches.unauthorized.value).toBeNull()
-  })
-
-  it('clears private state immediately and ignores stale results after account switch', async () => {
-    const firstResponse = Promise.withResolvers<unknown>()
-    const secondResponse = Promise.withResolvers<unknown>()
-
-    harness.fetch
-      .mockReturnValueOnce(firstResponse.promise)
-      .mockReturnValueOnce(secondResponse.promise)
-
-    const current = setup({ automaticLoad: true })
-    const firstSignal = harness.fetch.mock.calls[0]?.[1].signal
-
-    current.account.value = secondAccountId
-
-    expect(firstSignal?.aborted).toBe(true)
-    expect(current.watches.watchedEpisodeIds.value).toStrictEqual([])
-    expect(harness.fetch).toHaveBeenCalledTimes(2)
-    firstResponse.resolve({ watchedEpisodeIds: [firstEpisodeId] })
-    secondResponse.resolve({ watchedEpisodeIds: [secondEpisodeId] })
-
-    await vi.waitFor(() => {
-      expect(current.watches.status.value).toBe('loaded')
-    })
-
-    expect(current.watches.watchedEpisodeIds.value).toStrictEqual([secondEpisodeId])
-  })
-
-  it('clears private state on sign-out and never clears public episode data', async () => {
-    const publicEpisodes = [firstEpisodeId, secondEpisodeId]
-
-    harness.fetch.mockResolvedValue({ watchedEpisodeIds: [firstEpisodeId] })
-
-    const current = setup()
-
-    await current.watches.load()
-
-    current.account.value = null
-
-    expect(current.watches.status.value).toBe('idle')
-    expect(current.watches.watchedEpisodeIds.value).toStrictEqual([])
-    expect(publicEpisodes).toStrictEqual([firstEpisodeId, secondEpisodeId])
-  })
-
-  it('converts a bulk 401 to guest state without an episode mutation', async () => {
-    harness.fetch.mockRejectedValue({ statusCode: 401 })
-
-    const { watches } = setup()
-
-    await watches.load()
-    expect(watches.status.value).toBe('idle')
-    expect(watches.unauthorized.value).toBe('load')
+    await vi.waitFor(() => { expect(current.watches.status.value).toBe('loaded') })
     expect(harness.fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('cancels a pending mutation when the series changes', async () => {
+  it('keeps counters unchanged until confirmation and blocks repeated writes', async () => {
     const pending = Promise.withResolvers<unknown>()
+    const empty = response()
+    const watched = response(true)
 
-    harness.fetch
-      .mockResolvedValueOnce({ watchedEpisodeIds: [] })
-      .mockReturnValueOnce(pending.promise)
+    harness.fetch.mockResolvedValueOnce(empty).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(watched)
 
-    const telemetry = vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {
-      // A stale rejection must not reach telemetry.
+    const { watches } = setup()
+
+    await watches.load()
+
+    const mutation = watches.toggle(episodeId)
+
+    await watches.markReleased(null)
+    expect(watches.watchedCount.value).toBe(0)
+    expect(watches.isSaving.value).toBe(true)
+    expect(harness.fetch).toHaveBeenCalledTimes(2)
+    pending.resolve(watched)
+    await expect(mutation).resolves.toBe(true)
+    expect(watches.watchedCount.value).toBe(1)
+    expect(watches.mutationVersion.value).toBe(1)
+  })
+
+  it('retries a lost answer with the same request key and expected context', async () => {
+    const failure = new Error('lost answer containing private transport details')
+    const empty = response()
+    const watched = response(true)
+
+    harness.fetch.mockResolvedValueOnce(empty).mockRejectedValueOnce(failure).mockResolvedValueOnce(watched).mockResolvedValueOnce(watched)
+
+    const { watches } = setup()
+
+    await watches.load()
+    await expect(watches.toggle(episodeId)).resolves.toBe(false)
+    expect(watches.saveErrorFor(episodeId)).toBe('We couldn’t save this change. Try again.')
+
+    const warning: unknown = vi.mocked(globalThis.console.warn).mock.calls[0]?.[0]
+
+    assert(isRecord(warning))
+    expect(warning.error).toBe(failure)
+
+    const firstBody = harness.fetch.mock.calls[1]?.[1].body
+
+    await expect(watches.toggle(episodeId)).resolves.toBe(true)
+    expect(harness.fetch.mock.calls[2]?.[1].body).toStrictEqual(firstBody)
+
+    expect(firstBody).toMatchObject({
+      currentViewingId: null,
+      contextVersion: 0,
+      timeZone: 'Europe/Tallinn'
     })
+  })
+
+  it('keeps the original PUT when a refresh discovers the mark after a lost answer', async () => {
+    const failure = new Error('lost answer')
+    const empty = response()
+    const watched = response(true)
+
+    harness.fetch.mockResolvedValueOnce(empty).mockRejectedValueOnce(failure).mockResolvedValueOnce(watched).mockResolvedValueOnce(watched).mockResolvedValueOnce(watched)
+
+    const { watches } = setup()
+
+    await watches.load()
+    await watches.toggle(episodeId)
+
+    const firstBody = harness.fetch.mock.calls[1]?.[1].body
+
+    await watches.load()
+    await watches.toggle(episodeId)
+
+    expect(harness.fetch.mock.calls[3]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: firstBody
+    })
+
+    expect(watches.watchedCount.value).toBe(1)
+  })
+
+  it('deletes the exact loaded mark and keeps the mark visible until confirmation', async () => {
+    const pending = Promise.withResolvers<unknown>()
+    const watched = response(true)
+    const empty = response(false, viewingId, 1)
+
+    harness.fetch.mockResolvedValueOnce(watched).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(empty)
+
+    const { watches } = setup()
+
+    await watches.load()
+
+    const mutation = watches.toggle(episodeId)
+
+    expect(watches.watchedCount.value).toBe(1)
+
+    expect(harness.fetch.mock.calls[1]?.[1]).toMatchObject({
+      method: 'DELETE',
+
+      body: {
+        currentViewingId: viewingId,
+        contextVersion: 1,
+        watchId
+      }
+    })
+
+    pending.resolve(empty)
+
+    await mutation
+
+    expect(watches.watchedCount.value).toBe(0)
+  })
+
+  it('keeps a confirmed bulk write successful if its refresh fails', async () => {
+    const empty = response()
+    const watched = response(true)
+    const failure = new Error('refresh failed')
+
+    harness.fetch.mockResolvedValueOnce(empty).mockResolvedValueOnce(watched).mockRejectedValueOnce(failure)
+
+    const { watches } = setup()
+
+    await watches.load()
+    await expect(watches.markReleased(2)).resolves.toBe(true)
+    expect(harness.fetch.mock.calls[1]?.[0]).toBe(`/api/catalog/items/${itemId}/seasons/2/watched`)
+    expect(watches.watchedCount.value).toBe(1)
+    expect(watches.status.value).toBe('loaded')
+    expect(watches.actionError.value).toBe('')
+    expect(watches.readError.value).not.toBe('')
+  })
+
+  it('refreshes a conflict and uses a fresh context for the next attempt', async () => {
+    const empty = response()
+    const refreshed = response(false, viewingId, 4)
+    const watched = response(true, viewingId, 4)
+
+    harness.fetch.mockResolvedValueOnce(empty).mockRejectedValueOnce({ statusCode: 409 }).mockResolvedValueOnce(refreshed).mockResolvedValueOnce(watched).mockResolvedValueOnce(watched)
+
+    const { watches } = setup()
+
+    await watches.load()
+    await watches.toggle(episodeId)
+    expect(watches.saveErrorFor(episodeId)).toContain('current viewing changed')
+    await watches.toggle(episodeId)
+
+    expect(harness.fetch.mock.calls[3]?.[1].body).toMatchObject({
+      currentViewingId: viewingId,
+      contextVersion: 4
+    })
+  })
+
+  it('starts an empty rewatch with the chosen close status', async () => {
+    const nextViewingId = '01991a00-0000-7000-8000-000000000006'
+    const watched = response(true)
+    const rewatch = response(false, nextViewingId, 2)
+
+    harness.fetch.mockResolvedValueOnce(watched).mockResolvedValue(rewatch)
+
+    const { watches } = setup()
+
+    await watches.load()
+    await expect(watches.startRewatch('paused')).resolves.toBe(true)
+
+    expect(harness.fetch.mock.calls[1]?.[1].body).toMatchObject({
+      currentViewingId: viewingId,
+      contextVersion: 1,
+      closeStatus: 'paused'
+    })
+
+    expect(watches.currentViewingId.value).toBe(nextViewingId)
+    expect(watches.watchedCount.value).toBe(0)
+  })
+
+  it('aborts pending writes and discards late answers after account change', async () => {
+    const pending = Promise.withResolvers<unknown>()
+    const empty = response()
+    const watched = response(true)
+
+    harness.fetch.mockResolvedValueOnce(empty).mockReturnValueOnce(pending.promise)
 
     const current = setup()
 
     await current.watches.load()
 
-    const mutation = current.watches.toggle(firstEpisodeId)
+    const mutation = current.watches.toggle(episodeId)
     const signal = harness.fetch.mock.calls[1]?.[1].signal
 
-    current.item.value = secondItemId
+    current.account.value = null
 
     expect(signal?.aborted).toBe(true)
-    expect(current.watches.watchedEpisodeIds.value).not.toContain(firstEpisodeId)
-    pending.reject(new Error('late mutation failure'))
+    pending.resolve(watched)
+    await expect(mutation).resolves.toBe(false)
+    expect(current.watches.watchedCount.value).toBe(0)
+    expect(current.watches.status.value).toBe('idle')
+  })
 
-    await mutation
+  it.each([
+    {
+      operation: 'read',
+      context: 'account'
+    },
+    {
+      operation: 'write',
+      context: 'account'
+    },
+    {
+      operation: 'read',
+      context: 'item'
+    },
+    {
+      operation: 'write',
+      context: 'item'
+    }
+  ] as const)('aborts a pending $operation and ignores its answer after $context changes', async ({ operation, context }) => {
+    const pending = Promise.withResolvers<unknown>()
+    const nextId = '01991a00-0000-7000-8000-000000000007'
+    const nextViewingId = '01991a00-0000-7000-8000-000000000008'
+    const watched = response(true)
 
-    expect(telemetry).not.toHaveBeenCalled()
+    harness.fetch.mockResolvedValueOnce(watched).mockReturnValueOnce(pending.promise)
+
+    const current = setup()
+
+    await current.watches.load()
+
+    const requestMethods = {
+      read: async () => current.watches.load(),
+      write: async () => current.watches.toggle(episodeId)
+    }
+
+    const oldRequest = requestMethods[operation]()
+    const signal = harness.fetch.mock.calls[1]?.[1].signal
+
+    current[context].value = nextId
+
+    expect(signal?.aborted).toBe(true)
+
+    const catalogItemIds = {
+      account: itemId,
+      item: nextId
+    }
+
+    const nextState: CatalogSeriesWatchesResponse = {
+      watchedEpisodeIds: [],
+      watches: [],
+
+      currentViewing: {
+        id: nextViewingId,
+        catalogItemId: catalogItemIds[context],
+        status: 'watching',
+        recordedAt: '2026-10-08T12:00:00.000000Z',
+        revision: 1
+      },
+
+      contextVersion: 7
+    }
+
+    harness.fetch.mockResolvedValueOnce(nextState)
+    await expect(current.watches.load()).resolves.toBe(true)
+    expect(current.watches.currentViewing.value).toStrictEqual(nextState.currentViewing)
+    pending.resolve(watched)
+    await expect(oldRequest).resolves.toBe(false)
+    expect(current.watches.watchedEpisodeIds.value).toStrictEqual([])
+    expect(current.watches.currentViewing.value).toStrictEqual(nextState.currentViewing)
+    expect(current.watches.contextVersion.value).toBe(7)
+    expect(current.watches.status.value).toBe('loaded')
   })
 })
