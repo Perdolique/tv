@@ -5,6 +5,7 @@ import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 import { calendarReleases } from '../calendar/fixtures.ts'
 import { watchlistItems } from '../watchlist/fixtures.ts'
 import { paginatedHistory } from '../dashboard/fixtures.ts'
+import { handleMovieViewings, movieViewings } from '../catalog/viewings.worker.ts'
 import { createViewingItems, createViewingSummary } from '../dashboard/service.ts'
 import { longEmail } from './constants.ts'
 import { handleImportRequest, OPERATOR_ID, POSTER_ID } from '../imports/worker.ts'
@@ -15,6 +16,13 @@ import {
   type TurnstileAction
 } from '../../../packages/shared/src/turnstile.ts'
 
+import {
+  catalogSeriesWatchSchema,
+  catalogSeriesUnwatchSchema,
+  type CatalogSeriesWatchesResponse
+} from '../../../packages/shared/src/catalog-series.ts'
+
+import * as v from 'valibot'
 import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 
 interface Credentials {
@@ -65,7 +73,6 @@ const LONG_EMAIL_WATCHED_COOKIE_NAME = 'tv_long_email_watched_item'
 const EPISODE_WATCHED_COOKIE_NAME = 'tv_watched_episode'
 const LONG_EMAIL_EPISODE_WATCHED_COOKIE_NAME = 'tv_long_email_watched_episode'
 const LONG_EMAIL_EMPTY_RELEASE_DATE = '2026-09-12'
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 const LONG_EMAIL_USER = {
   email: longEmail,
@@ -1036,88 +1043,6 @@ async function handleCatalogFollow(request: Request, url: URL): Promise<Response
   return json({ followed: getCookieValue(request, FOLLOW_COOKIE_NAME) === id })
 }
 
-async function handleCatalogWatched(request: Request, url: URL): Promise<Response> {
-  const expiresDuringMutation = request.method !== 'GET' && hasCookie(request, 'expire_watched_mutation=1')
-
-  if (!hasAuthenticatedCatalogSession(request) || hasCookie(request, 'expire_watched=1') || expiresDuringMutation) {
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401, {
-      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
-    })
-  }
-
-  const id = url.pathname.split('/').at(-2)
-
-  if (id === undefined || !UUID_PATTERN.test(id)) {
-    return json({ error: {
-      code: 'INVALID_REQUEST',
-      fields: { id: 'Use a valid catalog item UUID.' },
-      message: 'The request is invalid.'
-    } }, 400)
-  }
-
-  if (hasCookie(request, 'fail_watched_load=1')) {
-    return json({ error: {
-      code: 'SERVICE_UNAVAILABLE',
-      message: 'private database connection details'
-    } }, 503, {
-      'Set-Cookie': 'fail_watched_load=; Max-Age=0; Path=/; SameSite=Lax'
-    })
-  }
-
-  if (hasCookie(request, 'fail_watched=1')) {
-    // oxlint-disable-next-line promise/avoid-new -- The visible optimistic rollback requires a real pending request.
-    await new Promise(resolve => { globalThis.setTimeout(resolve, 500) })
-
-    return json({ error: {
-      code: 'SERVICE_UNAVAILABLE',
-      message: 'private database connection details'
-    } }, 503, {
-      'Set-Cookie': 'fail_watched=; Max-Age=0; Path=/; SameSite=Lax'
-    })
-  }
-
-  const item = detailsItems.find(candidate => candidate.id === id)
-
-  if (item === undefined) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'This title could not be found.'
-    } }, 404)
-  }
-
-  if (item.type !== 'movie') {
-    return json({ error: {
-      code: 'INVALID_REQUEST',
-      fields: { id: 'Only catalog movies can be marked as watched.' },
-      message: 'The request is invalid.'
-    } }, 400)
-  }
-
-  const watchedCookieName = getWatchedCookieName(request)
-  const watchedCatalogItemIds = getWatchedCatalogItemIds(request, watchedCookieName)
-
-  if (request.method === 'PUT') {
-    watchedCatalogItemIds.add(id)
-
-    return json({ watched: true }, 200, {
-      'Set-Cookie': createWatchedCookie(watchedCookieName, watchedCatalogItemIds)
-    })
-  }
-
-  if (request.method === 'DELETE') {
-    watchedCatalogItemIds.delete(id)
-
-    return json({ watched: false }, 200, {
-      'Set-Cookie': createWatchedCookie(watchedCookieName, watchedCatalogItemIds)
-    })
-  }
-
-  return json({ watched: watchedCatalogItemIds.has(id) })
-}
-
 async function handleCatalogEpisodes(request: Request, url: URL): Promise<Response> {
   if (hasCookie(request, 'fail_episodes=1')) {
     return json({ error: {
@@ -1144,6 +1069,46 @@ async function handleCatalogEpisodes(request: Request, url: URL): Promise<Respon
   }
 
   return json({ items: episodeFixtures.get(id) ?? [] })
+}
+
+function seriesWatches(request: Request, itemId: string, watchedIds: Set<string>): CatalogSeriesWatchesResponse {
+  const episodes = episodeFixtures.get(itemId) ?? []
+  const catalogEpisodeIds = episodes.map(episode => episode.id)
+  const episodeIds = new Set(catalogEpisodeIds)
+  const markedEpisodeIds = [...watchedIds]
+  const watchedEpisodeIds = markedEpisodeIds.filter(id => episodeIds.has(id))
+  let hasViewing = watchedEpisodeIds.length > 0
+
+  if (!hasViewing) {
+    const currentViewingCookie = `tv_series_current_${itemId}=1`
+
+    hasViewing = hasCookie(request, currentViewingCookie)
+  }
+
+  const watches = watchedEpisodeIds.map(id => {return {
+    id,
+    catalogEpisodeId: id,
+    viewingId: itemId,
+    markedAt: '2026-10-08T10:00:00.000000Z'
+  }})
+
+  const currentViewing: CatalogSeriesWatchesResponse['currentViewing'] = hasViewing ? {
+    id: itemId,
+    catalogItemId: itemId,
+    status: 'watching',
+    isRewatch: false,
+    recordedAt: '2026-10-08T10:00:00.000000Z',
+    revision: 1
+  } : null
+
+  const contextVersion = hasViewing ? 1 : 0
+
+  return {
+    watchedEpisodeIds,
+    watches,
+    currentViewing,
+    contextVersion
+  }
 }
 
 function handleCatalogEpisodeWatches(request: Request, url: URL): Response {
@@ -1184,10 +1149,9 @@ function handleCatalogEpisodeWatches(request: Request, url: URL): Response {
 
   const cookieName = getEpisodeWatchedCookieName(request)
   const watchedIds = getWatchedCatalogItemIds(request, cookieName)
-  const episodeIds = new Set((episodeFixtures.get(id) ?? []).map(episode => episode.id))
-  const watchedEpisodeIds = [...watchedIds].filter(episodeId => episodeIds.has(episodeId))
+  const response = seriesWatches(request, id, watchedIds)
 
-  return json({ watchedEpisodeIds })
+  return json(response)
 }
 
 async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<Response> {
@@ -1203,7 +1167,7 @@ async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<
   }
 
   if (hasCookie(request, 'fail_episode_watched=1')) {
-    // oxlint-disable-next-line promise/avoid-new -- Browser tests require an observable optimistic state before rollback.
+    // oxlint-disable-next-line promise/avoid-new -- Browser tests require an observable saving state before the failure.
     await new Promise(resolve => { globalThis.setTimeout(resolve, 500) })
 
     return json({ error: {
@@ -1215,34 +1179,51 @@ async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<
   }
 
   const episodeId = url.pathname.split('/').at(-2)
+  const itemEntry = [...episodeFixtures.entries()].find(([, episodes]) => episodes.some(episode => episode.id === episodeId))
 
-  const episodeExists = [...episodeFixtures.values()].some(episodes => (
-    episodes.some(episode => episode.id === episodeId)
-  ))
-
-  if (episodeId === undefined || !episodeExists) {
+  if (episodeId === undefined || itemEntry === undefined) {
     return json({ error: {
       code: 'NOT_FOUND',
       message: 'This title could not be found.'
     } }, 404)
   }
 
-  const cookieName = getEpisodeWatchedCookieName(request)
-  const watchedIds = getWatchedCatalogItemIds(request, cookieName)
+  const raw: unknown = await request.json().catch(() => null)
+  const parsed = request.method === 'PUT' ? v.safeParse(catalogSeriesWatchSchema, raw) : v.safeParse(catalogSeriesUnwatchSchema, raw)
 
-  if (request.method === 'PUT') {
-    watchedIds.add(episodeId)
-
-    return json({ watched: true }, 200, {
-      'Set-Cookie': createWatchedCookie(cookieName, watchedIds)
-    })
+  if (!parsed.success) {
+    return json({ error: {
+    code: 'INVALID_REQUEST',
+    message: 'Refresh your viewing and try again.'
+  } }, 409)
   }
 
-  watchedIds.delete(episodeId)
+  const [itemId] = itemEntry
+  const cookieName = getEpisodeWatchedCookieName(request)
+  const watchedIds = getWatchedCatalogItemIds(request, cookieName)
+  const headers = new Headers()
 
-  return json({ watched: false }, 200, {
-    'Set-Cookie': createWatchedCookie(cookieName, watchedIds)
-  })
+  if (request.method === 'PUT') { watchedIds.add(episodeId) } else { watchedIds.delete(episodeId) }
+
+  const watchedCookie = createWatchedCookie(cookieName, watchedIds)
+  const currentViewingCookie = `tv_series_current_${itemId}=1; Path=/; SameSite=Lax`
+
+  headers.append('Set-Cookie', watchedCookie)
+  headers.append('Set-Cookie', currentViewingCookie)
+
+  const result = seriesWatches(request, itemId, watchedIds)
+
+  result.currentViewing ??= {
+    id: itemId,
+    catalogItemId: itemId,
+    status: 'watching',
+    isRewatch: false,
+    recordedAt: '2026-10-08T10:00:00.000000Z',
+    revision: 1
+  }
+  result.contextVersion = 1
+
+  return json(result, 200, headers)
 }
 
 async function handleCatalogViewing(request: Request, url: URL): Promise<Response> {
@@ -1280,7 +1261,8 @@ async function handleCatalogViewing(request: Request, url: URL): Promise<Respons
   const episodeIds = getWatchedCatalogItemIds(request, getEpisodeWatchedCookieName(request))
 
   // Fixed fixture times make local-time and SSR assertions deterministic; mark cookies own membership.
-  const items = hasCookie(request, 'paginated_viewing=1') ? paginatedHistory : createViewingItems(movieIds, episodeIds)
+  const viewings = movieViewings(request, movieIds)
+  const items = hasCookie(request, 'paginated_viewing=1') ? paginatedHistory : createViewingItems(movieIds, episodeIds, viewings)
 
   if (isSummary) {
     const summary = createViewingSummary(items)
@@ -1352,6 +1334,14 @@ export default {
   // oxlint-disable-next-line eslint/complexity -- One explicit dispatcher keeps the fake service routes auditable.
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
+
+    if (request.method === 'GET' && /^\/api\/catalog\/items\/[^/]+\/timeline(?:\/episodes)?$/u.test(url.pathname)) {
+      return json({
+        items: [],
+        nextCursor: null
+      })
+    }
+
     const importResponse = await handleImportRequest(request, url, hasAuthenticatedCatalogSession(request))
 
     if (importResponse !== null) {return importResponse}
@@ -1388,12 +1378,13 @@ export default {
       return handleCatalogFollow(request, url)
     }
 
-    if (
-      ['GET', 'PUT', 'DELETE'].includes(request.method)
-      && url.pathname.startsWith('/api/catalog/items/')
-      && url.pathname.endsWith('/watched')
-    ) {
-      return handleCatalogWatched(request, url)
+    if (/^\/api\/catalog\/items\/[^/]+\/viewings(?:\/[^/]+)?$/u.test(url.pathname)) {
+      const movieIds = getWatchedCatalogItemIds(request, getWatchedCookieName(request))
+
+      return handleMovieViewings(request, url, {
+        authenticated: hasAuthenticatedCatalogSession(request),
+        movieIds
+      })
     }
 
     if (/^\/api\/catalog\/episodes\/[^/]+\/rating(?:-summary)?$/u.test(url.pathname)) {

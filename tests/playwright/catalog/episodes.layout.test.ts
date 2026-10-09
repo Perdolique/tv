@@ -39,14 +39,20 @@ async function expectEpisodeLayout(page: Page, inlineControls: boolean): Promise
 
   await expect(cards).toHaveCount(5)
 
+  await expect(cards.first().getByRole('region', {
+    name: 'Viewer rating for season 1, episode 1',
+    exact: true
+  }).getByText('Not rated', { exact: true })).toBeVisible()
+
   const list = page.getByRole('region', {
     name: 'Episodes',
     exact: true
   }).getByRole('list')
 
-  const listBox = await readGeometry(list)
-  const first = await readGeometry(cards.nth(0))
-  const second = await readGeometry(cards.nth(1))
+  const [listBox, first, second] = await Promise.all([
+    readGeometry(list), readGeometry(cards.nth(0)), readGeometry(cards.nth(1))
+  ])
+
   const widthDifference = Math.abs(first.width - listBox.width)
   const leftDifference = Math.abs(first.left - second.left)
 
@@ -84,6 +90,40 @@ async function expectEpisodeLayout(page: Page, inlineControls: boolean): Promise
   await expectNoHorizontalOverflow(page)
 }
 
+async function fitViewportBetweenTabs(page: Page): Promise<void> {
+  await page.getByRole('tab', { name: 'Overview' }).click()
+
+  const timeline = page.getByRole('region', { name: 'Your timeline' })
+
+  await expect(timeline.getByText('Your activity for this title will appear here.', { exact: true })).toBeVisible()
+
+  const overviewHeight = await page.evaluate(() => globalThis.document.documentElement.scrollHeight)
+
+  await openEpisodes(page)
+
+  await expect(page.getByRole('button', {
+    name: 'Mark all episodes watched',
+    exact: true
+  })).toBeVisible()
+
+  await expect(page.getByRole('region', {
+    name: 'Episodes',
+    exact: true
+  }).getByRole('listitem')).toHaveCount(5)
+
+  const episodesHeight = await page.evaluate(() => globalThis.document.documentElement.scrollHeight)
+
+  expect(episodesHeight).toBeGreaterThan(overviewHeight)
+
+  const midpoint = (overviewHeight + episodesHeight) / 2
+  const height = Math.floor(midpoint)
+
+  await page.setViewportSize({
+    width: 1440,
+    height
+  })
+}
+
 test('keeps title columns fixed when episode tabs add or remove the scrollbar', async ({ context, page }) => {
   await context.addCookies([{
     name: 'tv_session',
@@ -108,6 +148,8 @@ test('keeps title columns fixed when episode tabs add or remove the scrollbar', 
     element.getBoundingClientRect().right - globalThis.document.documentElement.clientWidth
   ))).toBeLessThanOrEqual(0)
 
+  await fitViewportBetweenTabs(page)
+
   const heading = page.getByRole('heading', {
     name: 'Chernobyl',
     exact: true
@@ -122,14 +164,10 @@ test('keeps title columns fixed when episode tabs add or remove the scrollbar', 
   expect(reservedScrollbarWidth).toBeGreaterThan(0)
 
   const before = await Promise.all([readGeometry(heading), readGeometry(ratings)])
-  const hasInitialScrollbar = await page.evaluate(() => globalThis.document.documentElement.scrollHeight > globalThis.innerHeight)
 
-  expect(hasInitialScrollbar).toBe(true)
+  await expect.poll(async () => page.evaluate(() => globalThis.document.documentElement.scrollHeight > globalThis.innerHeight)).toBe(true)
   await page.getByRole('tab', { name: 'Overview' }).click()
-
-  const hasOverviewScrollbar = await page.evaluate(() => globalThis.document.documentElement.scrollHeight > globalThis.innerHeight)
-
-  expect(hasOverviewScrollbar).toBe(false)
+  await expect.poll(async () => page.evaluate(() => globalThis.document.documentElement.scrollHeight > globalThis.innerHeight)).toBe(false)
 
   const after = await Promise.all([readGeometry(heading), readGeometry(ratings)])
 
@@ -138,10 +176,7 @@ test('keeps title columns fixed when episode tabs add or remove the scrollbar', 
   expect(after[1].left).toBe(before[1].left)
   expect(after[1].width).toBe(before[1].width)
   await page.getByRole('tab', { name: 'Episodes' }).click()
-
-  const hasRestoredScrollbar = await page.evaluate(() => globalThis.document.documentElement.scrollHeight > globalThis.innerHeight)
-
-  expect(hasRestoredScrollbar).toBe(true)
+  await expect.poll(async () => page.evaluate(() => globalThis.document.documentElement.scrollHeight > globalThis.innerHeight)).toBe(true)
 
   const restored = await Promise.all([readGeometry(heading), readGeometry(ratings)])
 

@@ -160,6 +160,7 @@ test('redirects a guest through sign in and returns to the full calendar URL', a
   expect(location.searchParams.get('redirectTo')).toBe(target)
   await page.goto(target)
   await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/calendar?date=2026-09-13`)
+  await waitForHydration(page)
   await page.getByLabel('Email').fill('viewer@example.com')
   await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
   await page.getByRole('button', { name: 'Sign in' }).click()

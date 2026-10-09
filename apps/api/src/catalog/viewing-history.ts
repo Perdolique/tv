@@ -45,15 +45,15 @@ const cursorSchema = v.strictObject({
   entryId: v.pipe(v.string(), v.uuid()),
   kind: v.picklist(['movie', 'episode']),
   markedAt: v.pipe(v.string(), v.check(isViewingTimestamp)),
-  version: v.literal(1)
+  version: v.picklist([2, 3])
 })
 
-function encodeViewingCursor(item: CatalogViewingCursor): string {
+function encodeViewingCursor(item: CatalogViewingCursor, version: 2 | 3 = 2): string {
   const payload = JSON.stringify({
     entryId: item.entryId,
     kind: item.kind,
     markedAt: item.markedAt,
-    version: 1
+    version
   })
 
   const bytes = new TextEncoder().encode(payload)
@@ -61,7 +61,7 @@ function encodeViewingCursor(item: CatalogViewingCursor): string {
   return encodeBase64Url(bytes)
 }
 
-function decodeViewingCursor(value: string | null): CatalogViewingCursor | null {
+function decodeViewingCursor(value: string | null, version: 2 | 3 = 2): CatalogViewingCursor | null {
   if (value === null) {
     return null
   }
@@ -81,7 +81,7 @@ function decodeViewingCursor(value: string | null): CatalogViewingCursor | null 
     const json: unknown = JSON.parse(payload)
     const parsed = v.safeParse(cursorSchema, json)
 
-    if (!parsed.success || encodeBase64Url(bytes) !== value) {
+    if (!parsed.success || parsed.output.version !== version || encodeBase64Url(bytes) !== value) {
       throw new Error(INVALID_CURSOR_MESSAGE)
     }
 
@@ -135,7 +135,7 @@ function createViewingHistoryResponse(
   const hasMore = items.length > VIEWING_HISTORY_PAGE_SIZE
   const page = items.slice(0, VIEWING_HISTORY_PAGE_SIZE)
   const last = page.at(-1)
-  const nextCursor = hasMore && last !== undefined ? encodeViewingCursor(last) : null
+  const nextCursor = hasMore && last !== undefined ? encodeViewingCursor(last, 3) : null
 
   return {
     items: page,

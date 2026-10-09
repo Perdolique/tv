@@ -23,6 +23,8 @@ function isEpisodeRatingWrite(request: Request): boolean {
 }
 
 test('keeps episode ratings across sessions without changing watched, season or whole-title scores', async ({ context, page }) => {
+  await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+
   const first = episodeRegion(page)
 
   const seasonRating = page.getByRole('region', {
@@ -69,10 +71,10 @@ test('keeps episode ratings across sessions without changing watched, season or 
   })
 
   await test.step('rate an episode in another season and preserve both ratings', async () => {
-    await page.getByRole('combobox', {
-      name: 'Season',
+    await page.getByRole('button', {
+      name: 'Season 1',
       exact: true
-    }).selectOption('1')
+    }).click()
 
     const missingMetadata = episodeRegion(page, 1)
 
@@ -85,10 +87,10 @@ test('keeps episode ratings across sessions without changing watched, season or 
 
     await expect(missingMetadata.getByText('3/10')).toBeVisible()
 
-    await page.getByRole('combobox', {
-      name: 'Season',
+    await page.getByRole('button', {
+      name: 'Season 2',
       exact: true
-    }).selectOption('2')
+    }).click()
 
     await expect(first.getByText('8/10')).toBeVisible()
     await page.reload()
@@ -147,7 +149,7 @@ test('keeps episode ratings across sessions without changing watched, season or 
   })
 })
 
-test('loads twenty episode ratings in batches only after opening Episodes', async ({ context, page }) => {
+test('loads twenty episode ratings once and reuses them after reopening Episodes', async ({ context, page }) => {
   const paths: string[] = []
   const seasonPath = `/api/catalog/items/${manyEpisodeSeries.id}/seasons/1/episodes`
 
@@ -188,8 +190,8 @@ test('loads twenty episode ratings in batches only after opening Episodes', asyn
 
   await expect(episodeRegion(page, 1, 20).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
   await expect(episodeRegion(page, 1, 20).getByText('0 ratings', { exact: true })).toBeVisible()
-  expect(paths.filter(path => path === `${seasonPath}/ratings`)).toHaveLength(2)
-  expect(paths.filter(path => path === `${seasonPath}/rating-summaries`)).toHaveLength(2)
+  expect(paths.filter(path => path === `${seasonPath}/ratings`)).toHaveLength(1)
+  expect(paths.filter(path => path === `${seasonPath}/rating-summaries`)).toHaveLength(1)
 })
 
 test.describe('episode write and summary errors', () => {
@@ -260,24 +262,20 @@ test.describe('episode write and summary errors', () => {
   })
 })
 
-test('aborts a pending episode write when switching seasons', async ({ context, page }) => {
+test('finishes an episode write in its cached season without reopening the editor or stealing focus', async ({ context, page }) => {
   await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(titlePath)
   await openEpisodes(page)
 
   const started = Promise.withResolvers<boolean>()
   const release = Promise.withResolvers<boolean>()
-  let aborted = false
 
   await page.route(`**${ratingPath}`, async route => {
     started.resolve(true)
 
     await release.promise
 
-    // oxlint-disable-next-line vitest/no-conditional-in-test -- Chromium already owns an aborted route; never fulfill it.
-    if (!aborted) {
-      await route.continue()
-    }
+    await route.continue()
   }, { times: 1 })
 
   try {
@@ -290,29 +288,37 @@ test('aborts a pending episode write when switching seasons', async ({ context, 
 
     await started.promise
 
-    const failed = page.waitForEvent('requestfailed', { predicate: isEpisodeRatingWrite })
+    const saved = page.waitForResponse(response => isEpisodeRatingWrite(response.request()))
 
-    await page.getByRole('combobox', {
-      name: 'Season',
+    await page.getByRole('button', {
+      name: 'Season 1',
       exact: true
-    }).selectOption('1')
+    }).click()
 
-    const cancelled = await failed
-
-    aborted = true
-
-    expect(cancelled.failure()?.errorText).toBe('net::ERR_ABORTED')
-    release.resolve(true)
     await expect(episodeRegion(page, 1).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
+    release.resolve(true)
 
-    await page.getByRole('combobox', {
-      name: 'Season',
+    const response = await saved
+
+    expect(response.status()).toBe(200)
+
+    await expect(page.getByRole('button', {
+      name: 'Season 1',
       exact: true
-    }).selectOption('2')
+    })).toBeFocused()
 
-    await expect(episodeRegion(page).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
-    await expect(episodeRegion(page).getByText('9/10')).toHaveCount(0)
+    await page.getByRole('button', {
+      name: 'Season 2',
+      exact: true
+    }).click()
+
+    await expect(episodeRegion(page).getByRole('button', {
+      name: 'Your rating for season 2, episode 1: 9 out of 10',
+      exact: true
+    })).toBeEnabled()
+
+    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
   } finally {
     release.resolve(true)
   }

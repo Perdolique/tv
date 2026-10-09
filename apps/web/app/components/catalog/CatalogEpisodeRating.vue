@@ -11,6 +11,7 @@
     />
     <CatalogRating
       :account-id="accountId"
+      :is-active="isActive"
       :target-key="episode.id"
       :label="editorLabel"
       action-label="Rate episode"
@@ -27,7 +28,7 @@
       show-score
       compact
       @clear-error="clearError"
-      @saved="summaries.reload(episode.id)"
+      @saved="handleSaved"
     />
   </section>
 </template>
@@ -45,13 +46,19 @@
     accountId: string | null;
     episode: CatalogEpisode;
     hasSessionError: boolean;
+    isActive: boolean;
     isAnonymous: boolean;
     signInLocation: RouteLocationRaw;
     ratings: ReturnType<typeof useCatalogEpisodeRatings>;
     summaries: ReturnType<typeof useCatalogEpisodeRatingSummaries>;
   }
 
+  interface Emits {
+    saved: [];
+  }
+
   const { episode, ratings, summaries } = defineProps<Props>()
+  const emit = defineEmits<Emits>()
   const rating = computed(() => ratings.ratingFor(episode.id))
   const summary = computed(() => summaries.summaryFor(episode.id))
   const episodeLabel = computed(() => `season ${episode.seasonNumber}, episode ${episode.episodeNumber}`)
@@ -66,6 +73,12 @@
 
   function save(score: number | null): Promise<boolean> {
     return ratings.save(episode.id, score)
+  }
+
+  function handleSaved(): void {
+    void summaries.reload(episode.id)
+
+    emit('saved')
   }
 
   function clearError(): void {

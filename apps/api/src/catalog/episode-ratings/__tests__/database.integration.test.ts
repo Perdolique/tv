@@ -321,7 +321,9 @@ describe('episode rating persistence', () => {
 
     try {
       await client.query('ALTER TABLE catalog_item_ratings DROP COLUMN catalog_episode_id CASCADE')
-      await client.query('ALTER TABLE catalog_episodes DROP CONSTRAINT catalog_episodes_id_item_unique')
+
+      // Later viewing foreign keys did not exist when this historical migration ran.
+      await client.query('ALTER TABLE catalog_episodes DROP CONSTRAINT catalog_episodes_id_item_unique CASCADE')
       await client.query('ALTER TABLE catalog_item_ratings ADD CONSTRAINT catalog_item_ratings_user_target_unique UNIQUE NULLS NOT DISTINCT (user_id, catalog_item_id, season_number)')
 
       const before = await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, season_number, score) VALUES ($1, $2, NULL, 7), ($1, $2, 1, 8) RETURNING id, user_id, catalog_item_id, season_number, score', [userId, seriesId])

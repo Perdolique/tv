@@ -80,10 +80,6 @@ interface CatalogEpisodesResponse {
   items: CatalogEpisode[];
 }
 
-interface CatalogEpisodeWatchesResponse {
-  watchedEpisodeIds: string[];
-}
-
 interface CatalogWatchlistItem extends CatalogSearchItem {
   posterUrl: string | null;
 }
@@ -134,6 +130,7 @@ interface CatalogUpcomingReleasesResponse {
 
 type CatalogErrorCode =
   | 'AUTHENTICATION_REQUIRED'
+  | 'CONFLICT'
   | 'FORBIDDEN'
   | 'INTERNAL_ERROR'
   | 'INVALID_REQUEST'
@@ -159,7 +156,6 @@ export type {
   CatalogEpisodeRatingSummary,
   CatalogEpisodeRatingSummariesResponse,
   CatalogEpisodesResponse,
-  CatalogEpisodeWatchesResponse,
   CatalogErrorCode,
   CatalogErrorEnvelope,
   CatalogFollowResponse,

@@ -4,7 +4,6 @@ import * as v from 'valibot'
 import {
   catalogDetailsResponseSchema,
   catalogEpisodesResponseSchema,
-  catalogEpisodeWatchesResponseSchema,
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
@@ -139,18 +138,6 @@ describe('catalog episode response contracts', () => {
   ])('rejects malformed public episode data %#', (invalidEpisode) => {
     expect(v.safeParse(catalogEpisodesResponseSchema, {
       items: [invalidEpisode]
-    }).success).toBe(false)
-  })
-
-  it('accepts watched episode IDs and rejects malformed or extra data', () => {
-    const response = { watchedEpisodeIds: [episode.id] }
-
-    expect(v.parse(catalogEpisodeWatchesResponseSchema, response)).toStrictEqual(response)
-    expect(v.safeParse(catalogEpisodeWatchesResponseSchema, { watchedEpisodeIds: ['bad-id'] }).success).toBe(false)
-
-    expect(v.safeParse(catalogEpisodeWatchesResponseSchema, {
-      extra: true,
-      watchedEpisodeIds: []
     }).success).toBe(false)
   })
 

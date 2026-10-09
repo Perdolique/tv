@@ -1,4 +1,13 @@
-import { getRequestURL, proxyRequest, setResponseHeader, setResponseStatus, type H3Event } from 'h3'
+import {
+  getRequestURL,
+  getProxyRequestHeaders,
+  proxyRequest,
+  sendProxy,
+  setResponseHeader,
+  setResponseStatus,
+  type H3Event
+} from 'h3'
+
 import { findRootCause, serializeError } from '@tv/shared/errors'
 import { isRecord } from '@tv/shared/type-guards'
 
@@ -51,6 +60,44 @@ function createApiTargetUrl(
   return targetUrl
 }
 
+interface ApiForwardOptions {
+  fetch?: ApiBinding['fetch'];
+  headers: Record<string, string>;
+  streamRequest: boolean;
+}
+
+async function forwardApiRequest(event: H3Event, target: string, options: ApiForwardOptions): Promise<unknown> {
+  const platform: unknown = event.context.cloudflare
+  const original = isRecord(platform) ? platform.request : null
+
+  // Nitro's Cloudflare adapter buffers POST, PUT and PATCH, but leaves DELETE bodies on the original Request.
+  if (event.method === 'DELETE' && original instanceof globalThis.Request && original.method === 'DELETE') {
+    const headers = new Headers(options.headers)
+    const requestHeaders: unknown = getProxyRequestHeaders(event)
+
+    if (isRecord(requestHeaders)) {
+      const entries = Object.entries(requestHeaders)
+
+      for (const [name, value] of entries) {
+        if (typeof value === 'string' && !headers.has(name)) { headers.set(name, value) }
+      }
+    }
+
+    return sendProxy(event, target, {
+      ...options,
+
+      fetchOptions: {
+        method: event.method,
+        body: original.body,
+        duplex: 'half',
+        headers
+      }
+    })
+  }
+
+  return proxyRequest(event, target, options)
+}
+
 async function proxyApiRequest(
   event: H3Event,
   options: ApiProxyOptions,
@@ -63,7 +110,7 @@ async function proxyApiRequest(
 
   try {
     if (isDevelopment) {
-      return await proxyRequest(event, targetUrl.href, {
+      return await forwardApiRequest(event, targetUrl.href, {
         headers,
         streamRequest: true
       })
@@ -71,7 +118,7 @@ async function proxyApiRequest(
 
     const api = getApiBinding(event.context.cloudflare)
 
-    return await proxyRequest(event, targetUrl.href, {
+    return await forwardApiRequest(event, targetUrl.href, {
       fetch: api.fetch.bind(api),
       headers,
       streamRequest: true

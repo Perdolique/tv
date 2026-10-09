@@ -16,6 +16,7 @@
     <CatalogRating
       :class="$style.editor"
       :account-id="accountId"
+      :is-active="isActive"
       :target-key="targetKey"
       :label="editorLabel"
       :action-label="actionLabel"
@@ -29,7 +30,7 @@
       :sign-in-location="signInLocation"
       :status="status"
       @clear-error="clearError"
-      @saved="ready.execute({ dedupe: 'cancel' })"
+      @saved="handleSaved"
     />
   </section>
 </template>
@@ -47,6 +48,7 @@
     accountId: string | null;
     catalogItemId: string;
     hasSessionError: boolean;
+    isActive: boolean;
     isAnonymous: boolean;
     seasonNumber: number;
     signInLocation: RouteLocationRaw;
@@ -54,6 +56,7 @@
 
   interface Emits {
     unauthorized: [reason: 'load' | 'mutation'];
+    saved: [];
   }
 
   const { accountId, catalogItemId, hasSessionError, isAnonymous, seasonNumber } = defineProps<Props>()
@@ -101,6 +104,12 @@
       emit('unauthorized', reason)
     }
   }, { flush: 'sync' })
+
+  function handleSaved(): void {
+    void ready.execute({ dedupe: 'cancel' })
+
+    emit('saved')
+  }
 
   function clearError(): void {
     saveError.value = ''

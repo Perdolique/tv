@@ -1,5 +1,7 @@
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
+import * as v from 'valibot'
+import { catalogViewingMutationResponseSchema } from '@tv/shared/catalog-viewings'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionToken, hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
@@ -312,24 +314,59 @@ describe('catalog rating Worker contract', () => {
     expect(missing.status).toBe(404)
   })
 
-  it('preserves a rating when its watched mark is removed', async () => {
+  it('preserves a rating when its movie viewing is deleted', async () => {
     const id = await itemId('Dead Man')
+    const rated = await request(id, 'PUT', { input: { score: 8 } })
 
-    await request(id, 'PUT', { input: { score: 8 } })
+    await expectScore(rated, 8)
 
-    for (const method of ['PUT', 'DELETE']) {
-      const requestUrl = `https://tv-api.test/api/catalog/items/${id}/watched`
+    const viewingsUrl = `https://tv-api.test/api/catalog/items/${id}/viewings`
+    const requestId = crypto.randomUUID()
 
-      const watchedRequest = new Request(requestUrl, {
-        headers: { Cookie: cookie },
-        method
-      })
+    const creationBody = JSON.stringify({
+      mode: 'current',
+      contextVersion: 0,
+      requestId
+    })
 
-      // oxlint-disable-next-line eslint/no-await-in-loop -- Save the watched mark before removing it.
-      const result = await exports.default.fetch(watchedRequest)
+    const creationRequest = new Request(viewingsUrl, {
+      headers: {
+        Cookie: cookie,
+        'Content-Type': 'application/json'
+      },
 
-      expect(result.status).toBe(200)
-    }
+      method: 'POST',
+      body: creationBody
+    })
+
+    const created = await exports.default.fetch(creationRequest)
+
+    expect(created.status).toBe(200)
+
+    const creationResponse: unknown = await created.json()
+    const result = v.parse(catalogViewingMutationResponseSchema, creationResponse)
+    const viewingUrl = `${viewingsUrl}/${result.viewing.id}`
+    const deletionBody = JSON.stringify({ revision: result.viewing.revision })
+
+    const deletionRequest = new Request(viewingUrl, {
+      headers: {
+        Cookie: cookie,
+        'Content-Type': 'application/json'
+      },
+
+      method: 'DELETE',
+      body: deletionBody
+    })
+
+    const deleted = await exports.default.fetch(deletionRequest)
+
+    expect(deleted.status).toBe(200)
+
+    await expect(deleted.json()).resolves.toStrictEqual({ summary: {
+      completedCount: 0,
+      currentViewingId: null,
+      contextVersion: 2
+    } })
 
     const stillRated = await request(id)
 

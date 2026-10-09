@@ -1,6 +1,8 @@
+/* oxlint-disable eslint/max-lines -- Season ratings and watch mutations share one Worker session fixture. */
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CatalogSeriesWatchesResponse } from '@tv/shared/catalog-series'
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionToken, hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
@@ -128,27 +130,68 @@ describe('season rating Worker contract', () => {
       return rows.rows[0]?.id
     })
 
-    expect(episodeId).toBeDefined()
+    assert(episodeId !== undefined)
 
-    /* oxlint-disable eslint/no-await-in-loop -- Add watched before removing it and verify the rating after each operation. */
-    for (const method of ['PUT', 'DELETE']) {
-      const watchedUrl = `https://tv-api.test/api/catalog/episodes/${episodeId}/watched`
+    const watchedUrl = `https://tv-api.test/api/catalog/episodes/${episodeId}/watched`
+    const requestId = crypto.randomUUID()
 
-      const watchRequest = new Request(watchedUrl, {
-        method,
-        headers: { Cookie: cookie }
-      })
-
-      const watched = await exports.default.fetch(watchRequest)
-
-      expect(watched.status).toBe(200)
-
-      const retained = await request(id)
-
-      await expectScore(retained, 10)
+    const markInput = {
+      requestId,
+      currentViewingId: null,
+      contextVersion: 0,
+      timeZone: 'UTC'
     }
 
-    /* oxlint-enable eslint/no-await-in-loop */
+    const markBody = JSON.stringify(markInput)
+
+    const watchRequest = new Request(watchedUrl, {
+      method: 'PUT',
+
+      headers: {
+        Cookie: cookie,
+        'Content-Type': 'application/json'
+      },
+
+      body: markBody
+    })
+
+    const watched = await exports.default.fetch(watchRequest)
+    const marked = await watched.json<CatalogSeriesWatchesResponse>()
+    const viewingId = marked.currentViewing?.id
+    const watchId = marked.watches[0]?.id
+
+    expect(watched.status).toBe(200)
+    assert(viewingId !== undefined)
+    assert(watchId !== undefined)
+
+    const retainedAfterMark = await request(id)
+
+    await expectScore(retainedAfterMark, 10)
+
+    const unwatchInput = {
+      currentViewingId: viewingId,
+      contextVersion: marked.contextVersion,
+      watchId
+    }
+
+    const unwatchBody = JSON.stringify(unwatchInput)
+
+    const unwatchRequest = new Request(watchedUrl, {
+      method: 'DELETE',
+
+      headers: {
+        Cookie: cookie,
+        'Content-Type': 'application/json'
+      },
+
+      body: unwatchBody
+    })
+
+    const unwatched = await exports.default.fetch(unwatchRequest)
+    const retainedAfterUnmark = await request(id)
+
+    expect(unwatched.status).toBe(200)
+    await expectScore(retainedAfterUnmark, 10)
 
     const newToken = createSessionToken()
     const newHash = await hashSessionToken(newToken)

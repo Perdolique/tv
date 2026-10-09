@@ -33,7 +33,7 @@ interface ActionPresentation {
 
 function watchedButton(page: Page): Locator {
   return page.getByRole('button', {
-    name: /^(?:Mark as watched|Watched, mark as unwatched)$/u
+    name: /^(?:Mark as watched|Watched again|Saving viewing…)$/u
   })
 }
 
@@ -213,6 +213,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
         value: dune.id,
         url: appBaseUrl
       }, {
+        name: 'tv_viewing_state',
+        value: '',
+        expires: 0,
+        url: appBaseUrl
+      }, {
         name: 'tv_watched_item',
         value: dune.id,
         url: appBaseUrl
@@ -221,7 +226,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.reload()
       await expect(follow).toBeVisible()
       await expect(follow).toHaveAttribute('aria-pressed', 'true')
-      await expect(watchedButton(page)).toHaveAccessibleName('Watched, mark as unwatched')
+      await expect(watchedButton(page)).toHaveAccessibleName('Watched again')
       await expectInsideViewport(page, follow)
       await expectInsideViewport(page, watchedButton(page))
       await expectNoOverlap(follow, watchedButton(page))
@@ -291,7 +296,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
   for (const viewport of viewports) {
     test(`keeps personal action geometry stable during slow progress at ${viewport.name} in ${colorScheme}`, async ({ context, page }) => {
       const response = Promise.withResolvers<boolean>()
-      const watchedUrl = `${appBaseUrl}/api/catalog/items/${dune.id}/watched`
+      const watchedUrl = `${appBaseUrl}/api/catalog/items/${dune.id}/viewings`
 
       await context.addCookies([{
         name: 'tv_session',
@@ -307,7 +312,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.route(watchedUrl, async (route) => {
         await response.promise
 
-        await route.fulfill({ json: { watched: true } })
+        const savedResponse = await route.fetch()
+
+        await route.fulfill({ response: savedResponse })
       })
 
       try {
@@ -318,11 +325,16 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
         const watched = watchedButton(page)
         const progress = loadingIndicator(watched)
+
+        await expect(follow).toBeEnabled()
+        await expect(watched).toBeEnabled()
+        await page.evaluate(async () => globalThis.document.fonts.ready)
+
         const before = await readPersonalActionGeometry(page)
 
         await watched.click()
         await expect(watched).toHaveAttribute('aria-busy', 'true')
-        await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
+        await expect(watched).toHaveAccessibleName('Saving viewing…')
         await expect(progress).toHaveCSS('visibility', 'hidden')
         await expect(progress).toHaveCSS('opacity', '1', { timeout: 2000 })
 
@@ -482,7 +494,7 @@ test.describe('unavailable artwork', () => {
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`keeps visible keyboard focus with reduced motion in ${colorScheme}`, async ({ context, page }) => {
     const response = Promise.withResolvers<boolean>()
-    const watchedUrl = `${appBaseUrl}/api/catalog/items/${dune.id}/watched`
+    const watchedUrl = `${appBaseUrl}/api/catalog/items/${dune.id}/viewings`
 
     await context.addCookies([{
       name: 'tv_session',
@@ -516,7 +528,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.route(watchedUrl, async (route) => {
       await response.promise
 
-      await route.fulfill({ json: { watched: true } })
+      const savedResponse = await route.fetch()
+
+        await route.fulfill({ response: savedResponse })
     })
 
     try {
@@ -524,7 +538,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expect(watched).toBeFocused()
       expect(await watched.evaluate(element => globalThis.getComputedStyle(element).outlineStyle)).not.toBe('none')
       await page.keyboard.press('Enter')
-      await expect(watched).toHaveAccessibleName('Watched, mark as unwatched')
+      await expect(watched).toHaveAccessibleName('Saving viewing…')
       await expect(watched).toHaveAttribute('aria-busy', 'true')
 
       const progress = loadingIndicator(watched)

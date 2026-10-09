@@ -19,7 +19,7 @@ async function signIn(page: Page, email = 'viewer@example.com'): Promise<void> {
 
 function marks(page: Page) {
   return page.getByRole('list', {
-    name: 'Watched marks',
+    name: 'Viewing entries',
     exact: true
   }).getByRole('listitem')
 }
@@ -61,11 +61,11 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   await page.goto(`/titles/${dune.id}`)
 
   const movieButton = page.getByRole('button', {
-    name: /^(?:Mark as watched|Watched, mark as unwatched)$/u
+    name: /^(?:Mark as watched|Watched again)$/u
   })
 
   await movieButton.click()
-  await expect(movieButton).toHaveAccessibleName('Watched, mark as unwatched')
+  await expect(movieButton).toHaveAccessibleName('Watched again')
   await expect(movieButton).toBeEnabled()
   await page.goto(`/titles/${chernobyl.id}`)
   await openEpisodes(page)
@@ -88,18 +88,37 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
 
   await expect(marks(page)).toHaveCount(2)
   await expect(page.locator('dd')).toHaveText(['1', '1'])
-  await expect(marks(page).first()).toContainText('Episode · S1 · E2')
-  await expect(marks(page).first()).toContainText('Please Remain Calm')
+
+  const episodeEntry = marks(page).filter({ hasText: 'Episode · S1 · E2' })
+  const movieEntry = marks(page).filter({ hasText: 'Movie · 2021' })
+
+  await expect(episodeEntry).toContainText('Episode · S1 · E2')
+  await expect(episodeEntry).toContainText('Please Remain Calm')
   await expect(page.getByRole('list', { name: 'Watched episodes by series' })).toContainText('1 episode watched')
-  await expect(marks(page).last()).toContainText('Movie · 2021')
-  await expect(marks(page).last()).toContainText('Marked')
+  await expect(movieEntry).toContainText('Movie · 2021')
+  await expect(movieEntry).toContainText('Recorded')
 
   const response = await page.reload()
 
   expect(response?.headers()['cache-control']).toBe('private, no-store')
   await expect(marks(page)).toHaveCount(2)
-  await marks(page).last().getByRole('link').click()
-  await movieButton.click()
+  await movieEntry.getByRole('link').click()
+
+  const viewing = page.getByRole('list', {
+    name: 'Movie viewings',
+    exact: true
+  }).getByRole('listitem').first()
+
+  await viewing.getByRole('button', {
+    name: 'Delete',
+    exact: true
+  }).click()
+
+  await viewing.getByRole('button', {
+    name: 'Delete viewing',
+    exact: true
+  }).click()
+
   await expect(movieButton).toHaveAccessibleName('Mark as watched')
   await expect(movieButton).toBeEnabled()
 
