@@ -30,6 +30,25 @@ async function openCalendar(
   return response
 }
 
+async function waitForFailedSessionRetry(page: Page): Promise<Response> {
+  let failures = 0
+
+  return page.waitForResponse(response => {
+    const responseUrl = response.url()
+    const url = new URL(responseUrl)
+    const status = response.status()
+
+    if (url.pathname !== '/api/auth/session' || status !== 503) {
+      return false
+    }
+
+    failures += 1
+
+    // The session GET retries once, so both fixture failures belong to one button action.
+    return failures === 2
+  })
+}
+
 function observeReleaseRequests(page: Page): URL[] {
   const requests: URL[] = []
 
@@ -160,6 +179,7 @@ test('redirects a guest through sign in and returns to the full calendar URL', a
   expect(location.searchParams.get('redirectTo')).toBe(target)
   await page.goto(target)
   await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/calendar?date=2026-09-13`)
+  await waitForHydration(page)
   await page.getByLabel('Email').fill('viewer@example.com')
   await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -934,11 +954,18 @@ failedSessionTest('retries a calendar session failure and restores focus', async
   await addCookie(context, 'tv_session', 'e2e-session')
   await addCookie(context, 'fail_session', '2')
   await page.goto(`/calendar?date=${TODAY}`)
+  await waitForHydration(page)
   await expect(page.getByRole('heading', { name: 'We couldn’t verify your session.' })).toBeVisible()
 
   const retryButton = page.getByRole('button', { name: 'Try again' })
+  const failedRetry = waitForFailedSessionRetry(page)
 
   await retryButton.click()
+
+  const failedResponse = await failedRetry
+
+  await failedResponse.finished()
+  await expect(page.getByRole('heading', { name: 'We couldn’t verify your session.' })).toBeVisible()
   await expect(retryButton).toBeFocused()
   await expect(retryButton).toBeEnabled()
   await retryButton.click()
@@ -959,6 +986,14 @@ test('redirects after signing out of the protected calendar', async ({ page, con
 
 // oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with an expected HTTP error.
 expiredCalendarTest('clears private releases after a late 401 and returns after sign in', async ({ page, context }) => {
+  const calendarReady = Promise.withResolvers<unknown>()
+
+  await page.route('**/api/catalog/releases?*', async route => {
+    await calendarReady.promise
+
+    await route.fallback()
+  })
+
   await page.clock.setFixedTime(FIXED_NOW)
   await addCookie(context, 'tv_session', `e2e-expiring-${crypto.randomUUID()}`)
   await page.goto('/')
@@ -967,20 +1002,90 @@ expiredCalendarTest('clears private releases after a late 401 and returns after 
 
   const historyLength = await page.evaluate(() => globalThis.history.length)
 
-  await page.getByRole('link', {
-    name: 'Calendar',
-    exact: true
-  }).click()
+  try {
+    await page.getByRole('link', {
+      name: 'Calendar',
+      exact: true
+    }).click()
 
-  await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/calendar?date=${TODAY}`)
-  await expect(page.getByRole('list', { name: 'Releases for selected day' })).toHaveCount(0)
-  expect(await page.evaluate(() => globalThis.history.length)).toBe(historyLength + 1)
+    // This case expires after the date is committed; the next test covers pending normalization.
+    await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=${TODAY}`)
+    calendarReady.resolve(null)
+    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/calendar?date=${TODAY}`)
+    await expect(page.getByRole('list', { name: 'Releases for selected day' })).toHaveCount(0)
+    expect(await page.evaluate(() => globalThis.history.length)).toBe(historyLength + 1)
+  } finally {
+    calendarReady.resolve(null)
+  }
+
   await context.clearCookies({ name: 'expire_calendar' })
   await page.getByLabel('Email').fill('viewer@example.com')
   await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(`${appBaseUrl}/calendar?date=${TODAY}`)
   await expect(page.getByRole('heading', { name: 'Dune' })).toBeVisible()
+})
+
+// oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with an expected HTTP error.
+expiredCalendarTest('redirects an expired calendar while date normalization is pending', async ({ page, context }) => {
+  const sessionRefresh = Promise.withResolvers<unknown>()
+  const finishRefresh = Promise.withResolvers<unknown>()
+  let calendarRequestStarted = false
+  let isRefreshHeld = false
+
+  page.on('request', request => {
+    const url = new URL(request.url())
+
+    if (url.pathname === '/api/catalog/releases') {
+      calendarRequestStarted = true
+    }
+  })
+
+  await page.route('**/api/auth/session', async route => {
+    const response = await route.fetch()
+
+    // Hold date-normalization middleware while the private calendar request expires.
+    if (calendarRequestStarted && !isRefreshHeld) {
+      isRefreshHeld = true
+
+      sessionRefresh.resolve(null)
+
+      await finishRefresh.promise
+    }
+
+    await route.fulfill({ response })
+  })
+
+  await page.route('**/api/catalog/releases?*', async route => {
+    const response = await route.fetch()
+
+    await sessionRefresh.promise
+
+    await route.fulfill({ response })
+  })
+
+  await page.clock.setFixedTime(FIXED_NOW)
+  await addCookie(context, 'tv_session', `e2e-expiring-${crypto.randomUUID()}`)
+  await page.goto('/')
+  await waitForHydration(page)
+  await addCookie(context, 'expire_calendar', '1')
+
+  const historyLength = await page.evaluate(() => globalThis.history.length)
+
+  try {
+    await page.getByRole('link', {
+      name: 'Calendar',
+      exact: true
+    }).click()
+
+    await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/calendar`)
+    await expect(page.getByRole('list', { name: 'Releases for selected day' })).toHaveCount(0)
+    expect(await page.evaluate(() => globalThis.history.length)).toBe(historyLength + 1)
+  } finally {
+    finishRefresh.resolve(null)
+  }
+
+  await page.unrouteAll({ behavior: 'wait' })
 })
 
 test('preserves calendar page and proxy no-store responses', async ({ page, context }) => {

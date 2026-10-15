@@ -289,10 +289,11 @@ describe('persisted UUIDv7 and title metadata migration', () => {
         'catalog_item_follows_user_id_users_id_fkey',
         'catalog_item_follows_catalog_item_id_catalog_items_id_fkey',
         'catalog_releases_catalog_item_id_catalog_items_id_fkey',
-        'catalog_movie_watches_user_id_users_id_fkey',
-        'catalog_movie_watches_catalog_item_id_catalog_items_id_fkey',
-        'catalog_episode_watches_user_id_users_id_fkey',
-        'catalog_episode_watches_ynhUEcsHjZFY_fkey',
+        'catalog_viewings_user_id_users_id_fkey',
+        'catalog_viewings_catalog_item_id_catalog_items_id_fkey',
+        'catalog_viewing_episode_watches_user_id_users_id_fkey',
+        'catalog_viewing_episode_watches_viewing_fk',
+        'catalog_viewing_episode_watches_episode_fk',
         'catalog_episodes_catalog_item_id_catalog_items_id_fkey'
       ]))
 
@@ -768,6 +769,77 @@ describe('season rating migration', () => {
       const ratings = await fixture.client.query('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [firstUserId])
 
       expect(ratings.rows).toHaveLength(3)
+    })
+  })
+})
+
+describe('movie viewing migration', () => {
+  it('preserves marks, ratings and episodes, supports old reads and refuses old writes', async () => {
+    await withDatabase(async fixture => {
+      await migrateBefore(fixture, '20261006084919_movie_viewings')
+      await fixture.client.query('INSERT INTO users (id, email) VALUES ($1, \'viewing-migration@example.com\')', [firstUserId])
+
+      const movie = await fixture.client.query<{ id: string }>('SELECT id FROM catalog_items WHERE type = \'movie\' LIMIT 1')
+      const movieId = movie.rows[0]?.id
+
+      assert(movieId !== undefined)
+      await fixture.client.query('INSERT INTO catalog_movie_watches (user_id, catalog_item_id, marked_at) VALUES ($1, $2, \'2020-01-02T12:34:56.123456Z\')', [firstUserId, movieId])
+      await fixture.client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 8)', [firstUserId, movieId])
+      await fixture.client.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) SELECT $1, id FROM catalog_episodes LIMIT 1', [firstUserId])
+
+      const ratings = await fixture.client.query('SELECT * FROM catalog_item_ratings ORDER BY id')
+      const episodes = await fixture.client.query('SELECT * FROM catalog_episode_watches ORDER BY catalog_episode_id')
+
+      await migrate(fixture.database, { migrationsFolder })
+
+      const rows = await fixture.client.query<{ id: string }>(`SELECT id, status, started_on, completed_on, revision,
+        to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at
+        FROM catalog_viewings WHERE user_id = $1 AND catalog_item_id = $2`, [firstUserId, movieId])
+
+      const context = await fixture.client.query('SELECT current_viewing_id, context_version FROM catalog_viewing_contexts WHERE user_id = $1 AND catalog_item_id = $2', [firstUserId, movieId])
+
+      expect(rows.rows).toMatchObject([{
+        status: 'completed',
+        started_on: null,
+        completed_on: null,
+        revision: 1,
+        recorded_at: '2020-01-02T12:34:56.123456Z'
+      }])
+
+      expect(rows.rows[0]?.id).toMatch(/^[0-9a-f-]{14}7/u)
+
+      expect(context.rows).toStrictEqual([{
+        current_viewing_id: rows.rows[0]?.id,
+        context_version: 1
+      }])
+
+      const afterRatings = await fixture.client.query('SELECT * FROM catalog_item_ratings ORDER BY id')
+
+      expect(afterRatings.rows).toStrictEqual(ratings.rows)
+
+      const afterEpisodes = await fixture.client.query('SELECT * FROM catalog_episode_watches ORDER BY catalog_episode_id')
+
+      expect(afterEpisodes.rows).toStrictEqual(episodes.rows)
+
+      const legacy = await fixture.client.query<{ marked_at: string }>('SELECT marked_at::text FROM catalog_movie_watches WHERE user_id = $1', [firstUserId])
+
+      expect(legacy.rows[0]?.marked_at).toContain('12:34:56.123456')
+
+      await Promise.all([
+        'INSERT INTO catalog_movie_watches (user_id, catalog_item_id) VALUES ($1, $2)',
+        'DELETE FROM catalog_movie_watches WHERE user_id = $1 AND catalog_item_id = $2'
+      ].map(async query => {
+        await expect(fixture.client.query(query, [firstUserId, movieId])).rejects.toMatchObject({ code: '55000' })
+      }))
+
+      const preserved = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1 AND catalog_item_id = $2', [firstUserId, movieId])
+
+      expect(preserved.rows).toHaveLength(1)
+      await migrate(fixture.database, { migrationsFolder })
+
+      const repeated = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1 AND catalog_item_id = $2', [firstUserId, movieId])
+
+      expect(repeated.rows).toHaveLength(1)
     })
   })
 })

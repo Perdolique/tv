@@ -21,14 +21,14 @@ describe('viewing history cursors', () => {
 
     expect(payload).toStrictEqual({
       ...cursor,
-      version: 1
+      version: 2
     })
 
     expect(decodeViewingCursor(encoded)).toStrictEqual(cursor)
     expect(decodeViewingCursor(null)).toBeNull()
   })
 
-  it.each([undefined, 0, 2])('rejects cursor version %s', (version) => {
+  it.each([undefined, 0, 1, 3])('rejects cursor version %s', (version) => {
     const payload = JSON.stringify({
       ...cursor,
       version
@@ -37,6 +37,15 @@ describe('viewing history cursors', () => {
     const encoded = btoa(payload).replace(/=+$/u, '')
 
     expect(() => decodeViewingCursor(encoded)).toThrow('The request is invalid.')
+  })
+
+  it('rejects old dashboard cursors while retaining movie history version 2', () => {
+    const old = encodeViewingCursor(cursor)
+    const current = encodeViewingCursor(cursor, 3)
+
+    expect(() => decodeViewingCursor(old, 3)).toThrow('The request is invalid.')
+    expect(decodeViewingCursor(current, 3)).toStrictEqual(cursor)
+    expect(decodeViewingCursor(old)).toStrictEqual(cursor)
   })
 
   it('rejects padded and noncanonical cursor encodings', () => {
@@ -110,7 +119,7 @@ describe('viewing history cursors', () => {
     expect(page.items.map(item => item.episodeNumber)).toStrictEqual(Array.from({ length: 20 }, (_value, index) => 21 - index))
     expect(page.items.every(item => item.title === 'Перевод')).toBe(true)
     expect(page.nextCursor).not.toBeNull()
-    expect(decodeViewingCursor(page.nextCursor)?.entryId).toBe('30000000-0000-7000-8000-000000000002')
+    expect(decodeViewingCursor(page.nextCursor, 3)?.entryId).toBe('30000000-0000-7000-8000-000000000002')
 
     expect(createViewingHistoryResponse([], 'en')).toStrictEqual({
       items: [],

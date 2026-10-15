@@ -4,6 +4,9 @@
   "type": "module",
   "exports": {
     "./catalog": "./src/catalog.ts",
+    "./catalog-viewings": "./src/catalog-viewings.ts",
+    "./catalog-series": "./src/catalog-series.ts",
+    "./catalog-timeline": "./src/catalog-timeline.ts",
     "./catalog-import": "./src/catalog-import.ts",
     "./errors": "./src/errors.ts",
     "./network": "./src/network.ts",
@@ -15,5 +18,8 @@
   "scripts": {
     "test:typecheck": "tsc --noEmit",
     "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "valibot": "1.5.0"
   }
 }

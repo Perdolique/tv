@@ -248,8 +248,17 @@ failedSearchTest('keeps previous results on an unsafe server error and retries t
   const retryButton = page.getByRole('button', { name: 'Try again' })
 
   await addCookie(context, 'fail_catalog', '1')
+
+  const failedRetryResponse = page.waitForResponse('**/api/catalog/search?query=Arrival')
+
   await retryButton.focus()
   await retryButton.press('Enter')
+
+  const response = await failedRetryResponse
+
+  expect(response.status()).toBe(503)
+  await response.finished()
+  await expect(retryButton).toBeEnabled()
   await expect(retryButton).toBeFocused()
   await expect(page.getByRole('alert')).toContainText('We couldn’t search for “Arrival”.')
   await addCookie(context, 'slow_catalog', '1')

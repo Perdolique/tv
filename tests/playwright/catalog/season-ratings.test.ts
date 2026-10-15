@@ -1,5 +1,6 @@
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { appBaseUrl } from '../constants.ts'
+import { addCookie } from '../helpers.ts'
 import { chernobyl, episodeEdgeSeries } from './details.fixtures.ts'
 import { openEpisodes, waitForHydration } from './helpers.ts'
 
@@ -45,6 +46,8 @@ test('loads the season summary only after a guest opens Episodes without private
 })
 
 test('keeps season scores separate across seasons, titles and sessions', async ({ context, page }) => {
+  await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+
   await context.addCookies([{
     name: 'tv_session',
     value: 'e2e-session',
@@ -69,12 +72,16 @@ test('keeps season scores separate across seasons, titles and sessions', async (
     exact: true
   })
 
-  const selector = page.getByRole('combobox', {
-    name: 'Season',
+  const firstSeasonToggle = page.getByRole('button', {
+    name: 'Season 1',
     exact: true
   })
 
-  await expect(selector).toHaveValue('2')
+  const secondSeasonToggle = page.getByRole('button', {
+    name: 'Season 2',
+    exact: true
+  })
+
   await expect(secondSeason.getByText('Not rated', { exact: true })).toBeVisible()
 
   await secondSeason.getByRole('button', {
@@ -95,7 +102,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
     exact: true
   }).first()).toHaveAttribute('aria-pressed', 'false')
 
-  await selector.selectOption('1')
+  await firstSeasonToggle.click()
   await expect(firstSeason.getByText('Not rated', { exact: true })).toBeVisible()
 
   await firstSeason.getByRole('button', {
@@ -109,7 +116,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
   }).click()
 
   await expect(firstSeason.getByText('1 rating', { exact: true })).toBeVisible()
-  await selector.selectOption('2')
+  await secondSeasonToggle.click()
 
   await expect(secondSeason.getByRole('button', {
     name: 'Rate season 2, your rating: 7 out of 10',
@@ -127,8 +134,6 @@ test('keeps season scores separate across seasons, titles and sessions', async (
     name: 'Episodes',
     exact: true
   }).click()
-
-  await expect(selector).toHaveValue('2')
 
   await expect(secondSeason.getByRole('button', {
     name: 'Rate season 2, your rating: 7 out of 10',
@@ -215,7 +220,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
   }).click()
 
   await expect(secondSeason.getByText('0 ratings', { exact: true })).toBeVisible()
-  await selector.selectOption('1')
+  await firstSeasonToggle.click()
 
   await expect(firstSeason.getByRole('button', {
     name: 'Rate season 1, your rating: 4 out of 10',
@@ -319,13 +324,8 @@ test('keeps episodes usable on rating failures and retries the affected data', a
 
 })
 
-test('aborts pending season requests on selection changes without blocking the new season', async ({ context, page }) => {
-  await context.addCookies([{
-    name: 'tv_session',
-    value: 'e2e-session',
-    url: appBaseUrl
-  }])
-
+test('finishes a season rating in the cache while its editor is closed', async ({ context, page }) => {
+  await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(titlePath)
   await openEpisodes(page)
 
@@ -334,18 +334,17 @@ test('aborts pending season requests on selection changes without blocking the n
     exact: true
   })
 
-  const started = Promise.withResolvers<boolean>()
   const release = Promise.withResolvers<boolean>()
 
-  await page.route(seasonRoute, async route => {
-    started.resolve(true)
+  const firstSeason = page.getByRole('button', {
+    name: 'Season 1',
+    exact: true
+  })
 
+  await page.route(seasonRoute, async route => {
     await release.promise
 
-    // The route is aborted by the component disposal; do not fulfill it afterwards.
-    await route.abort().catch(() => {
-      // The browser may have already released the aborted route.
-    })
+    await route.continue()
   })
 
   try {
@@ -359,29 +358,31 @@ test('aborts pending season requests on selection changes without blocking the n
       exact: true
     }).click()
 
-    await started.promise
+    await expect(season.getByText('Updating rating…', { exact: true })).toBeVisible()
 
-    const aborted = page.waitForEvent('requestfailed', request => request.url().endsWith(seasonPath))
+    const saved = page.waitForResponse(response => response.url().endsWith(seasonPath))
 
-    await page.getByRole('combobox', {
-      name: 'Season',
+    await firstSeason.click()
+    await expect(page.getByRole('button', { name: /^Rate season 1/u })).toBeEnabled()
+    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
+    release.resolve(true)
+
+    const response = await saved
+
+    expect(response.status()).toBe(200)
+    await expect(firstSeason).toBeFocused()
+
+    await page.getByRole('button', {
+      name: 'Season 2',
       exact: true
-    }).selectOption('1')
+    }).click()
 
-    const request = await aborted
-
-    expect(request.failure()?.errorText).toContain('ERR_ABORTED')
-
-    await expect(page.getByRole('region', {
-      name: 'Season 1 ratings',
-      exact: true
-    }).getByRole('button', {
-      name: 'Rate season 1',
+    await expect(season.getByRole('button', {
+      name: 'Rate season 2, your rating: 9 out of 10',
       exact: true
     })).toBeEnabled()
 
-    await expect(page.getByRole('dialog')).toHaveCount(0)
-    await expect(page.getByText('Rating saved.', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
   } finally {
     release.resolve(true)
   }

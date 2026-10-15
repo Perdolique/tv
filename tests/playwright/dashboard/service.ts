@@ -1,15 +1,21 @@
 import type { CatalogViewingHistoryItem, CatalogViewingSummaryResponse } from '../../../packages/shared/src/catalog.ts'
+import type { CatalogViewing } from '../../../packages/shared/src/catalog-viewings.ts'
 import { detailsItems } from '../catalog/details.fixtures.ts'
 import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 
-function createViewingItems(movieIds: Set<string>, episodeIds: Set<string>): CatalogViewingHistoryItem[] {
+function createViewingItems(movieIds: Set<string>, episodeIds: Set<string>, viewings?: CatalogViewing[]): CatalogViewingHistoryItem[] {
   const items: CatalogViewingHistoryItem[] = []
 
   for (const title of detailsItems) {
-    if (title.type === 'movie' && movieIds.has(title.id)) {
+    const movies = viewings?.filter(viewing => viewing.catalogItemId === title.id) ?? (movieIds.has(title.id) ? [{
+      id: title.id,
+      recordedAt: '2026-09-22T13:00:00.123456Z'
+    }] : [])
+
+    for (const viewing of movies) {
       items.push({
         id: title.id,
-        entryId: title.id,
+        entryId: viewing.id,
         kind: 'movie',
         type: 'movie',
         title: title.title,
@@ -18,7 +24,7 @@ function createViewingItems(movieIds: Set<string>, episodeIds: Set<string>): Cat
         originalTitleLocale: title.originalTitleLocale,
         posterUrl: title.posterUrl,
         releaseYear: title.releaseYear,
-        markedAt: '2026-09-22T13:00:00.123456Z',
+        markedAt: viewing.recordedAt,
         episodeNumber: null,
         seasonNumber: null,
         sourceTitle: null

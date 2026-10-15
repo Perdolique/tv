@@ -6,6 +6,7 @@ import type { ImportSelection } from '@tv/database/import-preview'
 import { Client } from 'pg'
 import { afterAll, afterEach, assert, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../../testing/test-database.ts'
+import { insertSeriesEpisodeWatches } from '../../../../testing/series-watch-fixtures.ts'
 import { movieResponse, seriesResponse, showResponse } from '../../../../testing/import-fixtures.ts'
 import { applyImportPreview, listImportOperations, type ApplyImportOptions } from '../../apply-service.ts'
 import { findImportOperationView, listImportOperationPage } from '../../history.ts'
@@ -105,8 +106,10 @@ async function catalogRows() {
       (SELECT jsonb_agg(to_jsonb(field) ORDER BY id) FROM catalog_import_fields field) AS fields,
       (SELECT jsonb_agg(to_jsonb(release) ORDER BY id) FROM catalog_releases release) AS releases,
       (SELECT jsonb_agg(to_jsonb(follow) ORDER BY user_id, catalog_item_id) FROM catalog_item_follows follow) AS follows,
-      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_item_id) FROM catalog_movie_watches watch) AS movie_watches,
-      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_episode_id) FROM catalog_episode_watches watch) AS episode_watches
+      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY user_id, catalog_item_id, id) FROM catalog_viewings watch) AS movie_watches,
+      (SELECT jsonb_agg(to_jsonb(watch) ORDER BY id) FROM catalog_viewing_episode_watches watch) AS episode_watches,
+      (SELECT jsonb_agg(to_jsonb(context) ORDER BY user_id, catalog_item_id) FROM catalog_viewing_contexts context) AS viewing_contexts,
+      (SELECT jsonb_agg(to_jsonb(event) ORDER BY id) FROM catalog_timeline_events event) AS timeline_events
   `)
 
   return rows.rows[0]
@@ -230,7 +233,33 @@ describe('saved catalog import application', () => {
     const watchedEpisodeId = watchedEpisode.id
 
     await firstClient.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
-    await firstClient.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) VALUES ($1, $2)', [session.user.id, watchedEpisodeId])
+    await insertSeriesEpisodeWatches(firstClient, session.user.id, { episodeIds: [watchedEpisodeId] })
+
+    await insertSeriesEpisodeWatches(firstClient, session.user.id, {
+      episodeIds: [watchedEpisodeId],
+      status: 'paused',
+      markedAt: '2020-01-02T12:34:56.123456Z'
+    })
+
+    // Read exact database text because JavaScript Date drops microseconds.
+    const savedWatches = await firstClient.query<{ marked_at_exact: string }>(`
+      SELECT *, to_char(marked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS marked_at_exact
+      FROM catalog_viewing_episode_watches WHERE user_id = $1 ORDER BY id
+    `, [session.user.id])
+
+    const savedViewings = await firstClient.query<{ recorded_at_exact: string }>(`
+      SELECT *, to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at_exact
+      FROM catalog_viewings WHERE user_id = $1 ORDER BY id
+    `, [session.user.id])
+
+    const savedTimeline = await firstClient.query<{ occurred_at_exact: string }>(`
+      SELECT *, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at_exact
+      FROM catalog_timeline_events WHERE user_id = $1 ORDER BY id
+    `, [session.user.id])
+
+    expect(savedWatches.rows.map(watch => watch.marked_at_exact)).toContain('2020-01-02T12:34:56.123456Z')
+    expect(savedViewings.rows.map(viewing => viewing.recorded_at_exact)).toContain('2020-01-02T12:34:56.123456Z')
+    expect(savedTimeline.rows.map(event => event.occurred_at_exact)).toContain('2020-01-02T12:34:56.123456Z')
     await firstClient.query('INSERT INTO catalog_releases (catalog_item_id, release_date, season_number, episode_number) VALUES ($1, $2, 1, 1)', [itemId, '2099-01-01'])
 
     const savedRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, season_number, score) VALUES ($1, $2, 1, 8) RETURNING id, score', [session.user.id, itemId])
@@ -267,17 +296,36 @@ describe('saved catalog import application', () => {
     const retained = await firstClient.query(`
       SELECT
         (SELECT count(*) FROM catalog_item_follows WHERE catalog_item_id = $1)::integer AS follows,
-        (SELECT count(*) FROM catalog_episode_watches WHERE catalog_episode_id = $2)::integer AS watches,
+        (SELECT count(*) FROM catalog_viewing_episode_watches WHERE catalog_episode_id = $2)::integer AS watches,
         (SELECT count(*) FROM catalog_releases WHERE catalog_item_id = $1)::integer AS releases,
         (SELECT source_title FROM catalog_episodes WHERE id = $2) AS title
     `, [itemId, watchedEpisodeId])
 
     expect(retained.rows[0]).toStrictEqual({
       follows: 1,
-      watches: 1,
+      watches: 2,
       releases: 1,
       title: 'Updated source episode'
     })
+
+    const retainedWatches = await firstClient.query(`
+      SELECT *, to_char(marked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS marked_at_exact
+      FROM catalog_viewing_episode_watches WHERE user_id = $1 ORDER BY id
+    `, [session.user.id])
+
+    const retainedViewings = await firstClient.query(`
+      SELECT *, to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at_exact
+      FROM catalog_viewings WHERE user_id = $1 ORDER BY id
+    `, [session.user.id])
+
+    const retainedTimeline = await firstClient.query(`
+      SELECT *, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at_exact
+      FROM catalog_timeline_events WHERE user_id = $1 ORDER BY id
+    `, [session.user.id])
+
+    expect(retainedWatches.rows).toStrictEqual(savedWatches.rows)
+    expect(retainedViewings.rows).toStrictEqual(savedViewings.rows)
+    expect(retainedTimeline.rows).toStrictEqual(savedTimeline.rows)
 
     // oxlint-disable-next-line eslint/no-underscore-dangle -- TVMaze names this response field _embedded.
     changedShow._embedded.episodes.push({
@@ -413,7 +461,7 @@ describe('saved catalog import application', () => {
     const itemId = applied.result.catalogItemId
 
     await firstClient.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
-    await firstClient.query('INSERT INTO catalog_movie_watches (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
+    await firstClient.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
     await firstClient.query('INSERT INTO catalog_releases (catalog_item_id, release_date) VALUES ($1, $2)', [itemId, '2099-01-01'])
 
     const fresh = movieResponse()
@@ -454,7 +502,7 @@ describe('saved catalog import application', () => {
     }>(`
       SELECT item.release_year, title.title, description.description,
         (SELECT count(*) FROM catalog_item_follows WHERE catalog_item_id = $1)::integer AS follows,
-        (SELECT count(*) FROM catalog_movie_watches WHERE catalog_item_id = $1)::integer AS watches,
+        (SELECT count(*) FROM catalog_viewings WHERE catalog_item_id = $1)::integer AS watches,
         (SELECT count(*) FROM catalog_releases WHERE catalog_item_id = $1)::integer AS releases
       FROM catalog_items item
       JOIN catalog_item_titles title ON title.catalog_item_id = item.id AND title.locale = 'en-US'

@@ -1,6 +1,5 @@
 import type {
   CatalogDetailsResponse,
-  CatalogEpisodeWatchesResponse,
   CatalogEpisodeRatingsResponse,
   CatalogEpisodeRatingSummariesResponse,
   CatalogEpisodesResponse,
@@ -157,10 +156,6 @@ const catalogEpisodesResponseSchema = v.strictObject({
   }))
 }) satisfies v.GenericSchema<CatalogEpisodesResponse>
 
-const catalogEpisodeWatchesResponseSchema = v.strictObject({
-  watchedEpisodeIds: v.array(catalogItemIdSchema)
-}) satisfies v.GenericSchema<CatalogEpisodeWatchesResponse>
-
 const catalogReleasesResponseSchema = v.object({
   items: v.array(v.object({
     ...catalogSearchItemSchema.entries,
@@ -185,7 +180,6 @@ function normalizeSearchQuery(value: unknown): string {
 export {
   catalogDetailsResponseSchema,
   catalogEpisodesResponseSchema,
-  catalogEpisodeWatchesResponseSchema,
   catalogEpisodeRatingsResponseSchema,
   catalogEpisodeRatingSummariesResponseSchema,
   catalogFollowResponseSchema,

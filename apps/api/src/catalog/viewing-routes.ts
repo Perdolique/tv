@@ -11,7 +11,7 @@ function registerCatalogViewingRoutes(app: Hono<CatalogEnvironment>, dependencie
     const response = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
       const cursorValue = url.searchParams.get('cursor')
       const localeValue = url.searchParams.get('titleLocale')
-      const cursor = decodeViewingCursor(cursorValue)
+      const cursor = decodeViewingCursor(cursorValue, 3)
       const locale = canonicalizeTitleLocale(localeValue)
       const rows = await findViewingHistoryRows(session.database, session.user.id, cursor)
 
