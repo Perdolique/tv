@@ -13,6 +13,14 @@
         <p v-if="completedError" :id="completedErrorId" :class="$style.error">{{ completedError }}</p>
       </div>
     </div>
+    <div v-if="withScore" :class="$style.field">
+      <label :for="scoreId">Viewing rating (optional)</label>
+      <select ref="scoreField" :id="scoreId" v-model="selectedScore" :class="$style.input" :disabled="isSaving" :aria-invalid="!!fields.score" :aria-describedby="scoreDescription">
+        <option value="">No rating</option>
+        <option v-for="score in scoreOptions" :key="score" :value="String(score)">{{ score }}/10</option>
+      </select>
+      <p v-if="fields.score" :id="scoreErrorId" :class="$style.error">{{ fields.score }}</p>
+    </div>
     <div :class="$style.actions">
       <AppButton type="submit" :disabled="isSaving">{{ saveLabel }}</AppButton>
       <AppButton :disabled="isSaving" variant="secondary" @click="cancel">Cancel</AppButton>
@@ -23,22 +31,35 @@
 <script lang="ts" setup>
   import { computed, nextTick, onMounted, ref, shallowRef, useId, useTemplateRef, watch } from 'vue'
   import * as v from 'valibot'
-  import { catalogViewingUpdateSchema, type CatalogViewingDates } from '@tv/shared/catalog-viewings'
+
+  import {
+    catalogViewingUpdateSchema,
+    type CatalogViewingDates,
+    type CatalogViewingDraft
+  } from '@tv/shared/catalog-viewings'
+
   import AppButton from '~/components/ui/AppButton.vue'
 
   interface Props {
     initial: CatalogViewingDates;
+    withScore?: boolean;
     isSaving: boolean;
     fields: Record<string, string>;
   }
 
   interface Emits {
-    save: [dates: CatalogViewingDates];
+    save: [dates: CatalogViewingDraft];
     cancel: [];
   }
 
-  const { initial, fields, isSaving } = defineProps<Props>()
+  const { initial, fields, isSaving, withScore } = defineProps<Props>()
   const emit = defineEmits<Emits>()
+  const selectedScore = shallowRef('')
+  const scoreOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  const scoreId = useId()
+  const scoreField = useTemplateRef('scoreField')
+  const scoreErrorId = useId()
+  const scoreDescription = computed(() => fields.score ? scoreErrorId : undefined)
   const startedOn = shallowRef(initial.startedOn ?? '')
   const completedOn = shallowRef(initial.completedOn ?? '')
   const validation = ref<Record<string, string>>({})
@@ -57,6 +78,7 @@
   function focusError(): void {
     if (startedError.value) { startedField.value?.focus() }
     else if (completedError.value) { completedField.value?.focus() }
+    else if (fields.score) { scoreField.value?.focus() }
   }
 
   watch(() => fields, async () => {
@@ -97,10 +119,14 @@
       return
     }
 
-    emit('save', {
+    const draft: CatalogViewingDraft = {
       startedOn: result.output.startedOn,
       completedOn: result.output.completedOn
-    })
+    }
+
+    if (withScore && selectedScore.value !== '') { draft.score = Number(selectedScore.value) }
+
+    emit('save', draft)
   }
 </script>
 

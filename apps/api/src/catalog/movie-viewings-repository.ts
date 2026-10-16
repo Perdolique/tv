@@ -21,6 +21,7 @@ import type {
 import { and, eq, sql } from 'drizzle-orm'
 import { CatalogHttpError } from './errors.ts'
 import { decodeViewingCursor, encodeViewingCursor } from './viewing-history.ts'
+import { recordMovieRatingEvent, writeMovieScore } from './movie-rating-writes.ts'
 
 type ViewingReader = Pick<Database, 'select' | 'execute'>
 
@@ -42,7 +43,8 @@ const viewingColumns = {
   startedOn: catalogViewings.startedOn,
   completedOn: catalogViewings.completedOn,
   recordedAt: sql<string>`to_char(${catalogViewings.recordedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
-  revision: catalogViewings.revision
+  revision: catalogViewings.revision,
+  score: sql<number | null>`(SELECT score FROM catalog_item_ratings ratings WHERE ratings.viewing_id = catalog_viewings.id AND ratings.user_id = catalog_viewings.user_id AND ratings.catalog_item_id = catalog_viewings.catalog_item_id AND ratings.season_number IS NULL AND ratings.catalog_episode_id IS NULL)`
 }
 
 function viewingOwnerCondition(owner: ViewingOwner) {
@@ -75,19 +77,28 @@ async function requireMovie(database: ViewingReader, owner: ViewingOwner, lock =
   }
 }
 
+function movieViewingSummarySql(owner: ViewingOwner) {
+  return sql`json_build_object(
+    'completedCount', (SELECT count(*)::integer FROM catalog_viewings WHERE user_id = ${owner.userId}::uuid AND catalog_item_id = ${owner.catalogItemId}::uuid),
+    'currentViewingId', context.current_viewing_id,
+    'contextVersion', coalesce(context.context_version, 0),
+    'currentViewingScore', (SELECT score FROM catalog_item_ratings WHERE user_id = ${owner.userId}::uuid AND catalog_item_id = ${owner.catalogItemId}::uuid AND viewing_id = context.current_viewing_id AND season_number IS NULL AND catalog_episode_id IS NULL),
+    'currentVoteScore', (SELECT score FROM catalog_item_ratings WHERE user_id = ${owner.userId}::uuid AND catalog_item_id = ${owner.catalogItemId}::uuid AND viewing_id IS NULL AND season_number IS NULL AND catalog_episode_id IS NULL)
+  )`
+}
+
 async function readMovieViewingSummary(database: ViewingReader, owner: ViewingOwner): Promise<CatalogMovieViewingSummary> {
-  const result = await database.execute<CatalogMovieViewingSummary & Record<string, unknown>>(sql`
-    SELECT (SELECT count(*)::integer FROM catalog_viewings WHERE user_id = ${owner.userId}::uuid AND catalog_item_id = ${owner.catalogItemId}::uuid) AS "completedCount",
-      context.current_viewing_id AS "currentViewingId", coalesce(context.context_version, 0) AS "contextVersion"
+  const summarySql = movieViewingSummarySql(owner)
+
+  const result = await database.execute<{ summary: CatalogMovieViewingSummary } & Record<string, unknown>>(sql`
+    SELECT ${summarySql} AS summary
     FROM (SELECT 1) anchor
     LEFT JOIN catalog_viewing_contexts context ON context.user_id = ${owner.userId}::uuid AND context.catalog_item_id = ${owner.catalogItemId}::uuid
   `)
 
-  const [summary] = result.rows
+  const summary = result.rows[0]?.summary
 
-  if (summary === undefined) {
-    throw new Error('Movie viewing summary is missing')
-  }
+  if (summary === undefined) { throw new Error('Movie viewing summary is missing') }
 
   return summary
 }
@@ -122,17 +133,18 @@ async function findMovieViewings(database: Database, owner: ViewingOwner, cursor
   }
 
   const position = cursor === null ? sql`true` : sql`(recorded_at, id) < (${cursor.markedAt}::timestamptz, ${cursor.entryId}::uuid)`
+  const summarySql = movieViewingSummarySql(owner)
 
-  // Read the count, current context and bounded page in one PostgreSQL snapshot.
+  // Read scores, count, current context and bounded page in one PostgreSQL snapshot.
   const result = await database.execute<{ items: CatalogViewing[]; summary: CatalogMovieViewingSummary } & Record<string, unknown>>(sql`
     SELECT coalesce((SELECT json_agg(page) FROM (
       SELECT id, catalog_item_id AS "catalogItemId", status, started_on::text AS "startedOn", completed_on::text AS "completedOn",
-        to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "recordedAt", revision
+        to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "recordedAt", revision,
+        (SELECT score FROM catalog_item_ratings ratings WHERE ratings.viewing_id = catalog_viewings.id AND ratings.user_id = catalog_viewings.user_id AND ratings.catalog_item_id = catalog_viewings.catalog_item_id AND ratings.season_number IS NULL AND ratings.catalog_episode_id IS NULL) AS score
       FROM catalog_viewings WHERE user_id = ${owner.userId}::uuid AND catalog_item_id = ${owner.catalogItemId}::uuid AND ${position}
       ORDER BY recorded_at DESC NULLS LAST, id DESC NULLS LAST LIMIT ${PAGE_SIZE + 1}
     ) page), '[]'::json) AS items,
-    json_build_object('completedCount', (SELECT count(*)::integer FROM catalog_viewings WHERE user_id = ${owner.userId}::uuid AND catalog_item_id = ${owner.catalogItemId}::uuid),
-      'currentViewingId', context.current_viewing_id, 'contextVersion', coalesce(context.context_version, 0)) AS summary
+    ${summarySql} AS summary
     FROM (SELECT 1) anchor
     LEFT JOIN catalog_viewing_contexts context ON context.user_id = ${owner.userId}::uuid AND context.catalog_item_id = ${owner.catalogItemId}::uuid
   `)
@@ -254,6 +266,26 @@ async function createMovieViewing(database: Database, owner: ViewingOwner, input
       }).where(condition)
     }
 
+    if (input.score !== undefined) {
+      await writeMovieScore(transaction, owner, {
+        viewingId: id,
+        score: input.score
+      })
+
+      if (input.mode === 'current') {
+        await writeMovieScore(transaction, owner, {
+          viewingId: null,
+          score: input.score
+        })
+      }
+
+      await recordMovieRatingEvent(transaction, owner, {
+        viewingId: id,
+        previousScore: null,
+        score: input.score
+      })
+    }
+
     const viewing = await findMovieViewing(transaction, owner, id)
     const summary = await readMovieViewingSummary(transaction, owner)
 
@@ -330,4 +362,5 @@ async function deleteMovieViewing(database: Database, owner: ViewingTarget, revi
   })
 }
 
-export { createMovieViewing, deleteMovieViewing, findMovieViewing, findMovieViewings, updateMovieViewing }
+export { createMovieViewing, deleteMovieViewing, findMovieViewing, findMovieViewings, lockViewingContext, readMovieViewingSummary, updateMovieViewing }
+export type { ViewingOwner, ViewingTarget }

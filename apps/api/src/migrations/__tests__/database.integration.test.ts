@@ -787,7 +787,7 @@ describe('movie viewing migration', () => {
       await fixture.client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 8)', [firstUserId, movieId])
       await fixture.client.query('INSERT INTO catalog_episode_watches (user_id, catalog_episode_id) SELECT $1, id FROM catalog_episodes LIMIT 1', [firstUserId])
 
-      const ratings = await fixture.client.query('SELECT * FROM catalog_item_ratings ORDER BY id')
+      const ratings = await fixture.client.query('SELECT id, user_id, catalog_item_id, season_number, catalog_episode_id, score FROM catalog_item_ratings ORDER BY id')
       const episodes = await fixture.client.query('SELECT * FROM catalog_episode_watches ORDER BY catalog_episode_id')
 
       await migrate(fixture.database, { migrationsFolder })
@@ -813,7 +813,7 @@ describe('movie viewing migration', () => {
         context_version: 1
       }])
 
-      const afterRatings = await fixture.client.query('SELECT * FROM catalog_item_ratings ORDER BY id')
+      const afterRatings = await fixture.client.query('SELECT id, user_id, catalog_item_id, season_number, catalog_episode_id, score FROM catalog_item_ratings ORDER BY id')
 
       expect(afterRatings.rows).toStrictEqual(ratings.rows)
 
@@ -840,6 +840,44 @@ describe('movie viewing migration', () => {
       const repeated = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1 AND catalog_item_id = $2', [firstUserId, movieId])
 
       expect(repeated.rows).toHaveLength(1)
+    })
+  })
+})
+
+describe('viewing rating migration', () => {
+  it('preserves IDs and all target scores as unlinked votes without guessing viewing links', async () => {
+    await withDatabase(async fixture => {
+      await migrateBefore(fixture, '20261016181922_movie-viewing-ratings')
+      await fixture.client.query('INSERT INTO users (id, email) VALUES ($1, \'viewing-rating-migration@example.com\')', [firstUserId])
+
+      await fixture.client.query(`INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score)
+        SELECT $1, id, 8 FROM catalog_items WHERE type = 'movie' LIMIT 1`, [firstUserId])
+
+      await fixture.client.query(`INSERT INTO catalog_item_ratings (user_id, catalog_item_id, season_number, score)
+        SELECT $1, catalog_item_id, season_number, 7 FROM catalog_episodes LIMIT 1`, [firstUserId])
+
+      await fixture.client.query(`INSERT INTO catalog_item_ratings (user_id, catalog_item_id, catalog_episode_id, score)
+        SELECT $1, catalog_item_id, id, 6 FROM catalog_episodes LIMIT 1`, [firstUserId])
+
+      await fixture.client.query(`INSERT INTO catalog_viewings (user_id, catalog_item_id)
+        SELECT $1, catalog_item_id FROM catalog_item_ratings WHERE user_id = $1 AND season_number IS NULL AND catalog_episode_id IS NULL`, [firstUserId])
+
+      const before = await fixture.client.query('SELECT id, user_id, catalog_item_id, season_number, catalog_episode_id, score FROM catalog_item_ratings WHERE user_id = $1 ORDER BY id', [firstUserId])
+
+      await migrate(fixture.database, { migrationsFolder })
+      await migrate(fixture.database, { migrationsFolder })
+
+      const after = await fixture.client.query('SELECT id, user_id, catalog_item_id, season_number, catalog_episode_id, score FROM catalog_item_ratings WHERE user_id = $1 ORDER BY id', [firstUserId])
+
+      expect(after.rows).toStrictEqual(before.rows)
+
+      const linked = await fixture.client.query('SELECT id FROM catalog_item_ratings WHERE user_id = $1 AND viewing_id IS NOT NULL', [firstUserId])
+
+      expect(linked.rows).toStrictEqual([])
+
+      const viewings = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1', [firstUserId])
+
+      expect(viewings.rows).toHaveLength(1)
     })
   })
 })

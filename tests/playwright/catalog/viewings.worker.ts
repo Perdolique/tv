@@ -2,6 +2,10 @@ import * as v from 'valibot'
 
 import {
   catalogViewingCreateSchema,
+  catalogMovieRatingSaveSchema,
+  catalogMovieRatingRemoveSchema,
+  catalogViewingRatingSaveSchema,
+  catalogViewingRatingRemoveSchema,
   catalogViewingDeleteSchema,
   catalogViewingUpdateSchema,
   type CatalogViewing
@@ -21,6 +25,7 @@ interface Store {
   items: CatalogViewing[];
   contexts: Map<string, ViewingContext>;
   creations: Map<string, Creation>;
+  votes: Map<string, number | null>;
 }
 
 interface ViewingRequestOptions {
@@ -53,7 +58,8 @@ function legacyItems(movieIds: Set<string>): CatalogViewing[] {
       startedOn: null,
       completedOn: null,
       recordedAt: '2026-09-22T13:00:00.123456Z',
-      revision: 1
+      revision: 1,
+      score: null
     }
   })
 }
@@ -61,6 +67,17 @@ function movieViewings(request: Request, movieIds: Set<string>): CatalogViewing[
   const key = storeKey(request)
 
   return (key === null ? undefined : stores.get(key)?.items) ?? legacyItems(movieIds)
+}
+function movieVote(request: Request, catalogItemId: string): number | null {
+  const key = storeKey(request)
+  const store = key === null ? undefined : stores.get(key)
+
+  if (store?.votes.has(catalogItemId) === true) { return store.votes.get(catalogItemId) ?? null }
+
+  const account = cookie(request, 'tv_session') === 'e2e-long-email-session' ? 'second' : 'first'
+  const value = cookie(request, `tv_rating_${account}_${catalogItemId}`)
+
+  return value === null ? null : Number(value)
 }
 function response(body: unknown, status = 200, headers?: HeadersInit): Response {
   const result = new Headers(headers)
@@ -111,7 +128,7 @@ async function handleMovieViewings(request: Request, url: URL, options: ViewingR
   const stateId = cookie(request, 'tv_viewing_state') ?? crypto.randomUUID()
   const session = cookie(request, 'tv_session')
   const key = existingKey ?? `${session}:${stateId}`
-  const headers = { 'Set-Cookie': `tv_viewing_state=${stateId}; Path=/; SameSite=Lax` }
+  const headers = new Headers({ 'Set-Cookie': `tv_viewing_state=${stateId}; Path=/; SameSite=Lax` })
   let store = stores.get(key)
 
   if (store === undefined) {
@@ -127,7 +144,8 @@ async function handleMovieViewings(request: Request, url: URL, options: ViewingR
     store = {
       items,
       contexts,
-      creations: new Map()
+      creations: new Map(),
+      votes: new Map()
     }
 
     stores.set(key, store)
@@ -152,7 +170,9 @@ async function handleMovieViewings(request: Request, url: URL, options: ViewingR
     return {
       currentViewingId: context.currentViewingId,
       contextVersion: context.contextVersion,
-      completedCount: matching.length
+      completedCount: matching.length,
+      currentViewingScore: matching.find(item => item.id === context.currentViewingId)?.score ?? null,
+      currentVoteScore: store.votes.has(catalogItemId) ? store.votes.get(catalogItemId) ?? null : movieVote(request, catalogItemId)
     }
   }
 
@@ -175,7 +195,63 @@ async function handleMovieViewings(request: Request, url: URL, options: ViewingR
     }, 200, headers)
   }
 
-  const body: unknown = await request.json()
+  const body: unknown = await request.json().catch(() => null)
+  const isCurrentRating = segments[5] === 'rating'
+  const isHistoricalRating = segments[7] === 'rating'
+  const account = cookie(request, 'tv_session') === 'e2e-long-email-session' ? 'second' : 'first'
+  const voteCookie = `tv_rating_${account}_${catalogItemId}`
+
+  const saveVote = (score: number | null) => {
+    store.votes.set(catalogItemId, score)
+
+    const value = score === null ? '; Max-Age=0' : String(score)
+
+    headers.append('Set-Cookie', `${voteCookie}=${value}; Path=/; SameSite=Lax`)
+  }
+
+  if (isCurrentRating) {
+    const parsed = request.method === 'PUT' ? v.safeParse(catalogMovieRatingSaveSchema, body) : v.safeParse(catalogMovieRatingRemoveSchema, body)
+
+    if (!parsed.success) { return failure(400) }
+
+    if (parsed.output.currentViewingId !== context.currentViewingId || parsed.output.contextVersion !== context.contextVersion) { return failure(409) }
+
+    const score = request.method === 'PUT' ? v.parse(catalogMovieRatingSaveSchema, body).score : null
+    const current = store.items.find(item => item.id === context.currentViewingId) ?? null
+    const previousVote = summary().currentVoteScore
+    const changed = (current !== null && current.score !== score) || previousVote !== score
+
+    if (current !== null && current.score !== score) { current.score = score; current.revision += 1 }
+
+    if (changed) { context.contextVersion += 1 }
+
+    saveVote(score)
+
+    return response({
+      score,
+      viewing: current,
+      summary: summary()
+    }, 200, headers)
+  }
+
+  if (isHistoricalRating) {
+    const parsed = request.method === 'PUT' ? v.safeParse(catalogViewingRatingSaveSchema, body) : v.safeParse(catalogViewingRatingRemoveSchema, body)
+
+    if (!parsed.success) { return failure(400) }
+
+    if (target === undefined) { return failure(404) }
+
+    const score = request.method === 'PUT' ? v.parse(catalogViewingRatingSaveSchema, body).score : null
+
+    if (target.id === context.currentViewingId || (target.revision !== parsed.output.revision && target.score !== score)) { return failure(409) }
+
+    if (target.score !== score) { target.score = score; target.revision += 1 }
+
+    return response({
+      viewing: target,
+      summary: summary()
+    }, 200, headers)
+  }
 
   if (request.method === 'POST') {
     const parsed = v.safeParse(catalogViewingCreateSchema, body)
@@ -209,7 +285,8 @@ async function handleMovieViewings(request: Request, url: URL, options: ViewingR
       startedOn: input.startedOn,
       completedOn: input.completedOn,
       recordedAt,
-      revision: 1
+      revision: 1,
+      score: input.score ?? null
     }
 
     store.items.push(viewing)
@@ -222,6 +299,8 @@ async function handleMovieViewings(request: Request, url: URL, options: ViewingR
     if (input.mode === 'current') {
       context.currentViewingId = viewing.id
       context.contextVersion += 1
+
+      if (input.score !== undefined) { saveVote(input.score) }
     }
 
     return response({
@@ -265,4 +344,4 @@ async function handleMovieViewings(request: Request, url: URL, options: ViewingR
   }, 200, headers)
 }
 
-export { handleMovieViewings, movieViewings }
+export { handleMovieViewings, movieViewings, movieVote }

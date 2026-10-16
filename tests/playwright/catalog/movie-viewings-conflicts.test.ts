@@ -1,6 +1,12 @@
 import type { Page, BrowserContext, Response } from '@playwright/test'
 import * as v from 'valibot'
-import { catalogViewingUpdateSchema, type CatalogViewing } from '../../../packages/shared/src/catalog-viewings.ts'
+
+import {
+  catalogViewingUpdateSchema,
+  catalogViewingRatingSaveSchema,
+  type CatalogViewing
+} from '../../../packages/shared/src/catalog-viewings.ts'
+
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie } from '../helpers.ts'
 import { dune } from './details.fixtures.ts'
@@ -16,20 +22,91 @@ function isOlderViewingRead(response: Response): boolean {
   return url.pathname === olderApi && response.request().method() === 'GET'
 }
 
+function viewingRecords() {
+  const older: CatalogViewing = {
+    id: olderId,
+    catalogItemId: dune.id,
+    status: 'completed',
+    startedOn: null,
+    completedOn: null,
+    recordedAt: '2019-01-01T12:00:00.123456Z',
+    revision: 1,
+    score: null
+  }
+
+  const recent: CatalogViewing[] = Array.from({ length: 20 }, (_value, index) => {
+    const ordinal = String(20 - index)
+    const suffix = ordinal.padStart(12, '0')
+
+    return {
+      id: `01991a00-0000-7000-8000-${suffix}`,
+      catalogItemId: dune.id,
+      status: 'completed',
+      startedOn: null,
+      completedOn: null,
+      recordedAt: '2020-01-01T12:00:00.123456Z',
+      revision: 1,
+      score: null
+    }
+  })
+
+  return {
+    older,
+    recent
+  }
+}
+
 async function mockOlderViewing(page: Page, older: CatalogViewing, recent: CatalogViewing[]): Promise<void> {
   const summary = {
     completedCount: 21,
     currentViewingId: null,
-    contextVersion: 0
+    contextVersion: 0,
+    currentViewingScore: null,
+    currentVoteScore: null
   }
 
   let revision = 1
+  let { score } = older
 
   await page.route(`**${api}**`, async route => {
     const request = route.request()
     const url = new URL(request.url())
     const target = url.pathname === olderApi
     const method = request.method()
+
+    if (url.pathname === `${olderApi}/rating` && method === 'PUT') {
+      const raw: unknown = request.postDataJSON()
+      const { revision: inputRevision, score: nextScore } = v.parse(catalogViewingRatingSaveSchema, raw)
+
+      expect(inputRevision).toBe(revision)
+
+      if (revision === 1) {
+        revision = 2
+        score = 7
+
+        await route.fulfill({
+          status: 409,
+          json: { error: { code: 'CONFLICT' } }
+        })
+
+        return
+      }
+
+      revision += 1
+      score = nextScore
+
+      await route.fulfill({ json: {
+        viewing: {
+          ...older,
+          revision,
+          score
+        },
+
+        summary
+      } })
+
+      return
+    }
 
     if (target && method === 'PATCH') {
       const raw: unknown = request.postDataJSON()
@@ -72,7 +149,8 @@ async function mockOlderViewing(page: Page, older: CatalogViewing, recent: Catal
     if (target) {
       await route.fulfill({ json: { viewing: {
         ...older,
-        revision
+        revision,
+        score
       } } })
 
       return
@@ -115,30 +193,7 @@ test.describe('older viewing conflicts', () => {
     const name = `refreshes an older ${kind} viewing without losing its draft`
 
     test(name, async ({ page, context }) => {
-      const older: CatalogViewing = {
-        id: olderId,
-        catalogItemId: dune.id,
-        status: 'completed',
-        startedOn: null,
-        completedOn: null,
-        recordedAt: '2019-01-01T12:00:00.123456Z',
-        revision: 1
-      }
-
-      const recent: CatalogViewing[] = Array.from({ length: 20 }, (_value, index) => {
-        const ordinal = String(20 - index)
-        const suffix = ordinal.padStart(12, '0')
-
-        return {
-          id: `01991a00-0000-7000-8000-${suffix}`,
-          catalogItemId: dune.id,
-          status: 'completed',
-          startedOn: null,
-          completedOn: null,
-          recordedAt: '2020-01-01T12:00:00.123456Z',
-          revision: 1
-        }
-      })
+      const { older, recent } = viewingRecords()
 
       await mockOlderViewing(page, older, recent)
       await openOlderViewing(page, context, linked)
@@ -179,4 +234,60 @@ test.describe('older viewing conflicts', () => {
       await expect(page.getByRole('status').filter({ hasText: 'Viewing dates saved.' })).toBeVisible()
     })
   }
+
+  test.describe('historical rating recovery', () => {
+    test.use({ expectedHttpErrors: { values: [{
+      pathname: `${olderApi}/rating`,
+      status: 409
+    }] } })
+
+    test('refreshes a paged historical rating and keeps its confirmed score outside the first page', async ({ page, context }) => {
+      const { older, recent } = viewingRecords()
+
+      await mockOlderViewing(page, older, recent)
+      await openOlderViewing(page, context, false)
+
+      const row = page.locator(`#viewing-${olderId}`)
+
+      const editor = row.getByRole('region', {
+        name: 'Past viewing rating',
+        exact: true
+      })
+
+      await editor.getByRole('button', { name: 'Rate, Past viewing rating' }).click()
+
+      await editor.getByRole('button', {
+        name: '9 out of 10',
+        exact: true
+      }).click()
+
+      await expect(editor.getByRole('alert')).toContainText('Refresh')
+
+      await editor.getByRole('button', {
+        name: 'Refresh rating',
+        exact: true
+      }).click()
+
+      await expect(row).toBeVisible()
+
+      await expect(editor.getByRole('button', {
+        name: '7 out of 10',
+        exact: true
+      })).toHaveAttribute('aria-pressed', 'true')
+
+      await expect(editor.getByRole('button', {
+        name: '7 out of 10',
+        exact: true
+      })).toBeInViewport()
+
+      await editor.getByRole('button', {
+        name: '9 out of 10',
+        exact: true
+      }).click()
+
+      await expect(editor.getByRole('button', { name: 'Past viewing rating: 9 out of 10' })).toHaveText('9/10')
+      await expect(page.getByRole('region', { name: 'Personal score' })).toHaveText(/^Your rating\s*—\s*$/u)
+    })
+
+  })
 })

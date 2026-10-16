@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-lines -- One episode fixture verifies point, batch and cross-target current-vote isolation. */
 import { URL } from 'node:url'
 import { env } from 'node:process'
 import { randomUUID } from 'node:crypto'
@@ -342,4 +343,125 @@ describe('episode rating persistence', () => {
       await client.query('ROLLBACK')
     }
   })
+
+  it('keeps linked history out of current reads, summaries, updates and removal for every target', async () => {
+    const viewingId = randomUUID()
+
+    await client.query('INSERT INTO catalog_viewings (id, user_id, catalog_item_id, status) VALUES ($1, $2, $3, \'paused\')', [viewingId, userId, seriesId])
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: seriesId,
+      score: 5
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: seriesId,
+      seasonNumber: 1,
+      score: 6
+    })
+
+    await setCatalogEpisodeRating(database, userId, {
+      episodeId,
+      score: 7
+    })
+
+    await client.query(`INSERT INTO catalog_item_ratings (user_id, catalog_item_id, viewing_id, season_number, catalog_episode_id, score)
+      VALUES ($1, $2, $3, NULL, NULL, 1), ($1, $2, $3, 1, NULL, 2), ($1, $2, $3, NULL, $4, 3)`, [userId, seriesId, viewingId, episodeId])
+
+    const historical = await client.query('SELECT id, score FROM catalog_item_ratings WHERE viewing_id = $1 ORDER BY id', [viewingId])
+
+    await expect(findCatalogItemRating(database, userId, {
+      catalogItemId: seriesId,
+      seasonNumber: null
+    })).resolves.toStrictEqual({ score: 5 })
+
+    await expect(findCatalogItemRating(database, userId, scope)).resolves.toStrictEqual({ score: 6 })
+
+    await expect(findCatalogItemRatingSummary(database, seriesId)).resolves.toStrictEqual({
+      averageScore: 5,
+      ratingCount: 1
+    })
+
+    await expect(findCatalogItemRatingSummary(database, seriesId, 1)).resolves.toStrictEqual({
+      averageScore: 6,
+      ratingCount: 1
+    })
+
+    await expect(findCatalogEpisodeRatings(database, userId, { episodeId })).resolves.toStrictEqual([{
+      episodeId,
+      score: 7
+    }])
+
+    await expect(findCatalogEpisodeRatings(database, userId, scope)).resolves.toStrictEqual([{
+      episodeId,
+      score: 7
+    }, {
+      episodeId: nextEpisodeId,
+      score: null
+    }])
+
+    await expect(findCatalogEpisodeRatingSummaries(database, { episodeId })).resolves.toStrictEqual([{
+      episodeId,
+      averageScore: 7,
+      ratingCount: 1
+    }])
+
+    await expect(findCatalogEpisodeRatingSummaries(database, scope)).resolves.toStrictEqual([{
+      episodeId,
+      averageScore: 7,
+      ratingCount: 1
+    }, {
+      episodeId: nextEpisodeId,
+      averageScore: null,
+      ratingCount: 0
+    }])
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: seriesId,
+      score: 8
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: seriesId,
+      seasonNumber: 1,
+      score: 8
+    })
+
+    await setCatalogEpisodeRating(database, userId, {
+      episodeId,
+      score: 8
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: seriesId,
+      score: null
+    })
+
+    await setCatalogItemRating(database, userId, {
+      catalogItemId: seriesId,
+      seasonNumber: 1,
+      score: null
+    })
+
+    await setCatalogEpisodeRating(database, userId, {
+      episodeId,
+      score: null
+    })
+
+    const remaining = await client.query('SELECT id, score FROM catalog_item_ratings WHERE user_id = $1 ORDER BY id', [userId])
+
+    expect(remaining.rows).toStrictEqual(historical.rows)
+
+    await expect(findCatalogItemRatingSummary(database, seriesId)).resolves.toStrictEqual({
+      averageScore: null,
+      ratingCount: 0
+    })
+
+    await expect(findCatalogEpisodeRatingSummaries(database, { episodeId })).resolves.toStrictEqual([{
+      episodeId,
+      averageScore: null,
+      ratingCount: 0
+    }])
+  })
+
 })

@@ -5,7 +5,7 @@ import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 import { calendarReleases } from '../calendar/fixtures.ts'
 import { watchlistItems } from '../watchlist/fixtures.ts'
 import { paginatedHistory } from '../dashboard/fixtures.ts'
-import { handleMovieViewings, movieViewings } from '../catalog/viewings.worker.ts'
+import { handleMovieViewings, movieViewings, movieVote } from '../catalog/viewings.worker.ts'
 import { createViewingItems, createViewingSummary } from '../dashboard/service.ts'
 import { longEmail } from './constants.ts'
 import { handleImportRequest, OPERATOR_ID, POSTER_ID } from '../imports/worker.ts'
@@ -884,8 +884,15 @@ function handleCatalogRatingSummary(request: Request, url: URL): Response {
   }
 
   const scores: number[] = []
+  const activeAccount = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
 
   for (const account of ['first', 'second']) {
+    if (item.type === 'movie' && account === activeAccount) {
+      const score = movieVote(request, item.id)
+
+      if (score !== null) { scores.push(score) }
+
+    } else {
     const cookieName = `tv_rating_${account}_${item.id}`
     const value = getCookieValue(request, cookieName)
 
@@ -893,6 +900,7 @@ function handleCatalogRatingSummary(request: Request, url: URL): Response {
       const score = Number(value)
 
       scores.push(score)
+    }
     }
   }
 
@@ -952,7 +960,9 @@ async function handleCatalogRating(request: Request, url: URL): Promise<Response
   }
 
   const value = getCookieValue(request, cookieName)
-  const score = value === undefined ? null : Number(value)
+  let score = value === undefined ? null : Number(value)
+
+  if (item.type === 'movie') { score = movieVote(request, item.id) }
 
   return json({ score })
 }
@@ -1402,7 +1412,7 @@ export default {
       return handleCatalogFollow(request, url)
     }
 
-    if (/^\/api\/catalog\/items\/[^/]+\/viewings(?:\/[^/]+)?$/u.test(url.pathname)) {
+    if (/^\/api\/catalog\/items\/[^/]+\/viewings(?:\/[^/]+)?(?:\/rating)?$/u.test(url.pathname)) {
       const movieIds = getWatchedCatalogItemIds(request, getWatchedCookieName(request))
 
       return handleMovieViewings(request, url, {
@@ -1430,6 +1440,18 @@ export default {
     const isRatingRequest = ['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating')
 
     if (isRatingRequest) {
+      const id = url.pathname.split('/').at(4)
+      const movie = detailsItems.find(item => item.id === id && item.type === 'movie')
+
+      if (movie !== undefined && request.method !== 'GET') {
+        const movieIds = getWatchedCatalogItemIds(request, getWatchedCookieName(request))
+
+        return handleMovieViewings(request, url, {
+          authenticated,
+          movieIds
+        })
+      }
+
       return handleCatalogRating(request, url)
     }
 

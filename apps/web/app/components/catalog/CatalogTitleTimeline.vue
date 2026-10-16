@@ -218,7 +218,7 @@
     }
   }
 
-  function viewingLocation(item: Extract<CatalogTimelineItem, { kind: 'movie_viewing' }>) {
+  function viewingLocation(item: { viewingId: string }) {
     const path = `/titles/${catalogItemId}`
     const hash = `#viewing-${item.viewingId}`
 
@@ -233,7 +233,8 @@
     const key = timelineItemKey(item)
     const copy = eventCopy(item)
     const rating = item.kind === 'rating_changed' ? ratingCopy(item) : null
-    const movieLocation = item.kind === 'movie_viewing' ? viewingLocation(item) : null
+    const linkedViewingId = item.kind === 'movie_viewing' || item.kind === 'rating_changed' ? item.viewingId : null
+    const movieLocation = linkedViewingId === null || linkedViewingId === undefined ? null : viewingLocation({ viewingId: linkedViewingId })
 
     return {
       key,

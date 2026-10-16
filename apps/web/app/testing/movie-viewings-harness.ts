@@ -22,19 +22,24 @@ const viewing: CatalogViewing = {
   startedOn: null,
   completedOn: null,
   recordedAt: '2020-01-01T12:00:00.123456Z',
-  revision: 1
+  revision: 1,
+  score: null
 }
 
 const emptySummary = {
   completedCount: 0,
   currentViewingId: null,
-  contextVersion: 0
+  contextVersion: 0,
+  currentViewingScore: null,
+  currentVoteScore: null
 }
 
 const summary = {
   completedCount: 1,
   currentViewingId: viewing.id,
-  contextVersion: 1
+  contextVersion: 1,
+  currentViewingScore: null,
+  currentVoteScore: null
 }
 
 const empty = {

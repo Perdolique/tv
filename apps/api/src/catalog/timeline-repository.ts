@@ -168,7 +168,7 @@ async function findCatalogTimeline(database: Database, owner: TimelineOwner, que
         CASE events.kind
           WHEN 'movie_viewing' THEN jsonb_build_object('viewingId', events.viewing_id,
             'startedOn', viewings.started_on::text, 'completedOn', viewings.completed_on::text)
-          WHEN 'rating_changed' THEN jsonb_build_object(
+          WHEN 'rating_changed' THEN jsonb_build_object('viewingId', events.viewing_id,
             'target', CASE WHEN events.catalog_episode_id IS NOT NULL THEN 'episode'
               WHEN events.season_number IS NOT NULL THEN 'season' ELSE 'item' END,
             'seasonNumber', coalesce(events.season_number, episodes.season_number),

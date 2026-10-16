@@ -1,6 +1,12 @@
 import type { Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import * as v from 'valibot'
+import type { Database } from '@tv/database'
+import { catalogItems, catalogItemTitles } from '@tv/database/schema'
+import { catalogMovieRatingSaveSchema, catalogMovieRatingRemoveSchema } from '@tv/shared/catalog-viewings'
+import { and, eq } from 'drizzle-orm'
+import { readViewingInput } from './movie-viewing-routes.ts'
+import { setCurrentMovieRating } from './movie-ratings-repository.ts'
 import { validateCatalogItemId } from './details.ts'
 import { CatalogHttpError } from './errors.ts'
 import { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating } from './ratings-repository.ts'
@@ -47,6 +53,21 @@ async function readCatalogRatingScore(context: Context<CatalogEnvironment, strin
   return parsed.output.score
 }
 
+async function requireRatingItemType(database: Database, id: string) {
+  const rows = await database.select({ type: catalogItems.type }).from(catalogItems)
+    .innerJoin(catalogItemTitles, and(eq(catalogItemTitles.catalogItemId, catalogItems.id), eq(catalogItemTitles.isOriginal, true)))
+    .where(
+      eq(catalogItems.id, id)
+    )
+    .limit(1)
+
+  const [item] = rows
+
+  if (item === undefined) { throw new CatalogHttpError('NOT_FOUND', 404) }
+
+  return item.type
+}
+
 function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies: CatalogDependencies): void {
   app.get('/api/catalog/items/:id/rating-summary', async (context) => {
     const rawId = context.req.param('id')
@@ -85,43 +106,66 @@ function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies
     return context.json(rating)
   })
 
-  app.put('/api/catalog/items/:id/rating', async (context) => {
-    const score = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+  app.put('/api/catalog/items/:id/rating', async context => {
+    const result = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const rawId = context.req.param('id')
       const id = validateCatalogItemId(rawId)
-      const nextScore = await readCatalogRatingScore(context)
+      const type = await requireRatingItemType(session.database, id)
+
+      if (type === 'movie') {
+        const input = await readViewingInput(context, catalogMovieRatingSaveSchema)
+
+        return setCurrentMovieRating(session.database, {
+          userId: session.user.id,
+          catalogItemId: id
+        }, input)
+      }
+
+      const score = await readCatalogRatingScore(context)
 
       const exists = await setCatalogItemRating(session.database, session.user.id, {
         catalogItemId: id,
-        score: nextScore
+        score
       })
 
-      if (!exists) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
+      if (!exists) { throw new CatalogHttpError('NOT_FOUND', 404) }
 
-      return nextScore
+      return { score }
     })
 
-    return context.json({ score })
+    return context.json(result)
   })
 
-  app.delete('/api/catalog/items/:id/rating', async (context) => {
-    await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+  app.delete('/api/catalog/items/:id/rating', async context => {
+    const result = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const rawId = context.req.param('id')
       const id = validateCatalogItemId(rawId)
+      const type = await requireRatingItemType(session.database, id)
+
+      if (type === 'movie') {
+        const input = await readViewingInput(context, catalogMovieRatingRemoveSchema)
+
+        return setCurrentMovieRating(session.database, {
+          userId: session.user.id,
+          catalogItemId: id
+        }, {
+          currentViewingId: input.currentViewingId,
+          contextVersion: input.contextVersion,
+          score: null
+        })
+      }
 
       const exists = await setCatalogItemRating(session.database, session.user.id, {
         catalogItemId: id,
         score: null
       })
 
-      if (!exists) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
+      if (!exists) { throw new CatalogHttpError('NOT_FOUND', 404) }
+
+      return { score: null }
     })
 
-    return context.json({ score: null })
+    return context.json(result)
   })
 }
 

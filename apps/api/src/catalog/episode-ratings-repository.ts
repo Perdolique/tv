@@ -9,7 +9,7 @@ import {
 } from '@tv/database/schema'
 
 import type { CatalogEpisodeRating, CatalogEpisodeRatingSummary } from '@tv/shared/catalog'
-import { and, avg, count, eq, sql } from 'drizzle-orm'
+import { and, avg, count, eq, isNull, sql } from 'drizzle-orm'
 import { hasCatalogSeason } from './ratings-repository.ts'
 import { lockPersonalCatalogContext } from './personal-context.ts'
 
@@ -65,7 +65,8 @@ async function findCatalogEpisodeRatings(
       catalogItemRatings,
       and(
         eq(catalogItemRatings.catalogEpisodeId, catalogEpisodes.id),
-        eq(catalogItemRatings.userId, userId)
+        eq(catalogItemRatings.userId, userId),
+        isNull(catalogItemRatings.viewingId)
       )
     )
     .where(scopeFilter)
@@ -109,7 +110,7 @@ async function findCatalogEpisodeRatingSummaries(
         eq(catalogItemTitles.isOriginal, true)
       )
     )
-    .leftJoin(catalogItemRatings, eq(catalogItemRatings.catalogEpisodeId, catalogEpisodes.id))
+    .leftJoin(catalogItemRatings, and(eq(catalogItemRatings.catalogEpisodeId, catalogEpisodes.id), isNull(catalogItemRatings.viewingId)))
     .where(scopeFilter)
     .groupBy(catalogEpisodes.id)
     .orderBy(catalogEpisodes.episodeNumber, catalogEpisodes.id)
@@ -182,7 +183,7 @@ async function setCatalogEpisodeRating(database: Database, userId: string, { epi
 
     const previousRows = await transaction.select({ score: catalogItemRatings.score }).from(catalogItemRatings)
       .where(
-        and(eq(catalogItemRatings.userId, userId), eq(catalogItemRatings.catalogEpisodeId, episodeId))
+        and(eq(catalogItemRatings.userId, userId), isNull(catalogItemRatings.viewingId), eq(catalogItemRatings.catalogEpisodeId, episodeId))
       )
       .for('update')
 
@@ -198,6 +199,7 @@ async function setCatalogEpisodeRating(database: Database, userId: string, { epi
         .where(
           and(
             eq(catalogItemRatings.userId, userId),
+            isNull(catalogItemRatings.viewingId),
             eq(catalogItemRatings.catalogEpisodeId, episodeId)
           )
         )
@@ -211,7 +213,7 @@ async function setCatalogEpisodeRating(database: Database, userId: string, { epi
           score
         })
         .onConflictDoUpdate({
-          target: [catalogItemRatings.userId, catalogItemRatings.catalogItemId, catalogItemRatings.seasonNumber, catalogItemRatings.catalogEpisodeId],
+          target: [catalogItemRatings.userId, catalogItemRatings.catalogItemId, catalogItemRatings.seasonNumber, catalogItemRatings.catalogEpisodeId, catalogItemRatings.viewingId],
           set: { score }
         })
     }

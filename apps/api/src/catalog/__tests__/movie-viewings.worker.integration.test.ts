@@ -1,7 +1,16 @@
+/* oxlint-disable eslint/max-lines -- Viewing and rating endpoints share authentication and exact-record HTTP fixtures. */
+import * as v from 'valibot'
+
+import {
+  catalogViewingMutationResponseSchema,
+  catalogMovieRatingResponseSchema,
+  type CatalogViewingMutationResponse,
+  type CatalogMovieViewingsResponse
+} from '@tv/shared/catalog-viewings'
+
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
 import type { CatalogTimelineResponse } from '@tv/shared/catalog-timeline'
-import type { CatalogViewingMutationResponse, CatalogMovieViewingsResponse } from '@tv/shared/catalog-viewings'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
@@ -89,7 +98,7 @@ describe('movie viewing Worker contract', () => {
   })
 
   it('authenticates all five endpoints before validating IDs or bodies', async () => {
-    const endpoints = [['GET', ''], ['POST', ''], ['GET', '/invalid'], ['PATCH', '/invalid'], ['DELETE', '/invalid']]
+    const endpoints = [['GET', ''], ['POST', ''], ['GET', '/invalid'], ['PATCH', '/invalid'], ['DELETE', '/invalid'], ['PUT', '/invalid/rating'], ['DELETE', '/invalid/rating']]
 
     const requests = endpoints.map(async ([method, suffix]) => {
       const target = `/api/catalog/items/invalid/viewings${suffix}`
@@ -240,7 +249,9 @@ describe('movie viewing Worker contract', () => {
     await expect(deleted.json()).resolves.toStrictEqual({ summary: {
       completedCount: 0,
       currentViewingId: null,
-      contextVersion: 2
+      contextVersion: 2,
+      currentViewingScore: null,
+      currentVoteScore: null
     } })
 
     const late = await request(path, 'POST', TEST_COOKIE, input)
@@ -351,4 +362,91 @@ describe('movie viewing Worker contract', () => {
       }
     })
   })
+
+  it('rates exact movie viewings, rejects stale context and keeps historical writes out of the current vote', async () => {
+    const id = await findCatalogItemId('Dead Man')
+    const path = `/api/catalog/items/${id}/viewings`
+    const ratingPath = `/api/catalog/items/${id}/rating`
+
+    const firstResponse = await request(path, 'POST', TEST_COOKIE, {
+      mode: 'current',
+      requestId: crypto.randomUUID(),
+      contextVersion: 0,
+      score: 8
+    })
+
+    const firstRaw: unknown = await firstResponse.json()
+    const first = v.parse(catalogViewingMutationResponseSchema, firstRaw)
+
+    expect(firstResponse.status).toBe(200)
+
+    const corrected = await request(ratingPath, 'PUT', TEST_COOKIE, {
+      currentViewingId: first.viewing.id,
+      contextVersion: first.summary.contextVersion,
+      score: 6
+    })
+
+    const correctedRaw: unknown = await corrected.json()
+    const result = v.parse(catalogMovieRatingResponseSchema, correctedRaw)
+
+    expect(result.viewing?.id).toBe(first.viewing.id)
+    expect(result.viewing?.score).toBe(6)
+
+    const secondResponse = await request(path, 'POST', TEST_COOKIE, {
+      mode: 'current',
+      requestId: crypto.randomUUID(),
+      contextVersion: result.summary.contextVersion,
+      score: 7
+    })
+
+    const secondRaw: unknown = await secondResponse.json()
+    const second = v.parse(catalogViewingMutationResponseSchema, secondRaw)
+    const historicalPath = `${path}/${first.viewing.id}/rating`
+
+    const historical = await request(historicalPath, 'PUT', TEST_COOKIE, {
+      revision: result.viewing?.revision,
+      score: 9
+    })
+
+    const historicalRaw: unknown = await historical.json()
+    const updated = v.parse(catalogViewingMutationResponseSchema, historicalRaw)
+
+    expect(updated.viewing.score).toBe(9)
+    expect(updated.summary.currentVoteScore).toBe(7)
+    expect(updated.summary.currentViewingId).toBe(second.viewing.id)
+
+    const stale = await request(ratingPath, 'PUT', TEST_COOKIE, {
+      currentViewingId: first.viewing.id,
+      contextVersion: first.summary.contextVersion,
+      score: 3
+    })
+
+    const missingContext = await request(ratingPath, 'PUT', TEST_COOKIE, { score: 3 })
+
+    const invalidHistory = await request(historicalPath, 'PUT', TEST_COOKIE, {
+      revision: updated.viewing.revision,
+      score: 11
+    })
+
+    const currentAsHistory = await request(`${path}/${second.viewing.id}/rating`, 'DELETE', TEST_COOKIE, { revision: second.viewing.revision })
+
+    expect(stale.status).toBe(409)
+    expect(missingContext.status).toBe(400)
+    expect(invalidHistory.status).toBe(400)
+    expect(currentAsHistory.status).toBe(409)
+
+    const removed = await request(historicalPath, 'DELETE', TEST_COOKIE, { revision: updated.viewing.revision })
+    const removedRaw: unknown = await removed.json()
+    const afterRemoval = v.parse(catalogViewingMutationResponseSchema, removedRaw)
+
+    expect(afterRemoval.viewing.score).toBeNull()
+    expect(afterRemoval.summary.currentVoteScore).toBe(7)
+
+    const currentVote = await request(ratingPath)
+
+    await expect(currentVote.json()).resolves.toStrictEqual({ score: 7 })
+    expectNoStore(stale)
+    expectNoStore(removed)
+  })
+
 })
