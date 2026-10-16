@@ -78,7 +78,8 @@ async function findCatalogItemRatingSummary(
       and(
         eq(catalogItemRatings.catalogItemId, catalogItems.id),
         seasonFilter,
-        isNull(catalogItemRatings.catalogEpisodeId)
+        isNull(catalogItemRatings.catalogEpisodeId),
+        isNull(catalogItemRatings.viewingId)
       )
     )
     .where(
@@ -131,6 +132,7 @@ async function findCatalogItemRating(
         eq(catalogItemRatings.catalogItemId, catalogItems.id),
         eq(catalogItemRatings.userId, userId),
         isNull(catalogItemRatings.catalogEpisodeId),
+        isNull(catalogItemRatings.viewingId),
         seasonFilter
       )
     )
@@ -187,7 +189,7 @@ async function setCatalogItemRating(
     const previousRows = await transaction.select({ score: catalogItemRatings.score })
       .from(catalogItemRatings)
       .where(
-        and(eq(catalogItemRatings.userId, userId), eq(catalogItemRatings.catalogItemId, catalogItemId), isNull(catalogItemRatings.catalogEpisodeId), seasonFilter)
+        and(eq(catalogItemRatings.userId, userId), eq(catalogItemRatings.catalogItemId, catalogItemId), isNull(catalogItemRatings.catalogEpisodeId), isNull(catalogItemRatings.viewingId), seasonFilter)
       )
       .for('update')
 
@@ -204,6 +206,7 @@ async function setCatalogItemRating(
           and(
             eq(catalogItemRatings.userId, userId),
             isNull(catalogItemRatings.catalogEpisodeId),
+            isNull(catalogItemRatings.viewingId),
             eq(catalogItemRatings.catalogItemId, catalogItemId),
             seasonFilter
           )
@@ -218,7 +221,7 @@ async function setCatalogItemRating(
           score
         })
         .onConflictDoUpdate({
-          target: [catalogItemRatings.userId, catalogItemRatings.catalogItemId, catalogItemRatings.seasonNumber, catalogItemRatings.catalogEpisodeId],
+          target: [catalogItemRatings.userId, catalogItemRatings.catalogItemId, catalogItemRatings.seasonNumber, catalogItemRatings.catalogEpisodeId, catalogItemRatings.viewingId],
           set: { score }
         })
     }

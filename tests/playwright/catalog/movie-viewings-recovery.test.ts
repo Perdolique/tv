@@ -18,7 +18,9 @@ async function mockHistoryPages(page: Page, first: CatalogViewing[], remaining: 
   const summary = {
     completedCount: 21,
     currentViewingId: null,
-    contextVersion: 0
+    contextVersion: 0,
+    currentViewingScore: null,
+    currentVoteScore: null
   }
 
   let fail = true
@@ -80,7 +82,8 @@ test.describe('viewing read recovery', () => {
       startedOn: null,
       completedOn: null,
       recordedAt: '2020-01-01T12:00:00.123456Z',
-      revision: 1
+      revision: 1,
+      score: null
     }
 
     const linkedPath = `${api}/${linked.id}`
@@ -118,7 +121,9 @@ test.describe('viewing read recovery', () => {
         summary: {
           completedCount: 1,
           currentViewingId: linked.id,
-          contextVersion: 4
+          contextVersion: 4,
+          currentViewingScore: null,
+          currentVoteScore: null
         }
       } })
     })
@@ -167,7 +172,8 @@ test.describe('viewing read recovery', () => {
         startedOn: null,
         completedOn: null,
         recordedAt: '2020-01-01T12:00:00.123456Z',
-        revision: 1
+        revision: 1,
+        score: null
       }
     })
 

@@ -3,6 +3,8 @@ import { useRequestFetch } from '#app'
 
 import {
   catalogMovieViewingsResponseSchema,
+  catalogMovieRatingResponseSchema,
+  type CatalogMovieRatingContext,
   catalogViewingDeletionResponseSchema,
   catalogViewingMutationResponseSchema,
   catalogViewingResponseSchema,
@@ -27,7 +29,9 @@ interface MovieViewingsOptions {
 const emptySummary: CatalogMovieViewingSummary = {
   completedCount: 0,
   currentViewingId: null,
-  contextVersion: 0
+  contextVersion: 0,
+  currentViewingScore: null,
+  currentVoteScore: null
 }
 
 const unknownDates: CatalogViewingDates = {
@@ -36,12 +40,34 @@ const unknownDates: CatalogViewingDates = {
 }
 
 type ViewingStatus = 'idle' | 'loading' | 'loaded' | 'error'
+type RatingOperation = 'viewing' | 'current-rating' | 'history-rating'
 
-function creationKey(mode: 'current' | 'history', dates: CatalogViewingDates): string {
+interface MutationTarget {
+  id: string | null;
+  operation?: RatingOperation;
+}
+
+interface ConfirmedTarget extends MutationTarget {
+  score: number | null;
+}
+
+type MutationInput = CatalogViewingCreateInput | CatalogViewingUpdateInput | { revision: number; score?: number } | CatalogMovieRatingContext | (CatalogMovieRatingContext & { score: number })
+
+function mutationUrl(url: string, target: MutationTarget): string {
+  if (target.operation === 'current-rating') { return `${url.slice(0, -'/viewings'.length)}/rating` }
+
+  const encodedId = target.id === null ? null : encodeURIComponent(target.id)
+  const viewingUrl = encodedId === null ? url : `${url}/${encodedId}`
+
+  return target.operation === 'history-rating' ? `${viewingUrl}/rating` : viewingUrl
+}
+
+function creationKey(mode: 'current' | 'history', dates: CatalogViewingDates, score?: number): string {
   return JSON.stringify({
     mode,
     startedOn: dates.startedOn,
-    completedOn: dates.completedOn
+    completedOn: dates.completedOn,
+    score
   })
 }
 
@@ -56,6 +82,7 @@ function useMovieViewings(
   const writes = useRequestCancellation()
   const items = ref<CatalogViewing[]>([])
   const selectedViewing = ref<CatalogViewing | null>(null)
+  const confirmedViewing = ref<CatalogViewing | null>(null)
   const summary = ref({ ...emptySummary })
   const status = shallowRef<ViewingStatus>('idle')
   const nextCursor = shallowRef<string | null>(null)
@@ -64,11 +91,13 @@ function useMovieViewings(
   const readError = shallowRef('')
   const pointError = shallowRef('')
   const saveError = shallowRef('')
+  const saveOperation = shallowRef<RatingOperation | 'combined-rating'>('viewing')
   const fields = ref<Record<string, string>>({})
   const unauthorized = shallowRef<'load' | 'mutation' | null>(null)
   let generation = 0
   let disposed = false
   const pendingCreations = new Map<string, CatalogViewingCreateInput>()
+  const unconfirmedCreation = shallowRef<CatalogViewingCreateInput | null>(null)
 
   function path(): string | null {
     if (disposed || accountId.value === null || catalogItemId.value === null) { return null }
@@ -87,6 +116,7 @@ function useMovieViewings(
 
     items.value = []
     selectedViewing.value = null
+    confirmedViewing.value = null
     summary.value = { ...emptySummary }
     status.value = 'idle'
     nextCursor.value = null
@@ -99,6 +129,8 @@ function useMovieViewings(
     unauthorized.value = null
 
     pendingCreations.clear()
+
+    unconfirmedCreation.value = null
   }
 
   async function loadPoint(id = selectedId.value): Promise<CatalogViewing | null> {
@@ -133,9 +165,15 @@ function useMovieViewings(
 
       const parsed = v.parse(catalogViewingResponseSchema, response)
 
-      if (id === selectedId.value) { selectedViewing.value = parsed.viewing }
+      if (parsed.viewing.id !== id || parsed.viewing.catalogItemId !== catalogItemId.value) { throw new Error('Movie viewing response target mismatch') }
 
-      return parsed.viewing
+      const confirmed = confirmedViewing.value
+      const hasNewerConfirmation = confirmed?.id === id && confirmed.revision > parsed.viewing.revision
+      const viewing = hasNewerConfirmation ? confirmed : parsed.viewing
+
+      if (id === selectedId.value) { selectedViewing.value = viewing }
+
+      return viewing
     } catch (error) {
       const isCurrent = points.isCurrent(request)
 
@@ -244,16 +282,45 @@ function useMovieViewings(
     return fetchHistory(more)
   }
 
-  function settleCreation(body: CatalogViewingCreateInput | CatalogViewingUpdateInput | { revision: number }): void {
+  function settleCreation(body: MutationInput): void {
     if ('requestId' in body) {
-      const key = creationKey(body.mode, body)
+      const key = creationKey(body.mode, body, body.score)
 
       pendingCreations.delete(key)
+
+      if (unconfirmedCreation.value?.requestId === body.requestId) { unconfirmedCreation.value = null }
     }
   }
 
-  function applyConfirmed(method: string, response: unknown, id: string | null): void {
-    if (method === 'DELETE') {
+  function applyViewing(viewing: CatalogViewing, add = false): void {
+    confirmedViewing.value = viewing
+
+    const previous = items.value.findIndex(item => item.id === viewing.id)
+
+    if (previous === -1 && add) { items.value.unshift(viewing) }
+    else if (previous !== -1) { items.value[previous] = viewing }
+
+    if (selectedId.value === viewing.id) { selectedViewing.value = viewing }
+  }
+
+  function applyConfirmed(method: string, response: unknown, target: ConfirmedTarget): void {
+    const { id, operation = 'viewing' } = target
+
+    if (operation === 'current-rating') {
+      const result = v.parse(catalogMovieRatingResponseSchema, response)
+
+      if (result.score !== target.score || result.viewing?.id !== (id ?? undefined)) { throw new Error('Movie rating response target or score mismatch') }
+
+      summary.value = result.summary
+
+      if (result.viewing !== null) { applyViewing(result.viewing) }
+
+      return
+    }
+
+    if (operation === 'viewing') { points.cancel() }
+
+    if (method === 'DELETE' && operation === 'viewing') {
       const deleted = v.parse(catalogViewingDeletionResponseSchema, response)
 
       summary.value = deleted.summary
@@ -266,24 +333,16 @@ function useMovieViewings(
     } else {
       const result = v.parse(catalogViewingMutationResponseSchema, response)
 
+      if (operation === 'history-rating' && (result.viewing.id !== id || result.viewing.score !== target.score)) { throw new Error('Viewing rating response target mismatch') }
+
       summary.value = result.summary
 
-      const previous = items.value.findIndex(item => item.id === result.viewing.id)
-
-      if (previous === -1 && method === 'POST') {
-        items.value.unshift(result.viewing)
-      } else if (previous !== -1) {
-        items.value[previous] = result.viewing
-      }
-
-      if (selectedId.value === result.viewing.id) {
-        selectedViewing.value = result.viewing
-      }
+      applyViewing(result.viewing, method === 'POST')
     }
 
   }
 
-  function handleMutationError(error: unknown, method: string, body: CatalogViewingCreateInput | CatalogViewingUpdateInput | { revision: number }): void {
+  function handleMutationError(error: unknown, method: string, body: MutationInput): void {
     const isErrorRecord = isRecord(error)
     const code = isErrorRecord ? error.statusCode : undefined
 
@@ -299,14 +358,42 @@ function useMovieViewings(
 
       fields.value = viewingErrorFields(error)
 
-      if (method === 'POST' && (code === 400 || code === 409)) {
-        settleCreation(body)
+      if (method === 'POST' && 'requestId' in body) {
+        if (code === 400 || code === 409) { settleCreation(body) }
+        else if (body.score !== undefined) {
+          unconfirmedCreation.value = body
+          saveError.value = 'We couldn’t confirm whether this viewing was saved. Retry to check the same viewing.'
+        }
       }
     }
 
   }
 
-  async function mutate(method: 'POST' | 'PATCH' | 'DELETE', body: CatalogViewingCreateInput | CatalogViewingUpdateInput | { revision: number }, id: string | null): Promise<boolean> {
+  function beginMutation(method: string, body: MutationInput, operation: RatingOperation): void {
+    isSaving.value = true
+    saveOperation.value = operation
+
+    if (method === 'POST' && 'requestId' in body && body.mode === 'current' && body.score !== undefined) { saveOperation.value = 'combined-rating' }
+
+    saveError.value = ''
+    fields.value = {}
+  }
+  async function refreshConfirmedMutation(request: AbortController, requestGeneration: number, id: string | null): Promise<boolean> {
+    await fetchHistory()
+
+    const isCurrentAfterRefresh = writes.isCurrent(request)
+
+    if (!isCurrentAfterRefresh || generation !== requestGeneration) { return false }
+
+    if (selectedId.value !== null && selectedId.value !== id && selectedViewing.value === null) { await loadPoint() }
+
+    const isCurrentAfterPoint = writes.isCurrent(request)
+
+    return isCurrentAfterPoint && generation === requestGeneration
+  }
+
+  async function mutate(method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body: MutationInput, target: MutationTarget): Promise<boolean> {
+    const { id, operation = 'viewing' } = target
     const url = path()
 
     if (url === null || isSaving.value || status.value !== 'loaded') {
@@ -321,13 +408,10 @@ function useMovieViewings(
     const requestGeneration = generation
     const request = writes.start()
 
-    isSaving.value = true
-    saveError.value = ''
-    fields.value = {}
+    beginMutation(method, body, operation)
 
     try {
-      const encodedId = id === null ? null : encodeURIComponent(id)
-      const targetUrl = encodedId === null ? url : `${url}/${encodedId}`
+      const targetUrl = mutationUrl(url, target)
 
       const response: unknown = await requestFetch(targetUrl, {
         body,
@@ -342,23 +426,19 @@ function useMovieViewings(
         return false
       }
 
-      applyConfirmed(method, response, id)
+      const expectedScore = 'score' in body ? body.score ?? null : null
+
+      applyConfirmed(method, response, {
+        id,
+        operation,
+        score: expectedScore
+      })
 
       if (method === 'POST') { settleCreation(body) }
 
-      await fetchHistory()
+      if (operation !== 'viewing') { return true }
 
-      const isCurrentAfterRefresh = writes.isCurrent(request)
-
-      if (!isCurrentAfterRefresh || generation !== requestGeneration) { return false }
-
-      if (selectedId.value !== null && selectedId.value !== id && selectedViewing.value === null) {
-        await loadPoint()
-      }
-
-      const isCurrentAfterPoint = writes.isCurrent(request)
-
-      return isCurrentAfterPoint && generation === requestGeneration
+      return await refreshConfirmedMutation(request, requestGeneration, id)
     } catch (error) {
       const isCurrent = writes.isCurrent(request)
 
@@ -379,8 +459,14 @@ function useMovieViewings(
 
   }
 
-  async function create(mode: 'current' | 'history', dates: CatalogViewingDates = unknownDates): Promise<boolean> {
-    const key = creationKey(mode, dates)
+  async function create(mode: 'current' | 'history', dates: CatalogViewingDates = unknownDates, score?: number): Promise<boolean> {
+    if (unconfirmedCreation.value !== null) {
+      saveError.value = 'Retry the unconfirmed viewing before recording another one.'
+
+      return false
+    }
+
+    const key = creationKey(mode, dates, score)
     let pending = pendingCreations.get(key)
 
     if (pending === undefined) {
@@ -401,10 +487,56 @@ function useMovieViewings(
           mode
         }
 
+      if (score !== undefined) { pending.score = score }
+
       pendingCreations.set(key, pending)
     }
 
-    return mutate('POST', pending, null)
+    return mutate('POST', pending, { id: null })
+  }
+
+  async function retryCreation(): Promise<boolean> {
+    const pending = unconfirmedCreation.value
+
+    return pending === null ? false : mutate('POST', pending, { id: null })
+  }
+
+  async function saveCurrentScore(score: number | null): Promise<boolean> {
+    const context = summary.value
+
+    const body = score === null
+      ? {
+        currentViewingId: context.currentViewingId,
+        contextVersion: context.contextVersion
+      }
+      : {
+        currentViewingId: context.currentViewingId,
+        contextVersion: context.contextVersion,
+        score
+      }
+
+    const method = score === null ? 'DELETE' : 'PUT'
+
+    return mutate(method, body, {
+      id: context.currentViewingId,
+      operation: 'current-rating'
+    })
+  }
+
+  async function saveViewingScore(viewing: CatalogViewing, score: number | null): Promise<boolean> {
+    if (viewing.id === summary.value.currentViewingId) { return saveCurrentScore(score) }
+
+    const body = score === null ? { revision: viewing.revision } : {
+      revision: viewing.revision,
+      score
+    }
+
+    const method = score === null ? 'DELETE' : 'PUT'
+
+    return mutate(method, body, {
+      id: viewing.id,
+      operation: 'history-rating'
+    })
   }
 
   async function update(viewing: CatalogViewing, dates: CatalogViewingDates): Promise<boolean> {
@@ -412,11 +544,11 @@ function useMovieViewings(
       startedOn: dates.startedOn,
       completedOn: dates.completedOn,
       revision: viewing.revision
-    }, viewing.id)
+    }, { id: viewing.id })
   }
 
   async function remove(viewing: CatalogViewing): Promise<boolean> {
-    return mutate('DELETE', { revision: viewing.revision }, viewing.id)
+    return mutate('DELETE', { revision: viewing.revision }, { id: viewing.id })
   }
 
   onScopeDispose(() => {
@@ -441,6 +573,10 @@ function useMovieViewings(
 
   return {
     create,
+    retryCreation,
+    saveCurrentScore,
+    saveViewingScore,
+    unconfirmedCreation,
     fields,
     isLoadingMore,
     isSaving,
@@ -452,7 +588,9 @@ function useMovieViewings(
     readError,
     remove,
     saveError,
+    saveOperation,
     selectedViewing,
+    confirmedViewing,
     status,
     summary,
     unauthorized,

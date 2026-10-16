@@ -5,6 +5,8 @@ import * as v from 'valibot'
 import {
   catalogViewingCreateSchema,
   catalogViewingDeleteSchema,
+  catalogViewingRatingSaveSchema,
+  catalogViewingRatingRemoveSchema,
   catalogViewingUpdateSchema
 } from '@tv/shared/catalog-viewings'
 
@@ -19,6 +21,7 @@ import {
   updateMovieViewing
 } from './movie-viewings-repository.ts'
 
+import { setHistoricalMovieRating } from './movie-ratings-repository.ts'
 import { withCatalogSession, type CatalogDependencies, type CatalogEnvironment } from './session.ts'
 
 const viewingBodyLimit = bodyLimit({
@@ -94,6 +97,45 @@ function registerCatalogMovieViewingRoutes(app: Hono<CatalogEnvironment>, depend
     return context.json(response)
   })
 
+  app.put('/api/catalog/items/:id/viewings/:viewingId/rating', async context => {
+    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
+      const rawId = context.req.param('id')
+      const rawViewingId = context.req.param('viewingId')
+      const catalogItemId = validateCatalogItemId(rawId)
+      const viewingId = validateCatalogItemId(rawViewingId)
+      const input = await readViewingInput(context, catalogViewingRatingSaveSchema)
+
+      return setHistoricalMovieRating(session.database, {
+        userId: session.user.id,
+        catalogItemId,
+        viewingId
+      }, input)
+    })
+
+    return context.json(response)
+  })
+
+  app.delete('/api/catalog/items/:id/viewings/:viewingId/rating', async context => {
+    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
+      const rawId = context.req.param('id')
+      const rawViewingId = context.req.param('viewingId')
+      const catalogItemId = validateCatalogItemId(rawId)
+      const viewingId = validateCatalogItemId(rawViewingId)
+      const input = await readViewingInput(context, catalogViewingRatingRemoveSchema)
+
+      return setHistoricalMovieRating(session.database, {
+        userId: session.user.id,
+        catalogItemId,
+        viewingId
+      }, {
+        revision: input.revision,
+        score: null
+      })
+    })
+
+    return context.json(response)
+  })
+
   app.get('/api/catalog/items/:id/viewings/:viewingId', async context => {
     const viewing = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const rawCatalogItemId = context.req.param('id')
@@ -147,4 +189,4 @@ function registerCatalogMovieViewingRoutes(app: Hono<CatalogEnvironment>, depend
   })
 }
 
-export { registerCatalogMovieViewingRoutes }
+export { readViewingInput, registerCatalogMovieViewingRoutes }

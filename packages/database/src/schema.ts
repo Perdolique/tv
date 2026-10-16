@@ -200,29 +200,6 @@ const catalogItemFollows = pgTable('catalog_item_follows', {
     .on(table.userId, table.followedAt.desc())
 ])
 
-// Ratings are current opinions, not viewing records. Their IDs stay stable on updates.
-// Adding future viewing links must leave existing ratings unlinked.
-const catalogItemRatings = pgTable('catalog_item_ratings', {
-  id: uuid().default(sql`uuidv7()`).primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
-  seasonNumber: integer('season_number'),
-  catalogEpisodeId: uuid('catalog_episode_id'),
-  score: integer().notNull()
-}, (table) => [
-  check('catalog_item_ratings_single_target', sql`${table.catalogEpisodeId} IS NULL OR ${table.seasonNumber} IS NULL`),
-  foreignKey({
-    columns: [table.catalogEpisodeId, table.catalogItemId],
-    foreignColumns: [catalogEpisodes.id, catalogEpisodes.catalogItemId],
-    name: 'catalog_item_ratings_episode_item_fk'
-  }).onDelete('cascade'),
-  check('catalog_item_ratings_season_number_positive', sql`${table.seasonNumber} > 0`),
-  check('catalog_item_ratings_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
-  unique('catalog_item_ratings_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber, table.catalogEpisodeId).nullsNotDistinct(),
-  index('catalog_item_ratings_episode_index').on(table.catalogEpisodeId),
-  index('catalog_item_ratings_target_index').on(table.catalogItemId, table.seasonNumber)
-])
-
 const catalogViewings = pgTable('catalog_viewings', {
   id: uuid().default(sql`uuidv7()`).primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -247,6 +224,35 @@ const catalogViewings = pgTable('catalog_viewings', {
   index('catalog_viewings_owner_item_recorded_index').on(table.userId, table.catalogItemId, table.recordedAt.desc(), table.id.desc()),
   index('catalog_viewings_owner_recorded_index').on(table.userId, table.recordedAt.desc(), table.id.desc()),
   index('catalog_viewings_item_index').on(table.catalogItemId)
+])
+
+// Unlinked rows are current votes; linked rows retain each viewing's own score.
+const catalogItemRatings = pgTable('catalog_item_ratings', {
+  id: uuid().default(sql`uuidv7()`).primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  seasonNumber: integer('season_number'),
+  catalogEpisodeId: uuid('catalog_episode_id'),
+  viewingId: uuid('viewing_id'),
+  score: integer().notNull()
+}, (table) => [
+  check('catalog_item_ratings_single_target', sql`${table.catalogEpisodeId} IS NULL OR ${table.seasonNumber} IS NULL`),
+  foreignKey({
+    columns: [table.catalogEpisodeId, table.catalogItemId],
+    foreignColumns: [catalogEpisodes.id, catalogEpisodes.catalogItemId],
+    name: 'catalog_item_ratings_episode_item_fk'
+  }).onDelete('cascade'),
+  check('catalog_item_ratings_season_number_positive', sql`${table.seasonNumber} > 0`),
+  check('catalog_item_ratings_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
+  foreignKey({
+    name: 'catalog_item_ratings_viewing_owner_item_fk',
+    columns: [table.userId, table.catalogItemId, table.viewingId],
+    foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
+  }).onDelete('cascade'),
+  unique('catalog_item_ratings_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber, table.catalogEpisodeId, table.viewingId).nullsNotDistinct(),
+  index('catalog_item_ratings_viewing_index').on(table.viewingId),
+  index('catalog_item_ratings_episode_index').on(table.catalogEpisodeId),
+  index('catalog_item_ratings_target_index').on(table.catalogItemId, table.seasonNumber)
 ])
 
 const catalogViewingContexts = pgTable('catalog_viewing_contexts', {

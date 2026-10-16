@@ -122,6 +122,7 @@ const catalogTimelineItemSchema = v.variant('kind', [
   v.strictObject({
     ...eventEntries,
     kind: v.literal('rating_changed'),
+    viewingId: v.optional(v.nullable(idSchema)),
     target: v.picklist(['item', 'season', 'episode']),
     seasonNumber: v.nullable(positiveIntegerSchema),
     catalogEpisodeId: v.nullable(idSchema),

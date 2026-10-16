@@ -6,7 +6,6 @@ import { waitForHydration } from './helpers.ts'
 
 const ratingPath = `/api/catalog/items/${dune.id}/rating`
 const titlePath = `/titles/${dune.id}?query=a`
-const ratingRoute = `**${ratingPath}`
 
 test.beforeEach(async ({ context }) => {
   await context.addCookies([{
@@ -17,12 +16,13 @@ test.beforeEach(async ({ context }) => {
 })
 
 async function expectAbandonedRating(page: Page, method: string, start: () => Promise<unknown>): Promise<void> {
+  const requestPath = method === 'GET' ? `/api/catalog/items/${dune.id}/viewings` : ratingPath
   const release = Promise.withResolvers<boolean>()
   const started = Promise.withResolvers<boolean>()
   const panel = page.getByRole('region', { name: 'Your rating' })
   let aborted = false
 
-  await page.route(ratingRoute, async route => {
+  await page.route(`**${requestPath}`, async route => {
     started.resolve(true)
 
     await release.promise
@@ -41,7 +41,7 @@ async function expectAbandonedRating(page: Page, method: string, start: () => Pr
       predicate: request => {
         const rawUrl = request.url()
         const requestUrl = new URL(rawUrl)
-        const isOldRating = requestUrl.pathname === ratingPath && request.method() === method
+        const isOldRating = requestUrl.pathname === requestPath && request.method() === method
 
         return isOldRating
       },
@@ -85,7 +85,7 @@ async function expectAbandonedRating(page: Page, method: string, start: () => Pr
   }
 }
 
-test('aborts an abandoned rating GET request and shows only the next title', async ({ page }) => {
+test('aborts an abandoned movie rating context GET request and shows only the next title', async ({ page }) => {
   await expectAbandonedRating(page, 'GET', async () => page.goto(titlePath))
 })
 

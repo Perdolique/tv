@@ -130,7 +130,8 @@ for (const width of [320, 390, 768, 1440]) {
             startedOn: null,
             completedOn: null,
             recordedAt: '2020-01-01T12:00:00.123456Z',
-            revision: 1
+            revision: 1,
+            score: null
           }] : [],
 
           nextCursor: null,
@@ -140,7 +141,9 @@ for (const width of [320, 390, 768, 1440]) {
 
             // oxlint-disable-next-line vitest/no-conditional-in-test -- Each table case has a fixed current-viewing fixture.
             currentViewingId: watched ? dune.id : null,
-            contextVersion: Number(watched)
+            contextVersion: Number(watched),
+            currentViewingScore: null,
+            currentVoteScore: null
           }
         } })
       })

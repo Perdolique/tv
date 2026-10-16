@@ -15,11 +15,12 @@
       </div>
       <AppMessage v-if="pointError" role="alert" tone="danger">{{ pointError }}</AppMessage>
       <AppButton v-if="canRetryLinked" variant="secondary" @click="state.loadPoint()">Retry linked viewing</AppButton>
-      <AppMessage v-if="saveError" role="alert" tone="danger">{{ saveError }}</AppMessage>
+      <AppMessage v-if="viewingSaveError" role="alert" tone="danger">{{ viewingSaveError }}</AppMessage>
+      <AppButton v-if="hasUnconfirmedHistory" :disabled="isSaving" variant="secondary" @click="retryHistoryCreation">Retry viewing</AppButton>
       <AppButton v-if="showSaveRefresh" variant="secondary" :disabled="isSaving" @click="refresh">Refresh viewings</AppButton>
       <div v-if="isAdding" :class="$style.form">
         <h3>Add past viewing</h3>
-        <CatalogViewingDatesForm :initial="unknownDates" :fields="fields" :is-saving="isSaving" @save="add" @cancel="close()" />
+        <CatalogViewingDatesForm :initial="unknownDates" with-score :fields="fields" :is-saving="isSaving" @save="add" @cancel="close()" />
       </div>
       <p v-if="isEmpty">No viewings recorded yet.</p>
       <ul :class="$style.list" aria-label="Movie viewings">
@@ -44,6 +45,24 @@
             </div>
           </div>
           <div v-else :class="$style.actions">
+            <CatalogRating
+              compact
+              show-score
+              :show-load-error="false"
+              :account-id="accountId"
+              :target-key="viewing.ratingKey"
+              :label="viewing.ratingLabel"
+              :has-session-error="hasSessionError"
+              :is-anonymous="isAnonymous"
+              :is-saving="isSaving"
+              :load="refresh"
+              :save="score => rate(viewing.record, score)"
+              :save-error="viewing.ratingSaveError"
+              :score="viewing.record.score"
+              :sign-in-location="signInLocation"
+              :status="status"
+              @clear-error="clearRatingError(viewing.id)"
+            />
             <AppButton variant="secondary" :disabled="areMutationsDisabled" @click="open(viewing.id)">Edit dates</AppButton>
             <AppButton variant="secondary" :class="$style.danger" :disabled="areMutationsDisabled" @click="confirmDelete(viewing.id)">Delete</AppButton>
           </div>
@@ -58,8 +77,9 @@
   import { NuxtLink, NuxtTime } from '#components'
   import { computed, nextTick, ref, shallowRef, useId, useTemplateRef, watch } from 'vue'
   import type { RouteLocationRaw } from 'vue-router'
-  import type { CatalogViewing, CatalogViewingDates } from '@tv/shared/catalog-viewings'
+  import type { CatalogViewing, CatalogViewingDates, CatalogViewingDraft } from '@tv/shared/catalog-viewings'
   import type { MovieViewingsState } from '~/composables/use-movie-viewings.ts'
+  import CatalogRating from '~/components/catalog/CatalogRating.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import CatalogViewingDatesForm from '~/components/catalog/CatalogViewingDatesForm.vue'
@@ -67,6 +87,7 @@
 
   interface Props {
     state: MovieViewingsState;
+    accountId: string | null;
     isAnonymous: boolean;
     hasSessionError: boolean;
     selectedId: string | null;
@@ -85,6 +106,8 @@
   const addButton = useTemplateRef('addButton')
   const form = shallowRef<string | null>(null)
   const deletingId = shallowRef<string | null>(null)
+  const ratingOwnerId = shallowRef<string | null>(null)
+  const viewingSaveError = computed(() => state.saveOperation.value === 'viewing' ? saveError.value : '')
   const announcement = shallowRef('')
   const activeViewing = ref<CatalogViewing | null>(null)
 
@@ -102,11 +125,12 @@
     return `/titles/${viewing.catalogItemId}?viewingId=${viewing.id}#viewing-${viewing.id}`
   }
 
+  const hasUnconfirmedHistory = computed(() => state.unconfirmedCreation.value?.mode === 'history')
   const isAdding = computed(() => form.value === 'add')
   const showAdd = computed(() => !isAnonymous && status.value === 'loaded' && form.value === null)
   const isLoadingHistory = computed(() => status.value === 'idle' || status.value === 'loading')
   const canRetryLinked = computed(() => Boolean(pointError.value) && selectedId !== null)
-  const showSaveRefresh = computed(() => Boolean(saveError.value) && !readError.value)
+  const showSaveRefresh = computed(() => Boolean(viewingSaveError.value) && !readError.value)
   const isMoreBusy = computed(() => isLoadingMore.value || isSaving.value)
   const areMutationsDisabled = computed(() => isSaving.value || status.value !== 'loaded')
   const deleteLabel = computed(() => isSaving.value ? 'Deleting…' : 'Delete viewing')
@@ -144,6 +168,9 @@
       record: displayed,
       elementId: `viewing-${record.id}`,
       isCurrent: record.id === summary.value.currentViewingId,
+      ratingKey: `${record.id}:${record.id === summary.value.currentViewingId ? 'current' : 'history'}`,
+      ratingLabel: record.id === summary.value.currentViewingId ? 'Current viewing rating' : 'Past viewing rating',
+      ratingSaveError: ratingOwnerId.value === record.id ? saveError.value : '',
       isLinked: record.id === selectedId,
       isEditing,
       isDeleting: deletingId.value === record.id,
@@ -158,6 +185,7 @@
   function open(id: string): void {
     focusOwner = globalThis.document.activeElement instanceof globalThis.HTMLElement ? globalThis.document.activeElement : null
     announcement.value = ''
+    ratingOwnerId.value = null
     activeViewing.value = records.value.find(record => record.id === id) ?? null
     form.value = id
     deletingId.value = null
@@ -203,12 +231,12 @@
   function cancelDelete(): void {
     if (deletingId.value !== null && !isSaving.value) { void close() }
   }
-  async function add(dates: CatalogViewingDates): Promise<void> {
+  async function add(dates: CatalogViewingDraft): Promise<void> {
     const owner = globalThis.document.activeElement
 
     announcement.value = ''
 
-    const saved = await state.create('history', dates)
+    const saved = await state.create('history', dates, dates.score)
 
     if (saved) {
       emit('saved')
@@ -217,6 +245,32 @@
 
       await close(owner)
     }
+  }
+  async function retryHistoryCreation(): Promise<void> {
+    const owner = globalThis.document.activeElement
+    const saved = await state.retryCreation()
+
+    if (saved) {
+      emit('saved')
+
+      announcement.value = 'Past viewing saved.'
+
+      await close(owner)
+    }
+  }
+  function clearRatingError(id: string): void {
+    ratingOwnerId.value = id
+    activeViewing.value = records.value.find(record => record.id === id) ?? null
+    saveError.value = ''
+  }
+  async function rate(viewing: CatalogViewing, score: number | null): Promise<boolean> {
+    ratingOwnerId.value = viewing.id
+
+    const saved = await state.saveViewingScore(viewing, score)
+
+    if (saved) { emit('saved') }
+
+    return saved
   }
   async function edit(viewing: CatalogViewing, dates: CatalogViewingDates): Promise<void> {
     const owner = globalThis.document.activeElement
@@ -266,9 +320,10 @@
     }
   }
   async function refresh(): Promise<void> {
-    const activeId = activeViewing.value?.id ?? selectedId
+    const activeId = activeViewing.value?.id ?? ratingOwnerId.value ?? selectedId
+    const loaded = await state.load()
 
-    await state.load()
+    if (!loaded) { return }
 
     if (activeId !== null) {
       const refreshed = await state.loadPoint(activeId)
@@ -282,6 +337,10 @@
 
     if (activeViewing.value === null) { heading.value?.focus() }
   }
+
+  watch(state.confirmedViewing, viewing => {
+    if (viewing !== null && activeViewing.value?.id === viewing.id) { activeViewing.value = viewing }
+  }, { flush: 'sync' })
 
   watch([() => selectedId, records], async () => {
     if (selectedId === null) { return }

@@ -41,8 +41,16 @@
               <CatalogRating
                 :class="$style.ratingAction"
                 :account-id="accountId"
-                :target-key="item.id"
+                :target-key="ratingEditorKey"
+                :context-key="item.id"
+                :create-viewing="createMovieRating"
+                :can-remove="canRemoveMovieVote"
+                :remove-label="ratingRemoveLabel"
+                :remove-description="ratingRemoveDescription"
+                :has-unconfirmed-creation="hasUnconfirmedMovieCreation"
+                :retry-creation="retryMovieCreation"
                 :has-session-error="hasSessionError"
+                :show-load-error="!isMovie"
                 :is-anonymous="isAnonymous"
                 :is-saving="isSavingRating"
                 :load="loadRating"
@@ -129,11 +137,12 @@
               <Icon mode="svg" name="hugeicons:star" />
             </span>
             <div :class="$style.personalRatingCopy">
-              <p :class="$style.personalRatingLabel">Your rating</p>
+              <p :class="$style.personalRatingLabel">{{ personalRatingLabel }}</p>
               <p :class="$style.personalScore">
                 {{ personalScoreLabel }}
                 <span v-if="hasPersonalScore" :class="$style.accessible">out of 10</span>
               </p>
+              <p v-if="currentVoteLabel" :class="$style.personalRatingLabel">{{ currentVoteLabel }}</p>
             </div>
           </section>
         </aside>
@@ -147,11 +156,12 @@
           :key="viewingComponentKey"
           :class="$style.movieViewings"
           :state="movieViewings"
+          :account-id="accountId"
           :is-anonymous="isAnonymous"
           :has-session-error="hasSessionError"
           :sign-in-location="signInLocation"
           :selected-id="selectedViewingId"
-          @saved="refreshTimeline"
+          @saved="handleMovieHistorySaved"
         />
         <section v-if="isSeries" :class="$style.seriesContent" aria-label="Series details">
           <div :class="$style.tabs" role="tablist" aria-label="Series information">
@@ -338,23 +348,17 @@
   const { timeZone } = useBrowserTimeZone()
   const accountId = computed(() => sessionState.value.status === 'authenticated' ? sessionState.value.user.id : null)
   const catalogItemId = computed(() => item.value?.id ?? null)
+  const isMovie = computed(() => item.value?.type === 'movie')
+  const isSeries = computed(() => item.value?.type === 'series')
 
-  const ratingTarget = computed(() => catalogItemId.value === null ? null : {
+  const ratingTarget = computed(() => item.value?.type !== 'series' || catalogItemId.value === null ? null : {
     catalogItemId: catalogItemId.value,
     seasonNumber: null
   })
 
   const watchedCatalogItemId = computed(() => item.value?.type === 'movie' ? item.value.id : null)
-
-  const {
-    isSaving: isSavingRating,
-    load: loadRating,
-    save: saveRating,
-    saveError: ratingSaveError,
-    score: ratingScore,
-    status: ratingStatus,
-    unauthorized: ratingUnauthorized
-  } = useCatalogRating(ratingTarget, accountId)
+  const seriesRating = useCatalogRating(ratingTarget, accountId)
+  const ratingUnauthorized = seriesRating.unauthorized
 
   const {
     clearUnauthorized,
@@ -377,6 +381,25 @@
     summary: viewingSummary,
     unauthorized: watchedUnauthorized
   } = movieViewings
+
+  const movieRatingScore = computed(() => viewingSummary.value.currentViewingId === null ? viewingSummary.value.currentVoteScore : viewingSummary.value.currentViewingScore)
+  const ratingScore = computed(() => isMovie.value ? movieRatingScore.value : seriesRating.score.value)
+  const ratingStatus = computed(() => isMovie.value ? movieViewings.status.value : seriesRating.status.value)
+  const isSavingRating = computed(() => isMovie.value ? movieViewings.isSaving.value : seriesRating.isSaving.value)
+  const ratingSaveError = computed(() => isMovie.value ? movieViewings.saveError.value : seriesRating.saveError.value)
+  const ratingEditorKey = computed(() => isMovie.value ? `${catalogItemId.value}:${viewingSummary.value.currentViewingId ?? 'none'}` : catalogItemId.value)
+  const hasUnconfirmedMovieCreation = computed(() => isMovie.value && movieViewings.unconfirmedCreation.value !== null)
+  const canRemoveMovieVote = computed(() => isMovie.value && viewingSummary.value.currentVoteScore !== null)
+  const ratingRemoveLabel = computed(() => isMovie.value && movieRatingScore.value === null && canRemoveMovieVote.value ? 'Remove current vote' : 'Remove rating')
+  const ratingRemoveDescription = computed(() => isMovie.value && viewingSummary.value.currentViewingId !== null ? 'This also removes your current vote.' : undefined)
+  const personalRatingLabel = computed(() => isMovie.value && viewingSummary.value.currentViewingId !== null ? 'This viewing' : 'Your rating')
+
+  const currentVoteLabel = computed(() => {
+    const summary = viewingSummary.value
+    const showVote = isMovie.value && accountId.value !== null && movieViewings.status.value === 'loaded' && summary.currentViewingId !== null && summary.currentVoteScore !== null && summary.currentVoteScore !== summary.currentViewingScore
+
+    return showVote ? `Current vote: ${summary.currentVoteScore}/10` : null
+  })
 
   const watched = computed(() => viewingSummary.value.completedCount > 0)
   const viewingComponentKey = computed(() => `${accountId.value ?? 'guest'}:${catalogItemId.value ?? ''}`)
@@ -455,8 +478,6 @@
     return ratingScore.value === null ? '—' : String(ratingScore.value)
   })
 
-  const isMovie = computed(() => item.value?.type === 'movie')
-  const isSeries = computed(() => item.value?.type === 'series')
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
 
   const signInLocation = computed(() => redirectTo.value === '/'
@@ -661,13 +682,51 @@
   }
 
   function clearRatingError(): void {
-    ratingSaveError.value = ''
+    if (isMovie.value) { movieViewings.saveError.value = '' }
+    else { seriesRating.saveError.value = '' }
   }
 
   function refreshTimeline(): void { void timeline.load() }
 
+  function handleMovieHistorySaved(): void {
+    refreshTimeline()
+
+    void ratingSummaryReady.execute({ dedupe: 'cancel' })
+  }
+
+  async function loadRating(): Promise<void> {
+    clearRatingError()
+
+    await (isMovie.value ? movieViewings.load() : seriesRating.load())
+  }
+  async function saveRating(score: number | null): Promise<boolean> {
+    if (!isMovie.value) { return seriesRating.save(score) }
+
+    const saved = await movieViewings.saveCurrentScore(score)
+
+    if (saved) { handleMovieHistorySaved() }
+
+    return saved
+  }
+  async function createRatedMovieViewing(score: number): Promise<boolean> {
+    const saved = await movieViewings.create('current', undefined, score)
+
+    if (saved) { handleMovieHistorySaved() }
+
+    return saved
+  }
+  async function retryMovieCreation(): Promise<boolean> {
+    const saved = await movieViewings.retryCreation()
+
+    if (saved) { handleMovieHistorySaved() }
+
+    return saved
+  }
+
+  const createMovieRating = computed(() => isMovie.value ? createRatedMovieViewing : undefined)
+
   function handleRatingSaved(savedItemId: string): void {
-    if (savedItemId === item.value?.id) {
+    if (!isMovie.value && savedItemId === item.value?.id) {
       refreshTimeline()
 
       void ratingSummaryReady.execute({ dedupe: 'cancel' })

@@ -1,8 +1,10 @@
+/* oxlint-disable eslint/max-lines -- Shared HTTP fixtures verify both standalone series and contextual movie rating contracts. */
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
 import * as v from 'valibot'
-import { catalogViewingMutationResponseSchema } from '@tv/shared/catalog-viewings'
+import { catalogViewingMutationResponseSchema, catalogMovieRatingResponseSchema } from '@tv/shared/catalog-viewings'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isRecord } from '@tv/shared/type-guards'
 import { createSessionToken, hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
@@ -51,10 +53,31 @@ async function request(id: string, method = 'GET', { input, session = cookie }: 
 
   if (session !== null) { headers.set('Cookie', session) }
 
-  if (input !== undefined && method !== 'GET') {
+  let payload = input
+
+  if (method !== 'GET' && v.is(v.pipe(v.string(), v.uuid()), id)) {
+    const context = await withClient(async client => {
+      const rows = await client.query<{ type: string; currentViewingId: string | null; contextVersion: number }>(`SELECT items.type,
+        contexts.current_viewing_id AS "currentViewingId", coalesce(contexts.context_version, 0) AS "contextVersion"
+        FROM catalog_items items LEFT JOIN catalog_viewing_contexts contexts ON contexts.catalog_item_id = items.id AND contexts.user_id = $2
+        WHERE items.id = $1`, [id, userId])
+
+      return rows.rows[0]
+    })
+
+    if (context?.type === 'movie' && (input === undefined || isRecord(input))) {
+      payload = {
+        ...input,
+        currentViewingId: context.currentViewingId,
+        contextVersion: context.contextVersion
+      }
+    }
+  }
+
+  if (payload !== undefined && method !== 'GET') {
     headers.set('Content-Type', 'application/json')
 
-    init.body = JSON.stringify(input)
+    init.body = JSON.stringify(payload)
   }
 
   const apiRequest = new Request(`https://tv-api.test/api/catalog/items/${id}/rating`, init)
@@ -65,7 +88,12 @@ async function request(id: string, method = 'GET', { input, session = cookie }: 
 async function expectScore(response: Response, score: number | null): Promise<void> {
   expect(response.status).toBe(200)
   expect(response.headers.get('cache-control')).toBe('no-store')
-  await expect(response.json()).resolves.toStrictEqual({ score })
+
+  const raw: unknown = await response.json()
+  const schema = v.union([catalogMovieRatingResponseSchema, v.strictObject({ score: v.nullable(v.number()) })])
+  const result = v.parse(schema, raw)
+
+  expect(result.score).toBe(score)
 }
 
 async function expectSummary(response: Response, averageScore: number | null, ratingCount: number): Promise<void> {
@@ -325,7 +353,7 @@ describe('catalog rating Worker contract', () => {
 
     const creationBody = JSON.stringify({
       mode: 'current',
-      contextVersion: 0,
+      contextVersion: 1,
       requestId
     })
 
@@ -365,7 +393,9 @@ describe('catalog rating Worker contract', () => {
     await expect(deleted.json()).resolves.toStrictEqual({ summary: {
       completedCount: 0,
       currentViewingId: null,
-      contextVersion: 2
+      contextVersion: 3,
+      currentViewingScore: null,
+      currentVoteScore: 8
     } })
 
     const stillRated = await request(id)

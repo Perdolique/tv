@@ -296,7 +296,9 @@ describe('postgreSQL catalog movie watches', () => {
       expect(removed).toStrictEqual({
         completedCount: 1,
         currentViewingId: null,
-        contextVersion: 3
+        contextVersion: 3,
+        currentViewingScore: null,
+        currentVoteScore: null
       })
 
       await expect(deleteMovieViewing(database, {
@@ -354,7 +356,9 @@ describe('postgreSQL catalog movie watches', () => {
         summary: {
           completedCount: 0,
           currentViewingId: null,
-          contextVersion: 0
+          contextVersion: 0,
+          currentViewingScore: null,
+          currentVoteScore: null
         }
       })
 
