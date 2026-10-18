@@ -118,7 +118,6 @@ function useViewingSummary(accountId: Readonly<Ref<string | null>>) {
 
   const summary = computed(() => confirmed.value)
   const hasError = computed(() => failedRead.value && summary.value === null)
-  const hasRefreshError = computed(() => failedRead.value && summary.value !== null)
   const unauthorized = computed(() => outcome.value?.status === 'unauthorized')
   const isLoading = computed(() => accountId.value !== null && summary.value === null && !hasError.value && !unauthorized.value)
   const isRefreshing = computed(() => accountId.value !== null && ready.status.value === 'pending')
@@ -148,7 +147,6 @@ function useViewingSummary(accountId: Readonly<Ref<string | null>>) {
 
   return {
     hasError,
-    hasRefreshError,
     isRefreshing,
     isLoading,
     ready,

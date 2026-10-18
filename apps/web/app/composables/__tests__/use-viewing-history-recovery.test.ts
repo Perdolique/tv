@@ -82,14 +82,14 @@ describe('viewing history refresh and filters', () => {
     await expect(refresh).resolves.toStrictEqual([false, false])
     expect(history.items.value).toStrictEqual([movie, olderMovie])
     expect(summaryState.summary.value).toStrictEqual(summary)
-    expect(history.hasRefreshError.value).toBe(true)
-    expect(summaryState.hasRefreshError.value).toBe(true)
     expect(history.hasError.value).toBe(false)
+    expect(summaryState.hasError.value).toBe(false)
     initialResponses()
-    await Promise.all([history.reload(), summaryState.reload()])
+
+    const retry = Promise.all([history.reload(), summaryState.reload()])
+
+    await expect(retry).resolves.toStrictEqual([true, true])
     expect(history.items.value).toStrictEqual([movie])
-    expect(history.hasRefreshError.value).toBe(false)
-    expect(summaryState.hasRefreshError.value).toBe(false)
   })
 
   it.each(['response', 'unauthorized'])('cancels stale continuation %s on a filter change without reloading the summary', async failure => {

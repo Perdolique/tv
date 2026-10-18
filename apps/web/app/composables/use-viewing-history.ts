@@ -151,7 +151,6 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>, status: Read
   const hasData = computed(() => confirmed.value !== null && !unauthorized.value)
   const hasMore = computed(() => hasData.value && confirmed.value?.nextCursor !== null && !needsRefresh.value)
   const hasError = computed(() => failedRead.value && !hasData.value)
-  const hasRefreshError = computed(() => failedRead.value && hasData.value)
   const isLoading = computed(() => accountId.value !== null && !hasData.value && !hasError.value && !unauthorized.value)
   const isRefreshing = computed(() => accountId.value !== null && ready.status.value === 'pending')
 
@@ -266,7 +265,6 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>, status: Read
 
   return {
     hasError,
-    hasRefreshError,
     hasLoadMoreError,
     hasMore,
     isLoading,

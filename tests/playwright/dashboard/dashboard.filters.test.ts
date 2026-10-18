@@ -90,7 +90,8 @@ test('offers Show all for an empty filter and regular title links for every view
   })).toBeFocused()
 
   await addCookie(context, 'paginated_viewing', '1')
-  await page.getByRole('button', { name: 'Refresh history' }).click()
+  await page.reload()
+  await waitForHydration(page)
   await expect(page.getByRole('list', { name: 'Viewing entries' }).getByRole('link')).toHaveCount(20)
 
   const hrefs = await page.getByRole('list', { name: 'Viewing entries' }).getByRole('link').evaluateAll(links => links.map(link => link.getAttribute('href')))

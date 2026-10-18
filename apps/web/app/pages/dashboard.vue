@@ -38,16 +38,15 @@
             <dd :class="$style.metricValue">{{ summary.watchedEpisodeCount }}</dd>
           </div>
         </dl>
-        <section v-if="showSummaryError" :class="$style.message" aria-label="Viewing summary error">
+        <section v-if="hasSummaryError" :class="$style.message" aria-label="Viewing summary error">
           <AppButton ref="summaryRetryButton" :class="$style.action" size="small" variant="secondary" :aria-disabled="isSummaryRefreshing" :aria-busy="isSummaryRefreshing" @click="retrySummary">Retry summary</AppButton>
-          <AppMessage role="alert" tone="danger">{{ summaryErrorMessage }}</AppMessage>
+          <AppMessage role="alert" tone="danger">We couldn’t load your viewing summary. Try again.</AppMessage>
         </section>
 
         <div :class="$style.columns">
           <section :class="$style.history" :aria-labelledby="historyHeadingId">
             <div :class="$style.sectionHeader">
               <h2 :id="historyHeadingId" ref="historyHeading" :class="$style.subheading" tabindex="-1">Viewing history</h2>
-              <AppButton :class="$style.action" size="small" variant="secondary" :aria-disabled="isRefreshing" :aria-busy="isRefreshing" @click="refreshDashboard">Refresh history</AppButton>
             </div>
             <fieldset :class="$style.filters">
               <legend :class="$style.visuallyHidden">Viewing status</legend>
@@ -57,8 +56,7 @@
               </label>
             </fieldset>
             <p role="status" :class="$style.visuallyHidden">{{ announcement }}</p>
-            <AppMessage v-if="needsRefresh" tone="neutral">Your viewings changed. Refresh history to load more.</AppMessage>
-            <AppMessage v-if="hasHistoryRefreshError" role="alert" tone="danger">We couldn’t refresh your history. Your loaded viewings are still here. Try again.</AppMessage>
+            <AppMessage v-if="needsRefresh" tone="neutral">Your viewings changed. Reload this page to load more.</AppMessage>
 
             <div v-if="isHistoryLoading" :class="$style.list" aria-label="Loading viewing history" role="region" aria-busy="true">
               <div v-for="row in 3" :key="row" :class="$style.row" aria-hidden="true">
@@ -197,7 +195,6 @@
 
   const {
     hasError: hasHistoryError,
-    hasRefreshError: hasHistoryRefreshError,
     hasLoadMoreError,
     hasMore,
     isLoading: isHistoryLoading,
@@ -213,7 +210,6 @@
 
   const {
     hasError: hasSummaryError,
-    hasRefreshError: hasSummaryRefreshError,
     isLoading: isSummaryLoading,
     isRefreshing: isSummaryRefreshing,
     ready: summaryReady,
@@ -223,8 +219,6 @@
   } = useViewingSummary(accountId)
 
   const isRefreshing = computed(() => isHistoryRefreshing.value || isSummaryRefreshing.value || isHistoryLoading.value || isSummaryLoading.value)
-  const showSummaryError = computed(() => hasSummaryError.value || hasSummaryRefreshError.value)
-  const summaryErrorMessage = computed(() => hasSummaryRefreshError.value ? 'We couldn’t refresh your summary. Your previous totals are still here. Try again.' : 'We couldn’t load your viewing summary. Try again.')
   const showLoadMore = computed(() => hasMore.value || isAddingPage.value)
   const isHistoryEmpty = computed(() => items.value.length === 0)
   const emptyHeading = computed(() => isFiltered.value ? 'No viewings with this status' : 'No viewings yet')
@@ -386,23 +380,6 @@
     if (succeeded) { historyHeading.value?.focus() } else { historyRetryButton.value?.focus() }
   }
 
-  async function refreshDashboard(): Promise<void> {
-    if (isRefreshing.value) { return }
-
-    isAddingPage.value = false
-    actionGeneration += 1
-
-    const requestGeneration = actionGeneration
-
-    announcement.value = 'Refreshing history…'
-
-    const [historySucceeded] = await Promise.all([reloadHistory(), reloadSummary()])
-
-    if (requestGeneration === actionGeneration) {
-      announcement.value = historySucceeded ? 'History refreshed.' : ''
-    }
-  }
-
   async function loadOlderViewings(event: MouseEvent): Promise<void> {
     if (isLoadingMore.value || isRefreshing.value) { return }
 
@@ -426,7 +403,7 @@
       const addedAnnouncement = added.length === 1 ? '1 older viewing added.' : `${added.length} older viewings added.`
       const pageAnnouncement = succeeded ? addedAnnouncement : ''
 
-      announcement.value = needsRefresh.value ? 'Your viewings changed. Refresh history to load more.' : pageAnnouncement
+      announcement.value = needsRefresh.value ? 'Your viewings changed. Reload this page to load more.' : pageAnnouncement
 
       if (globalThis.document.activeElement === trigger) {
         const [first] = added
