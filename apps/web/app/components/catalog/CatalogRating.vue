@@ -1,7 +1,7 @@
 <template>
   <section :class="[$style.component, { 'is-compact': compact, 'is-rated': hasScore }]" :style="{ '--rating-anchor': anchorName }" :aria-label="label">
     <div ref="anchor" :class="$style.anchor">
-      <NuxtLink v-if="isAnonymous" :class="$style.link" :to="signInLocation" :aria-label="showScore ? accessibleTriggerLabel : undefined">
+      <NuxtLink v-if="showSignIn" :class="$style.link" :to="signInLocation" :aria-label="signInLabel">
         <Icon :class="$style.star" aria-hidden="true" mode="svg" name="hugeicons:star" />
         {{ visibleActionLabel }}
       </NuxtLink>
@@ -46,8 +46,18 @@
           <Icon aria-hidden="true" mode="svg" name="hugeicons:cancel-01" />
         </AppButton>
       </div>
-      <fieldset :class="$style.fieldset" :disabled="isSaving">
+      <div v-if="hasUnconfirmedMutation" :class="$style.recovery">
+        <p>This change may already have been saved. Retry to check the same change before choosing another score.</p>
+        <AppButton :class="$style.retry" size="small" data-rating-retry :disabled="isSaving" variant="secondary" @click="retryUnconfirmed">Retry rating</AppButton>
+      </div>
+      <fieldset :class="$style.fieldset" :disabled="areChoicesDisabled">
         <legend :class="$style.accessible">Choose a score</legend>
+        <div v-if="creationDateLabel" :class="$style.creationDate">
+          <label :for="creationDateId">{{ creationDateLabel }}</label>
+          <input :id="creationDateId" ref="creationDateField" v-model="viewingDate" :class="$style.dateInput" type="date" required :disabled="areChoicesDisabled" :aria-describedby="creationDateDescription" :aria-invalid="hasDateError || undefined">
+          <p :id="creationDescriptionId" :class="$style.supporting">{{ creationDescription }}</p>
+          <p v-if="hasDateError" :id="creationDateErrorId" :class="$style.supporting" role="alert">Choose a viewing date.</p>
+        </div>
         <div :class="$style.choices">
           <AppButton
             v-for="option in choices"
@@ -55,34 +65,48 @@
             :class="$style.choice"
             :aria-label="option.label"
             :aria-pressed="option.isSelected"
-            :disabled="isSaving"
+            :disabled="areChoicesDisabled"
             variant="secondary"
             @click="persist(option.score)"
           >
             <span aria-hidden="true">{{ option.score }}</span>
           </AppButton>
         </div>
-        <AppButton v-if="hasScore" :class="$style.remove" :disabled="isSaving" aria-label="Remove rating" variant="secondary" @click="persist(null)">
+        <AppButton v-if="showRemove" :class="$style.remove" :disabled="areChoicesDisabled" :aria-label="removeLabel" variant="secondary" @click="persist(null)">
           <Icon aria-hidden="true" mode="svg" name="hugeicons:delete-02" />
-          Remove rating
+          {{ removeLabel }}
         </AppButton>
+        <p v-if="showRemoveDescription" :class="$style.supporting">{{ removeDescription }}</p>
       </fieldset>
       <p v-if="isSaving" :class="$style.pending" role="status">Updating rating…</p>
       <AppMessage v-if="saveError" :class="$style.saveError" role="alert" tone="danger">{{ saveError }}</AppMessage>
+      <AppButton size="small" v-if="showSaveRecovery" :disabled="isSaving" variant="secondary" @click="refreshAfterError">Refresh rating</AppButton>
     </component>
   </section>
 </template>
 
 <script lang="ts" setup>
+  /* oxlint-disable eslint/max-lines -- One editor coordinates responsive overlays, score writes, combined creation recovery and focus. */
   import type { RouteLocationRaw } from 'vue-router'
   import { onClickOutside, useEventListener, useMediaQuery, useScrollLock } from '@vueuse/core'
-  import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, ref, shallowRef, toRef, useId, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import type { RatingStatus } from '~/composables/use-catalog-rating.ts'
+  import { getLocalCalendarDate } from '~/utils/calendar-date.ts'
 
   interface Props {
     accountId: string | null;
+
+    // Stable title identity while a combined save changes the current viewing.
+    contextKey?: string | null;
+    creationDateLabel?: string;
+    creationDescription?: string;
+    canRemove?: boolean;
+    removeLabel?: string;
+    removeDescription?: string;
+    hasUnconfirmedMutation?: boolean;
+    retryMutation?: () => Promise<boolean>;
     label?: string;
     actionLabel?: string;
     showScore?: boolean;
@@ -93,8 +117,9 @@
     isAnonymous: boolean;
     isActive?: boolean;
     isSaving: boolean;
+    isUnavailable?: boolean;
     load: () => Promise<void>;
-    save: (nextScore: number | null) => Promise<boolean>;
+    save: (nextScore: number | null, viewingDate?: string) => Promise<boolean>;
     saveError: string;
     score: number | null;
     signInLocation: RouteLocationRaw;
@@ -106,11 +131,22 @@
     saved: [targetKey: string];
   }
 
-  const { label = 'Your rating', actionLabel = 'Rate', showScore, compact, showLoadError = true, isActive = true, accountId, targetKey, hasSessionError, isAnonymous, isSaving, load, save, saveError, score, status } = defineProps<Props>()
+  const { contextKey, creationDateLabel, creationDescription, canRemove, removeLabel = 'Remove rating', removeDescription, hasUnconfirmedMutation, retryMutation, label = 'Your rating', actionLabel = 'Rate', showScore, compact, showLoadError = true, isActive = true, accountId, targetKey, hasSessionError, isAnonymous, isSaving, isUnavailable, load, save, saveError, score, status } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const currentAccountId = computed(() => accountId)
   const currentTargetKey = computed(() => targetKey)
   const isEditing = ref(false)
+  const viewingDate = shallowRef('')
+  const hasDateError = shallowRef(false)
+  const creationDateId = useId()
+  const creationDateField = useTemplateRef('creationDateField')
+  const creationDescriptionId = useId()
+  const creationDateErrorId = useId()
+  const creationDateDescription = toRef(() => hasDateError.value ? `${creationDescriptionId} ${creationDateErrorId}` : creationDescriptionId)
+  const currentIdentity = toRef(() => contextKey ?? targetKey)
+  const showSaveRecovery = toRef(() => saveError !== '' && !hasUnconfirmedMutation)
+  const areChoicesDisabled = toRef(() => isSaving || hasUnconfirmedMutation || isUnavailable)
+  const showSignIn = toRef(() => isAnonymous && !isUnavailable)
   const isMobile = useMediaQuery('(width < 40rem)')
   const notice = ref('')
   const panelId = useId()
@@ -127,9 +163,17 @@
   const hasLoadError = computed(() => !isAnonymous && !hasSessionError && status === 'error')
   const showRatingLoadError = computed(() => hasLoadError.value && showLoadError)
   const hasScore = computed(() => score !== null)
+  const showRemove = toRef(() => hasScore.value || canRemove)
+
+  const showRemoveDescription = toRef(() => {
+    const hasDescription = Boolean(removeDescription)
+
+    return showRemove.value && hasDescription
+  })
+
   const canEdit = computed(() => isActive && accountId !== null && !hasSessionError && isLoaded.value && !isSaving)
   const isBusy = computed(() => isLoading.value || isSaving)
-  const isTriggerDisabled = computed(() => !canEdit.value && !hasLoadError.value)
+  const isTriggerDisabled = toRef(() => isUnavailable || !canEdit.value && !hasLoadError.value)
   const controlledPanelId = computed(() => isEditing.value ? panelId : undefined)
   const panelTag = computed(() => isMobile.value ? 'dialog' : 'div')
   const presentation = computed(() => isMobile.value ? 'sheet' : 'popover')
@@ -140,11 +184,12 @@
 
   const choices = computed(() => options.map(option => {
     const choiceLabel = `${option} out of 10`
+    const isSelected = option === score
 
     return {
       score: option,
       label: choiceLabel,
-      isSelected: option === score
+      isSelected
     }
   }))
 
@@ -184,12 +229,34 @@
     return showScore ? `${label}: ${score} out of 10` : `${actionLabel}, your rating: ${score} out of 10`
   })
 
+  const signInLabel = toRef(() => showScore ? accessibleTriggerLabel.value : undefined)
+
   function focusChoice(): void {
+    if (hasUnconfirmedMutation) {
+      const retry = panel.value?.querySelector<HTMLButtonElement>('[data-rating-retry]')
+
+      retry?.focus()
+
+      return
+    }
+
     const selected = panel.value?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
     const first = panel.value?.querySelector<HTMLButtonElement>('button[aria-pressed]')
     const target = selected ?? first
 
     target?.focus()
+  }
+
+  function presentPanel(restoreFocus = true): void {
+    const element = panel.value
+
+    if (!isEditing.value || element === null) { return }
+
+    if (element instanceof globalThis.HTMLDialogElement) {
+      if (!element.open) { element.showModal() }
+    } else if (!element.matches(':popover-open')) { element.showPopover() }
+
+    if (restoreFocus) { focusChoice() }
   }
 
   function hidePanel(): void {
@@ -280,33 +347,85 @@
     isEditing.value = true
   }
 
+  function restoreFailedMutationFocus(owner: Element | null, selector: string, allowed: boolean): void {
+    const cannotRestore = !isEditing.value || saveError === '' || !allowed
+
+    if (cannotRestore) { return }
+
+    if (hasUnconfirmedMutation) {
+      focusChoice()
+
+      return
+    }
+
+    if (!(owner instanceof globalThis.HTMLElement)) { return }
+
+    const target = owner.isConnected ? owner : panel.value?.querySelector<HTMLButtonElement>(selector)
+
+    target?.focus()
+  }
+  async function refreshAfterError(): Promise<void> {
+    const owner = globalThis.document.activeElement
+    const savedAccountId = accountId
+    const savedIdentity = currentIdentity.value
+
+    await load()
+    await nextTick()
+
+    const sameIdentity = accountId === savedAccountId && currentIdentity.value === savedIdentity
+
+    if (!sameIdentity) { return }
+
+    const restoreFocus = canRestoreFocus(owner)
+    const scrollAnchor = restoreFocus && !isMobile.value
+
+    // A paged record can move its anchor outside the viewport during refresh.
+    if (scrollAnchor) { anchor.value?.scrollIntoView({ block: 'nearest' }) }
+
+    if (!isEditing.value) {
+      if (restoreFocus) { trigger.value?.focus() }
+
+      return
+    }
+
+    presentPanel(restoreFocus)
+  }
+
   async function persist(nextScore: number | null): Promise<void> {
     const savedTargetKey = targetKey
-    const mutationLabel = nextScore === null ? 'Remove rating' : `${nextScore} out of 10`
+    const savedAccountId = accountId
+    const savedIdentity = currentIdentity.value
+    const creating = creationDateLabel !== undefined && nextScore !== null
+
+    hasDateError.value = creating && viewingDate.value === ''
+
+    if (hasDateError.value) {
+      creationDateField.value?.focus()
+
+      return
+    }
+
+    const mutationLabel = nextScore === null ? removeLabel : `${nextScore} out of 10`
     const mutationSelector = `button[aria-label="${mutationLabel}"]`
     const focusOwner = globalThis.document.activeElement
     const version = contextVersion
 
     notice.value = ''
 
-    const saved = await save(nextScore)
+    const selectedDate = creating ? viewingDate.value : undefined
+    const saved = await save(nextScore, selectedDate)
 
     await nextTick()
 
-    if (version !== contextVersion) {
-      return
-    }
+    const sameCreationIdentity = creating && saved && savedAccountId === accountId && savedIdentity === currentIdentity.value
+    const outdatedContext = version !== contextVersion && !sameCreationIdentity
+
+    if (outdatedContext) { return }
 
     const restoreFocus = canRestoreFocus(focusOwner)
 
     if (!saved) {
-      const restoreEditorFocus = isEditing.value && saveError !== '' && restoreFocus && focusOwner instanceof globalThis.HTMLElement
-
-      if (restoreEditorFocus) {
-        const target = focusOwner.isConnected ? focusOwner : panel.value?.querySelector<HTMLButtonElement>(mutationSelector)
-
-        target?.focus()
-      }
+      restoreFailedMutationFocus(focusOwner, mutationSelector, restoreFocus)
 
       return
     }
@@ -314,15 +433,52 @@
     hidePanel()
 
     isEditing.value = false
-    notice.value = nextScore === null ? 'Rating removed.' : 'Rating saved.'
+    notice.value = score === null ? 'Rating removed.' : 'Rating saved.'
 
-    if (savedTargetKey !== null) {
-      emit('saved', savedTargetKey)
-    }
+    if (creating) { notice.value = 'Viewing and rating saved.' }
+
+    const completedTargetKey = creating ? targetKey : savedTargetKey
+
+    if (completedTargetKey !== null) { emit('saved', completedTargetKey) }
 
     if (restoreFocus) {
       trigger.value?.focus()
     }
+  }
+
+  async function retryUnconfirmed(): Promise<void> {
+    if (retryMutation === undefined) { return }
+
+    const savedAccountId = accountId
+    const savedIdentity = currentIdentity.value
+    const creating = creationDateLabel !== undefined
+    const focusOwner = globalThis.document.activeElement
+    const saved = await retryMutation()
+
+    await nextTick()
+
+    const sameIdentity = accountId === savedAccountId && currentIdentity.value === savedIdentity
+
+    if (!sameIdentity) { return }
+
+    const restoreFocus = canRestoreFocus(focusOwner)
+
+    if (!saved) {
+      if (isEditing.value && restoreFocus) { focusChoice() }
+
+      return
+    }
+
+    hidePanel()
+
+    isEditing.value = false
+    notice.value = score === null ? 'Rating removed.' : 'Rating saved.'
+
+    if (creating && score !== null) { notice.value = 'Viewing and rating saved.' }
+
+    if (targetKey !== null) { emit('saved', targetKey) }
+
+    if (restoreFocus) { trigger.value?.focus() }
   }
 
   function handleKeydown(event: KeyboardEvent): void {
@@ -341,7 +497,7 @@
       return
     }
 
-    const buttons = panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+    const buttons = panel.value?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')
     const first = buttons?.item(0)
     const lastIndex = (buttons?.length ?? 0) - 1
     const last = buttons?.item(lastIndex)
@@ -364,7 +520,9 @@
     }
   }
 
-  watch([currentAccountId, currentTargetKey], () => {
+  watch([currentAccountId, currentTargetKey], ([account], [previousAccount]) => {
+    if (account === previousAccount && hasUnconfirmedMutation) { return }
+
     contextVersion += 1
 
     hidePanel()
@@ -385,27 +543,15 @@
   watch([isEditing, isMobile], () => {
     scrollLocked.value = isEditing.value && isMobile.value
 
-    if (!isEditing.value || panel.value === null) {
-      return
-    }
-
-    const element = panel.value
-
-    if (element instanceof globalThis.HTMLDialogElement) {
-      if (!element.open) {
-        element.showModal()
-      }
-    } else if (!element.matches(':popover-open')) {
-      element.showPopover()
-    }
-
-    focusChoice()
+    presentPanel()
   }, { flush: 'post' })
 
   watch(isEditing, (editing, _previousEditing, onCleanup) => {
-    if (!editing) {
-      return
-    }
+    if (!editing) { return }
+
+    if (!hasUnconfirmedMutation) { viewingDate.value = getLocalCalendarDate() }
+
+    hasDateError.value = false
 
     const stopClickOutside = onClickOutside(panel, () => {
       if (!isMobile.value) {
@@ -460,7 +606,7 @@
     }
     .loadError { max-inline-size: 18rem; margin-block-start: var(--space-3); }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    .panel { position: fixed; padding: min(var(--space-4), 16px); margin: 0; overflow: auto; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-primary); }
+    .panel { position: fixed; padding: min(var(--space-4), 16px); margin: 0; overflow: auto; overscroll-behavior: contain; scroll-padding-block: var(--space-4); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-primary); }
     /* Leave the 8px anchor gap and 16px viewport gutter inside the chosen position area. */
     .panel[data-presentation='popover'] { position-anchor: var(--rating-anchor); position-area: block-end span-inline-end; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline; position-try-order: most-block-size; inset: auto; inline-size: min(20rem, calc(100vw - 2rem)); max-block-size: min(calc(100% - 24px), calc(100dvh - 2rem)); margin: 8px 16px; border-radius: var(--radius-lg); box-shadow: var(--shadow-float); }
     .panel[data-presentation='sheet'] { inset-block: auto 0; inset-inline: 0; inline-size: 100%; max-inline-size: none; max-block-size: calc(100dvh - 2rem); padding-block-end: max(var(--space-4), env(safe-area-inset-bottom)); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
@@ -473,6 +619,11 @@
     .choices > .choice { min-inline-size: 44px; min-block-size: 2.75rem; padding: var(--space-2) 4px; border-radius: var(--radius-sm); font-weight: 400; font-variant-numeric: tabular-nums; }
     .choices > .choice[aria-pressed='true'] { border-color: var(--color-accent); background: var(--color-accent-fill); color: var(--color-on-accent); font-weight: 700; }
     .fieldset > .remove { justify-content: start; inline-size: 100%; min-block-size: 2.75rem; padding: var(--space-3) 0 0; margin-block-start: var(--space-4); border: 0; border-block-start: 1px solid var(--color-border); border-radius: 0; background: transparent; color: var(--color-danger); font-size: 0.875rem; }
+    .creationDate { display: grid; gap: var(--space-2); }
+    .dateInput { min-block-size: 2.75rem; inline-size: 100%; padding: var(--space-2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface); }
+    .supporting { margin-block: var(--space-2); color: var(--color-text-secondary); font-size: 0.875rem; }
+    .recovery { display: grid; gap: var(--space-3); margin-block-end: var(--space-3); }
+    .retry { justify-self: start; }
     .pending, .saveError { margin-block-start: var(--space-3); font-size: 0.875rem; }
     .pending { color: var(--color-text-secondary); }
     @media (forced-colors: active) {

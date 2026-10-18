@@ -192,7 +192,7 @@ describe('saved import target selection', () => {
 
     await expect(snapshot()).resolves.toStrictEqual(before)
     await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, id])
-    await client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, id])
+    await client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id, completed_on) VALUES ($1, $2, \'2026-10-17\')', [session.user.id, id])
 
     const result = await applyImportPreview(session, selected.id, applyOptions())
 
@@ -624,7 +624,7 @@ describe('saved import target selection', () => {
 
     await insertSeriesEpisodeWatches(client, session.user.id, {
       episodeIds: [episodeId],
-      status: 'paused'
+      status: 'completed'
     })
 
     await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, id])

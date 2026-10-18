@@ -7,7 +7,6 @@ import {
   catalogFollowResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
-  catalogWatchedResponseSchema,
   catalogWatchlistResponseSchema
 } from '../catalog-response.ts'
 
@@ -141,9 +140,7 @@ describe('catalog episode response contracts', () => {
     }).success).toBe(false)
   })
 
-  it.each([true, false])('accepts the shared watched mutation response watched=%s', (watched) => {
-    expect(v.parse(catalogWatchedResponseSchema, { watched })).toStrictEqual({ watched })
-  })
+
 })
 
 describe('catalog watchlist response contract', () => {

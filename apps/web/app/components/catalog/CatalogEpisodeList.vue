@@ -7,7 +7,7 @@
     </div>
     <div v-else-if="hasEpisodesError" :class="$style.message">
       <AppMessage role="alert" tone="danger">We couldn’t load the episodes. The title details are still available.</AppMessage>
-      <AppButton variant="secondary" @click="emit('retryEpisodes')">Try again</AppButton>
+      <AppButton size="small" variant="secondary" @click="emit('retryEpisodes')">Try again</AppButton>
     </div>
     <div v-else-if="isEpisodesEmpty" :class="$style.message">
       <p :class="$style.supportingText">No episode data is available yet.</p>
@@ -22,11 +22,11 @@
       <AppMessage v-if="actionError" role="alert" tone="danger">{{ actionError }}</AppMessage>
       <div v-if="showReadError" :class="$style.privateError">
         <AppMessage role="alert" tone="danger">{{ readError }}</AppMessage>
-        <AppButton variant="secondary" :disabled="isSaving" @click="emit('retryWatched')">Retry watched status</AppButton>
+        <AppButton size="small" variant="secondary" :disabled="isSaving" @click="emit('retryWatched')">Retry watched status</AppButton>
       </div>
       <div v-if="hasWatchedError" :class="$style.privateError">
         <AppMessage role="alert" tone="danger">We couldn’t load your watched episodes. The episode list is still available.</AppMessage>
-        <AppButton variant="secondary" @click="emit('retryWatched')">Retry watched status</AppButton>
+        <AppButton size="small" variant="secondary" @click="emit('retryWatched')">Retry watched status</AppButton>
       </div>
 
       <ExpansionPanel.Group v-model="selectedSeason" :class="$style.seasons">
@@ -51,6 +51,7 @@
                   <CatalogEpisodeRatings
                     :key="season.ratingsKey"
                     :account-id="accountId"
+                    :viewings="viewings"
                     :catalog-item-id="catalogItemId"
                     :season-number="season.number"
                     :episode-ids="season.episodeIds"
@@ -72,12 +73,13 @@
                             :account-id="accountId"
                             :is-active="isSeasonActive(isSelected)"
                             :episode="episode"
+                            :is-eligible="showWatchedControl"
+                            :viewing-key="viewings.selectionKey.value"
                             :has-session-error="hasSessionError"
                             :is-anonymous="isAnonymous"
                             :sign-in-location="signInLocation"
                             :ratings="ratings"
                             :summaries="summaries"
-                            @saved="emit('ratingSaved')"
                           />
                           <NuxtLink v-if="showSignIn" :class="$style.signInLink" :to="signInLocation" :aria-describedby="headingId" aria-label="Sign in to mark watched">
                             <span :class="$style.accessible">Sign in to mark watched</span>
@@ -102,10 +104,10 @@
                             :class="$style.watchedButton"
                             size="small"
                             icon-only
-                            :disabled="isWatchedDisabled"
+                            :disabled="isEpisodeWatchDisabled(episode.id)"
                             aria-label="Watched"
                             variant="secondary"
-                            @click="toggleWatched(episode, $event)"
+                            @click="toggleWatched(episode, $event, ratings)"
                           >
                             <span v-if="isEpisodeSaving" :class="$style.savingIndicator" aria-hidden="true" />
                             <Icon v-else-if="isWatched" aria-hidden="true" mode="svg" name="hugeicons:tick-02" />
@@ -134,8 +136,10 @@
 <script setup lang="ts">
   import type { CatalogEpisode } from '@tv/shared/catalog'
   import type { RouteLocationRaw } from 'vue-router'
-  import { computed, shallowRef, useId, watch } from 'vue'
+  import { computed, shallowRef, toRef, useId, watch } from 'vue'
   import { ExpansionPanel, Presence } from '@vuetify/v0/components'
+  import type { CatalogViewingsState } from '~/composables/use-catalog-viewings.ts'
+  import type { useCatalogEpisodeRatings } from '~/composables/use-catalog-episode-ratings.ts'
   import CatalogEpisodeRatings from '~/components/catalog/CatalogEpisodeRatings.vue'
   import CatalogEpisodeRating from '~/components/catalog/CatalogEpisodeRating.vue'
   import { useBrowserToday } from '~/composables/use-browser-today.ts'
@@ -176,6 +180,8 @@
 
   interface Props {
     accountId: string | null;
+    viewings: CatalogViewingsState;
+    isReadOnly: boolean;
     catalogItemId: string;
     isActive: boolean;
     episodes: CatalogEpisode[];
@@ -198,14 +204,13 @@
 
   interface Emits {
     ratingUnauthorized: [reason: 'load' | 'mutation'];
-    ratingSaved: [];
     markReleased: [seasonNumber: number | null];
     retryEpisodes: [];
     retryWatched: [];
-    toggleWatched: [episodeId: string];
+    toggleWatched: [episodeId: string, isRated: boolean];
   }
 
-  const { accountId, catalogItemId, episodes, hasSessionError, isActive, isAnonymous, isSaving, readError, savingAction, savingEpisodeId, watchedCount, watchedEpisodeIds, watchedStatus } = defineProps<Props>()
+  const { accountId, catalogItemId, viewings, isReadOnly, episodes, hasSessionError, isActive, isAnonymous, isSaving, readError, savingAction, savingEpisodeId, watchedCount, watchedEpisodeIds, watchedStatus } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const selectedSeason = shallowRef<number | undefined>()
   const episodesHeadingId = useId()
@@ -226,9 +231,15 @@
     return today.value !== null && episode.airDate !== null && episode.airDate <= today.value
   }
 
-  const showBulkActions = computed(() => !isAnonymous && !hasSessionError && watchedStatus === 'loaded')
+  const showBulkActions = toRef(() => !isReadOnly && !isAnonymous && !hasSessionError && watchedStatus === 'loaded')
   const showSeriesAction = computed(() => showBulkActions.value && seasonNumbers.value.length > 1)
-  const isWatchedDisabled = computed(() => watchedStatus !== 'loaded' || isSaving)
+  const isWatchedDisabled = toRef(() => isReadOnly || watchedStatus !== 'loaded' || isSaving)
+
+  function isWatchActionDisabled(key: string): boolean {
+    if (isWatchedDisabled.value) { return true }
+
+    return viewings.isMutationBlocked(key)
+  }
 
   const isSeriesActionDisabled = computed(() => {
     const watchedIds = new Set(watchedEpisodeIds)
@@ -240,7 +251,9 @@
       return released && !isWatched
     })
 
-    return isWatchedDisabled.value || !hasUnwatchedEpisodes
+    const isDisabled = isWatchActionDisabled('all')
+
+    return isDisabled || !hasUnwatchedEpisodes
   })
 
   const newestSeason = computed(() => seasonNumbers.value.at(0) ?? 1)
@@ -292,8 +305,9 @@
       const showProgress = !isAnonymous && !hasSessionError && watchedStatus === 'loaded'
       const metadata = showProgress ? `${episodeCount} · ${watched} watched` : episodeCount
       const hasUnwatchedEpisodes = rows.some(row => row.isReleased && !row.isWatched)
-      const isActionDisabled = isWatchedDisabled.value || !hasUnwatchedEpisodes
       const seasonAction = `season:${number}`
+      const isDisabled = isWatchActionDisabled(seasonAction)
+      const isActionDisabled = isDisabled || !hasUnwatchedEpisodes
       const isSeasonSaving = isSaving && savingAction === seasonAction
 
       result.push({
@@ -345,6 +359,12 @@
     return isSelected && isActive
   }
 
+  function isEpisodeWatchDisabled(episodeId: string): boolean {
+    const key = `episode:${episodeId}`
+
+    return isWatchActionDisabled(key)
+  }
+
   watch(seasonNumbers, (numbers) => {
     if (!hasSelectedInitialSeason && numbers.length > 0) {
       hasSelectedInitialSeason = true
@@ -371,7 +391,9 @@
     }
   }, { flush: 'post' })
 
-  function toggleWatched(episode: CatalogEpisode, event: MouseEvent): void {
+  function toggleWatched(episode: CatalogEpisode, event: MouseEvent, ratings: ReturnType<typeof useCatalogEpisodeRatings>): void {
+    const rating = ratings.ratingFor(episode.id)
+    const isRated = rating.score !== null
     const trigger = event.currentTarget
     const row = trigger instanceof globalThis.HTMLElement ? trigger.closest('li') : null
 
@@ -382,7 +404,7 @@
       trigger
     } : null
 
-    emit('toggleWatched', episode.id)
+    emit('toggleWatched', episode.id, isRated)
   }
 
   function episodeTitle(episode: CatalogEpisode): string {

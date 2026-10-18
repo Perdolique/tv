@@ -23,6 +23,12 @@
       :has-session-error="hasSessionError"
       :is-anonymous="isAnonymous"
       :is-saving="isSaving"
+      :is-unavailable="isBlocked"
+      :context-key="regionLabel"
+      :has-unconfirmed-mutation="hasUnconfirmedMutation"
+      :retry-mutation="retryMutation"
+      :creation-date-label="creationDateLabel"
+      creation-description="Saving this rating also starts a series viewing on this date."
       :load="load"
       :save="save"
       :save-error="saveError"
@@ -30,22 +36,24 @@
       :sign-in-location="signInLocation"
       :status="status"
       @clear-error="clearError"
-      @saved="handleSaved"
+      @saved="ready.execute({ dedupe: 'cancel' })"
     />
   </section>
 </template>
 
 <script setup lang="ts">
   import type { RouteLocationRaw } from 'vue-router'
-  import { computed, watch } from 'vue'
+  import { computed, toRef, watch } from 'vue'
   import CatalogRating from '~/components/catalog/CatalogRating.vue'
   import CatalogRatingSummary from '~/components/catalog/CatalogRatingSummary.vue'
   import { useCatalogRating } from '~/composables/use-catalog-rating.ts'
   import { useCatalogRatingSummary } from '~/composables/use-catalog-rating-summary.ts'
+  import type { CatalogViewingsState } from '~/composables/use-catalog-viewings.ts'
   import { catalogRatingPath } from '~/utils/catalog-rating-target.ts'
 
   interface Props {
     accountId: string | null;
+    viewings: CatalogViewingsState;
     catalogItemId: string;
     hasSessionError: boolean;
     isActive: boolean;
@@ -56,10 +64,9 @@
 
   interface Emits {
     unauthorized: [reason: 'load' | 'mutation'];
-    saved: [];
   }
 
-  const { accountId, catalogItemId, hasSessionError, isAnonymous, seasonNumber } = defineProps<Props>()
+  const { accountId, catalogItemId, hasSessionError, isAnonymous, seasonNumber, viewings } = defineProps<Props>()
   const emit = defineEmits<Emits>()
 
   // The parent keys this component by series and season so each public request has one owner.
@@ -71,13 +78,20 @@
   })
 
   const account = computed(() => accountId)
-  const targetKey = computed(() => catalogRatingPath(target.value))
+
+  const targetKey = toRef(() => {
+    const path = catalogRatingPath(target.value)
+
+    return `${path}:${viewings.selectionKey.value}`
+  })
+
   const regionLabel = computed(() => `Season ${seasonNumber} ratings`)
   const summaryLabel = computed(() => `Season ${seasonNumber} viewer rating`)
   const editorLabel = computed(() => `Your rating for season ${seasonNumber}`)
   const actionLabel = computed(() => `Rate season ${seasonNumber}`)
   const { hasError, isLoading, ready, summary } = useCatalogRatingSummary(target.value)
-  const { isSaving, load, save, saveError, score, status, unauthorized } = useCatalogRating(target, account)
+  const { hasUnconfirmedMutation, isBlocked, isSaving, load, needsViewing, retryMutation, save, saveError, score, status, unauthorized } = useCatalogRating(target, account, viewings)
+  const creationDateLabel = toRef(() => needsViewing.value ? 'Started on' : undefined)
   const isPersonalLoading = computed(() => !isAnonymous && !hasSessionError && (status.value === 'loading' || status.value === 'idle'))
   const hasScore = computed(() => !isAnonymous && !hasSessionError && status.value === 'loaded' && score.value !== null)
 
@@ -99,17 +113,17 @@
     return label
   })
 
+  watch(viewings.mutationVersion, () => {
+    const mutation = viewings.completedMutation.value
+
+    if (mutation?.operation === 'viewing' && mutation.method === 'DELETE') { void ready.execute({ dedupe: 'cancel' }) }
+  })
+
   watch(unauthorized, reason => {
     if (reason !== null) {
       emit('unauthorized', reason)
     }
   }, { flush: 'sync' })
-
-  function handleSaved(): void {
-    void ready.execute({ dedupe: 'cancel' })
-
-    emit('saved')
-  }
 
   function clearError(): void {
     saveError.value = ''

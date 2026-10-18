@@ -115,7 +115,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expect(viewer).toHaveCount(1)
       await expect(scoreCard).toContainText('7 out of 10')
       await expect(viewer).toHaveAccessibleName('TV viewer rating')
-      await expect(scoreCard.getByText('Your rating', { exact: true })).toBeVisible()
+      await expect(scoreCard.getByText('Current viewing', { exact: true })).toBeVisible()
       await expectNoHorizontalOverflow(page)
 
       const scoreBox = await readBox(score)

@@ -1,202 +1,318 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { describe, expect, it } from 'vitest'
+import type { CatalogViewing } from '@tv/shared/catalog-viewings'
+import { empty, emptySummary, harness, id, setup, summary, viewing } from '../../testing/catalog-viewings-harness.ts'
 
-interface RequestOptions {
-  method?: string;
-  body?: unknown;
-  retry: number;
-  signal: AbortSignal;
-}
-
-const harness = vi.hoisted(() => { return { fetch: vi.fn<(url: string, options: RequestOptions) => Promise<unknown>>() } })
-
-// oxlint-disable-next-line vitest/prefer-import-in-mock -- Nuxt's virtual alias has no runtime module in this Node test.
-vi.mock('#app', () => { return { useRequestFetch: () => harness.fetch } })
-
+const requestIdPattern: unknown = expect.any(String)
 const { useCatalogEpisodeRatings } = await import('../use-catalog-episode-ratings.ts')
 const firstId = '30000000-0000-7000-8000-000000000001'
 const secondId = '30000000-0000-7000-8000-000000000002'
 
-const season = {
-  catalogItemId: '01991a00-0000-7000-8000-000000000006',
-  seasonNumber: 1
-} as const
+const series: CatalogViewing = {
+  ...viewing,
+  status: 'watching',
+  startedOn: '2026-10-17',
+  completedOn: null
+}
 
-const initial = { items: [{
-  episodeId: firstId,
-  score: 4
-}, {
-  episodeId: secondId,
-  score: null
-}] } as const
+const page = {
+  items: [series],
+  summary,
+  nextCursor: null
+}
 
-const scopes: ReturnType<typeof effectScope>[] = []
+const initial = {
+  items: [{
+    episodeId: firstId,
+    score: 4
+  }, {
+    episodeId: secondId,
+    score: null
+  }],
 
-function setup() {
-  const scope = effectScope()
-  const account = ref<string | null>('first-account')
-  const ratings = scope.run(() => useCatalogEpisodeRatings(season, [firstId, secondId], account))
+  viewing: series,
+  summary
+}
 
-  scopes.push(scope)
+const mark = {
+  id: '30000000-0000-7000-8000-000000000003',
+  catalogEpisodeId: firstId,
+  viewingId: series.id,
+  markedAt: '2026-10-17T12:00:00.000000Z'
+}
 
-  if (ratings === undefined) {
-    throw new Error('The episode ratings scope did not start')
+function response(score: number | null) {
+  return {
+    score,
+    viewing: series,
+    summary,
+    watches: [mark]
+  }
+}
+function setupRatings() {
+  const current = setup()
+
+  const season = {
+    catalogItemId: id,
+    seasonNumber: 1
   }
 
+  const ratings = current.scope.run(() => useCatalogEpisodeRatings({
+    season,
+    episodeIds: [firstId, secondId],
+    accountId: current.account,
+    viewings: current.state
+  }))
+
+  if (ratings === undefined) { throw new Error('Episode ratings scope did not start') }
+
   return {
-    scope,
-    account,
+    ...current,
     ratings
   }
 }
 
-describe('private episode ratings lifecycle', () => {
-  beforeEach(() => {
-    harness.fetch.mockReset()
-    vi.stubEnv('SSR', true)
-  })
+describe('viewing-aware private episode ratings', () => {
+  it('applies confirmed score and mark together while serializing other title writes', async () => {
+    const pending = Promise.withResolvers<unknown>()
 
-  afterEach(() => {
-    for (const scope of scopes.splice(0)) {
-      scope.stop()
-    }
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(initial).mockReturnValueOnce(pending.promise)
 
-    vi.unstubAllEnvs()
-    vi.restoreAllMocks()
-  })
+    const { state, ratings } = setupRatings()
 
-  it('loads one batch, then writes and removes only the selected episode', async () => {
-    const { ratings } = setup()
-
-    expect(harness.fetch).not.toHaveBeenCalled()
-    harness.fetch.mockResolvedValueOnce(initial).mockResolvedValueOnce({ score: 8 }).mockResolvedValueOnce({ score: null })
-    await ratings.loadBatch()
-    expect(ratings.ratingFor(firstId).score).toBe(4)
-
-    expect(ratings.ratingFor(secondId)).toMatchObject({
-      score: null,
-      status: 'loaded'
-    })
-
-    await expect(ratings.save(firstId, 8)).resolves.toBe(true)
-    expect(ratings.ratingFor(firstId).score).toBe(8)
-    await expect(ratings.save(firstId, null)).resolves.toBe(true)
-    expect(ratings.ratingFor(firstId).score).toBeNull()
-    expect(harness.fetch).toHaveBeenCalledTimes(3)
-
-    expect(harness.fetch).toHaveBeenNthCalledWith(2, `/api/catalog/episodes/${firstId}/rating`, expect.objectContaining({
-      method: 'PUT',
-      body: { score: 8 },
-      retry: 0
-    }))
-
-    expect(harness.fetch).toHaveBeenNthCalledWith(3, `/api/catalog/episodes/${firstId}/rating`, expect.objectContaining({
-      method: 'DELETE',
-      body: undefined
-    }))
-  })
-
-  it('allows another episode to save but blocks repeats and stale batches during a write', async () => {
-    const pendingSave = Promise.withResolvers<unknown>()
-    const pendingBatch = Promise.withResolvers<unknown>()
-    const { ratings } = setup()
-
-    harness.fetch.mockResolvedValueOnce(initial).mockReturnValueOnce(pendingSave.promise).mockReturnValueOnce(pendingBatch.promise).mockResolvedValueOnce({ score: 7 })
+    await state.load()
     await ratings.loadBatch()
 
     const saved = ratings.save(firstId, 9)
-    const reloaded = ratings.loadBatch()
 
-    expect(ratings.ratingFor(firstId)).toMatchObject({
-      score: 4,
-      isSaving: true
-    })
-
-    await expect(ratings.save(firstId, 2)).resolves.toBe(false)
-    await ratings.load(firstId)
-    await expect(ratings.save(secondId, 7)).resolves.toBe(true)
-    pendingSave.resolve({ score: 9 })
+    expect(ratings.ratingFor(firstId).score).toBe(4)
+    expect(ratings.hasUnconfirmedMutation(firstId)).toBe(false)
+    expect(ratings.isBlocked(secondId)).toBe(true)
+    await expect(ratings.save(secondId, 7)).resolves.toBe(false)
+    await expect(state.create('current')).resolves.toBe(false)
+    pending.resolve(response(9))
     await expect(saved).resolves.toBe(true)
-    pendingBatch.resolve(initial)
-
-    await reloaded
-
     expect(ratings.ratingFor(firstId).score).toBe(9)
-    expect(ratings.ratingFor(secondId).score).toBe(7)
-    expect(harness.fetch).toHaveBeenCalledTimes(4)
+    expect(state.confirmedWatches.value).toStrictEqual([mark])
+
+    expect(harness.fetch.mock.calls[2]?.[1].body).toMatchObject({
+      requestId: requestIdPattern,
+      currentViewingId: series.id,
+      contextVersion: 1,
+      score: 9,
+      timeZone: 'Europe/Tallinn'
+    })
   })
 
-  it('keeps a point recovery newer than an unfinished initial batch', async () => {
-    const pending = Promise.withResolvers<unknown>()
-    const { ratings } = setup()
+  it('reads historical scores with their viewing context and uses the selected revision for saves', async () => {
+    harness.fetch.mockResolvedValueOnce(page)
 
-    harness.fetch.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ score: 8 })
+    const { state, ratings } = setupRatings()
 
-    const batch = ratings.loadBatch()
+    await state.load()
+
+    const past = {
+      ...series,
+      id: '01991a00-0000-7000-8000-000000000099',
+      revision: 4
+    }
+
+    state.select(past)
+
+    harness.fetch.mockResolvedValueOnce({
+      ...initial,
+      viewing: past
+    }).mockResolvedValueOnce({
+      ...response(8),
+
+      viewing: {
+        ...past,
+        revision: 5
+      }
+    })
+
+    await ratings.loadBatch()
+    await expect(ratings.save(firstId, 8)).resolves.toBe(true)
+    expect(harness.fetch.mock.calls[1]?.[1]).toMatchObject({ query: { viewingId: past.id } })
+    expect(harness.fetch.mock.calls[2]?.[0]).toBe(`/api/catalog/items/${id}/viewings/${past.id}/episodes/${firstId}/rating`)
+
+    expect(harness.fetch.mock.calls[2]?.[1].body).toMatchObject({
+      revision: 4,
+      requestId: requestIdPattern,
+      score: 8
+    })
+
+    expect(state.summary.value.currentViewingId).toBe(series.id)
+  })
+
+  it('keeps a point recovery newer than an unfinished batch', async () => {
+    const batch = Promise.withResolvers<unknown>()
+
+    harness.fetch.mockResolvedValueOnce(page).mockReturnValueOnce(batch.promise).mockResolvedValueOnce(response(8))
+
+    const { state, ratings } = setupRatings()
+
+    await state.load()
+
+    const loading = ratings.loadBatch()
 
     await ratings.load(firstId)
-    pending.resolve(initial)
+    batch.resolve(initial)
 
-    await batch
+    await loading
 
     expect(ratings.ratingFor(firstId).score).toBe(8)
     expect(ratings.ratingFor(secondId).status).toBe('loaded')
   })
 
-  it('aborts old-account requests and does not publish their late results', async () => {
-    const pendingSave = Promise.withResolvers<unknown>()
-    const { ratings, account } = setup()
+  it('preserves confirmed scores and the immutable request after a lost response', async () => {
+    const error = new Error('private transport details')
 
-    harness.fetch.mockResolvedValueOnce(initial).mockReturnValueOnce(pendingSave.promise)
-    await ratings.loadBatch()
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(initial).mockRejectedValueOnce(error).mockResolvedValueOnce(response(8))
 
-    const saved = ratings.save(firstId, 9)
-    const signal = harness.fetch.mock.calls[1]?.[1].signal
+    const { state, ratings } = setupRatings()
 
-    account.value = 'second-account'
-
-    expect(signal?.aborted).toBe(true)
-
-    expect(ratings.ratingFor(firstId)).toMatchObject({
-      score: null,
-      status: 'idle',
-      isSaving: false
-    })
-
-    pendingSave.resolve({ score: 9 })
-    await expect(saved).resolves.toBe(false)
-    expect(ratings.ratingFor(firstId).score).toBeNull()
-
-    account.value = null
-
-    await ratings.loadBatch()
-    expect(harness.fetch).toHaveBeenCalledTimes(2)
-  })
-
-  it('preserves confirmed scores on write failure and allows a local retry', async () => {
-    const error = new Error('private database detail')
-    const log = vi.spyOn(globalThis.console, 'warn').mockReturnValue()
-    const { ratings } = setup()
-
-    harness.fetch.mockResolvedValueOnce(initial).mockRejectedValueOnce(error).mockResolvedValueOnce({ score: 8 })
+    await state.load()
     await ratings.loadBatch()
     await expect(ratings.save(firstId, 8)).resolves.toBe(false)
 
-    expect(ratings.ratingFor(firstId)).toMatchObject({
-      score: 4,
-      isSaving: false,
-      saveError: 'We couldn’t save your rating. Try again.'
-    })
+    const original = harness.fetch.mock.calls[2]?.[1].body
 
-    expect(ratings.ratingFor(secondId).saveError).toBe('')
-
-    expect(log).toHaveBeenCalledWith({
-      error,
-      message: 'Catalog episode rating update request failed.'
-    })
-
+    expect(ratings.ratingFor(firstId).score).toBe(4)
+    expect(ratings.ratingFor(firstId).saveError).not.toContain('private transport details')
+    expect(ratings.hasUnconfirmedMutation(firstId)).toBe(true)
+    expect(ratings.isBlocked(firstId)).toBe(false)
+    expect(ratings.isBlocked(secondId)).toBe(true)
     await expect(ratings.save(firstId, 8)).resolves.toBe(true)
+    expect(harness.fetch.mock.calls[3]?.[1].body).toStrictEqual(original)
+    expect(ratings.ratingFor(firstId).score).toBe(8)
+  })
+
+  it.each([
+    {
+      statusCode: 409,
+      message: 'Your viewing changed. Refresh your viewings and try again.'
+    },
+    {
+      statusCode: 404,
+      message: 'We couldn’t save this change. Check the details and try again.'
+    }
+  ])('replaces uncertainty with the definitive $statusCode retry error for the affected episode', async ({ statusCode, message }) => {
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(initial).mockRejectedValueOnce(new Error('Lost rating answer')).mockRejectedValueOnce({ statusCode })
+
+    const { state, ratings } = setupRatings()
+
+    await state.load()
+    await ratings.loadBatch()
+    await expect(ratings.save(firstId, 8)).resolves.toBe(false)
+
+    const original = harness.fetch.mock.calls[2]?.[1].body
+
+    expect(ratings.ratingFor(firstId).saveError).toContain('confirm')
+    await expect(ratings.retryMutation()).resolves.toBe(false)
+    expect(harness.fetch.mock.calls[3]?.[1].body).toStrictEqual(original)
+    expect(ratings.ratingFor(firstId).saveError).toBe(message)
+    expect(ratings.ratingFor(secondId).saveError).toBe('')
+    expect(ratings.ratingFor(firstId).score).toBe(4)
+    expect(ratings.hasUnconfirmedMutation(firstId)).toBe(false)
+    expect(state.pendingMutation.value).toBeNull()
+  })
+
+  it('clears uncertainty after a confirmed retry and refreshes the confirmed episode scores', async () => {
+    const confirmed = {
+      ...initial,
+
+      items: [{
+        episodeId: firstId,
+        score: 8
+      }, {
+        episodeId: secondId,
+        score: null
+      }]
+    }
+
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(initial).mockRejectedValueOnce(new Error('Lost rating answer')).mockResolvedValueOnce(response(8)).mockResolvedValueOnce(confirmed)
+
+    const { state, ratings } = setupRatings()
+
+    await state.load()
+    await ratings.loadBatch()
+    await expect(ratings.save(firstId, 8)).resolves.toBe(false)
+    await expect(ratings.retryMutation()).resolves.toBe(true)
+    expect(ratings.ratingFor(firstId).score).toBe(8)
     expect(ratings.ratingFor(firstId).saveError).toBe('')
+    expect(ratings.hasUnconfirmedMutation(firstId)).toBe(false)
+  })
+
+  it('confirms a first episode rating retry when its own response creates the current viewing', async () => {
+    const noViewing = {
+      items: [{
+        episodeId: firstId,
+        score: null
+      }, {
+        episodeId: secondId,
+        score: null
+      }],
+
+      viewing: null,
+      summary: emptySummary
+    }
+
+    const confirmed = {
+      ...initial,
+
+      items: [{
+        episodeId: firstId,
+        score: 8
+      }, {
+        episodeId: secondId,
+        score: null
+      }]
+    }
+
+    harness.fetch.mockResolvedValueOnce(empty).mockResolvedValueOnce(noViewing).mockRejectedValueOnce(new Error('Lost first rating answer')).mockResolvedValueOnce(response(8)).mockResolvedValueOnce(page).mockResolvedValueOnce(confirmed)
+
+    const { state, ratings } = setupRatings()
+
+    await state.load()
+    await ratings.loadBatch()
+    await expect(ratings.save(firstId, 8, '2026-10-17')).resolves.toBe(false)
+
+    const original = harness.fetch.mock.calls[2]?.[1].body
+
+    await expect(ratings.retryMutation()).resolves.toBe(true)
+    expect(harness.fetch.mock.calls[3]?.[1].body).toStrictEqual(original)
+
+    expect(original).toMatchObject({
+      currentViewingId: null,
+      contextVersion: 0,
+      viewingDate: '2026-10-17'
+    })
+
+    expect(state.summary.value.currentViewingId).toBe(series.id)
+    expect(ratings.ratingFor(firstId).score).toBe(8)
+    expect(ratings.ratingFor(firstId).saveError).toBe('')
+  })
+
+  it('ignores a definitive retry error after the account changes', async () => {
+    const pending = Promise.withResolvers<unknown>()
+
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(initial).mockRejectedValueOnce(new Error('Lost rating answer')).mockReturnValueOnce(pending.promise)
+
+    const { state, ratings, account } = setupRatings()
+
+    await state.load()
+    await ratings.loadBatch()
+    await ratings.save(firstId, 8)
+
+    const retried = ratings.retryMutation()
+
+    account.value = 'another-account'
+
+    pending.reject({ statusCode: 409 })
+    await expect(retried).resolves.toBe(false)
+    expect(ratings.ratingFor(firstId).saveError).toBe('')
+    expect(ratings.ratingFor(firstId).score).toBeNull()
+    expect(ratings.unauthorized.value).toBeNull()
   })
 
   it.each([
@@ -215,52 +331,44 @@ describe('private episode ratings lifecycle', () => {
       episodeId: secondId,
       score: null
     }] }
-  ])('does not turn malformed or incomplete batches into unrated states: %j', async response => {
-    vi.spyOn(globalThis.console, 'warn').mockReturnValue()
+  ])('rejects incomplete or malformed batches while preserving point recovery: %j', async malformed => {
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce({
+      ...malformed,
+      viewing: series,
+      summary
+    }).mockResolvedValueOnce(response(6))
 
-    const { ratings } = setup()
+    const { state, ratings } = setupRatings()
 
-    harness.fetch.mockResolvedValueOnce(response).mockResolvedValueOnce({ score: 6 })
+    await state.load()
     await ratings.loadBatch()
     expect(ratings.batchError.value).toBe(true)
     expect(ratings.ratingFor(firstId).status).toBe('error')
     await ratings.load(firstId)
-
-    expect(ratings.ratingFor(firstId)).toMatchObject({
-      score: 6,
-      status: 'loaded'
-    })
-
+    expect(ratings.ratingFor(firstId).score).toBe(6)
     expect(ratings.ratingFor(secondId).status).toBe('error')
   })
 
-  it('distinguishes unauthorized reads and mutations', async () => {
-    const { ratings } = setup()
+  it('aborts old-account operations and does not apply their late scores', async () => {
+    const old = Promise.withResolvers<unknown>()
 
-    harness.fetch.mockRejectedValueOnce({ statusCode: 401 }).mockResolvedValueOnce(initial).mockRejectedValueOnce({ statusCode: 401 })
-    await ratings.loadBatch()
-    expect(ratings.unauthorized.value).toBe('load')
-    await ratings.loadBatch()
-    await expect(ratings.save(firstId, 6)).resolves.toBe(false)
-    expect(ratings.unauthorized.value).toBe('mutation')
-    expect(ratings.ratingFor(firstId).score).toBe(4)
-  })
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(initial).mockReturnValueOnce(old.promise)
 
-  it('aborts all episode operations when leaving the season', async () => {
-    const pending = Promise.withResolvers<unknown>()
-    const { ratings, scope } = setup()
+    const { state, account, ratings } = setupRatings()
 
-    harness.fetch.mockResolvedValueOnce(initial).mockReturnValue(pending.promise)
+    await state.load()
     await ratings.loadBatch()
 
-    const first = ratings.save(firstId, 8)
-    const second = ratings.save(secondId, 9)
+    const saved = ratings.save(firstId, 9)
+    const signal = harness.fetch.mock.calls[2]?.[1].signal
 
-    scope.stop()
-    expect(harness.fetch.mock.calls[1]?.[1].signal.aborted).toBe(true)
-    expect(harness.fetch.mock.calls[2]?.[1].signal.aborted).toBe(true)
-    pending.resolve({ score: 8 })
-    await expect(first).resolves.toBe(false)
-    await expect(second).resolves.toBe(false)
+    account.value = 'another-account'
+
+    old.resolve(response(9))
+    await expect(saved).resolves.toBe(false)
+    expect(signal?.aborted).toBe(true)
+    expect(ratings.ratingFor(firstId).score).toBeNull()
+    expect(ratings.ratingFor(firstId).status).toBe('idle')
+    expect(ratings.ratingFor(firstId).saveError).toBe('')
   })
 })

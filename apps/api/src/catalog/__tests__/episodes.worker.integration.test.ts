@@ -238,12 +238,13 @@ describe('catalog episodes Worker contract', () => {
       requestId,
       currentViewingId: null,
       contextVersion: 0,
-      timeZone: 'UTC'
+      timeZone: 'UTC',
+      viewingDate: '2026-10-17'
     }
 
     const marked = await request(mutationPath, 'PUT', { body: input })
     const markedBody = await marked.json<CatalogSeriesWatchesResponse>()
-    const viewingId = markedBody.currentViewing?.id
+    const viewingId = markedBody.viewing?.id
     const watchId = markedBody.watches[0]?.id
 
     assert(viewingId !== undefined)
@@ -252,10 +253,12 @@ describe('catalog episodes Worker contract', () => {
     const markedAgain = await request(mutationPath, 'PUT', { body: input })
     const firstAccount = await request(listingPath)
     const secondAccount = await request(listingPath, 'GET', { cookie: SECOND_COOKIE })
+    const unwatchRequestId = crypto.randomUUID()
 
     const unwatch = {
+      requestId: unwatchRequestId,
       currentViewingId: viewingId,
-      contextVersion: markedBody.contextVersion,
+      contextVersion: markedBody.summary.contextVersion,
       watchId
     }
 
@@ -263,14 +266,23 @@ describe('catalog episodes Worker contract', () => {
     const unmarkedAgain = await request(mutationPath, 'DELETE', { body: unwatch })
 
     const emptyState = {
-      watchedEpisodeIds: [],
       watches: [],
-      currentViewing: null,
-      contextVersion: 0
+      viewing: null,
+
+      summary: {
+        completedCount: 0,
+        currentViewingId: null,
+        contextVersion: 0,
+        currentViewingScore: null,
+        currentVoteScore: null
+      }
     }
 
     await expect(initial.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(emptyState)
-    expect(markedBody.watchedEpisodeIds).toStrictEqual([episodeId])
+
+    const markedBodyEpisodeIds = markedBody.watches.map(watch => watch.catalogEpisodeId)
+
+    expect(markedBodyEpisodeIds).toStrictEqual([episodeId])
     expect(markedBody.watches).toHaveLength(1)
 
     expect(markedBody.watches[0]).toMatchObject({
@@ -281,25 +293,38 @@ describe('catalog episodes Worker contract', () => {
 
     expect(markedBody.watches[0]?.markedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
 
-    expect(markedBody.currentViewing).toMatchObject({
+    expect(markedBody.viewing).toMatchObject({
       id: viewingId,
       catalogItemId: chernobylId,
       status: 'watching',
-      revision: 1
+      startedOn: '2026-10-17',
+      completedOn: null
     })
 
-    expect(markedBody.contextVersion).toBe(1)
+    expect(markedBody.summary.contextVersion).toBe(1)
     await expect(markedAgain.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(markedBody)
     await expect(firstAccount.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(markedBody)
     await expect(secondAccount.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(emptyState)
 
     const unmarkedBody = await unmarked.json<CatalogSeriesWatchesResponse>()
 
-    expect(unmarkedBody).toStrictEqual({
-      watchedEpisodeIds: [],
+    expect(unmarkedBody).toMatchObject({
       watches: [],
-      currentViewing: markedBody.currentViewing,
-      contextVersion: markedBody.contextVersion
+
+      viewing: {
+        id: viewingId,
+        status: 'watching',
+        startedOn: '2026-10-17',
+        completedOn: null
+      },
+
+      summary: {
+        completedCount: 0,
+        currentViewingId: viewingId,
+        contextVersion: markedBody.summary.contextVersion + 1,
+        currentViewingScore: null,
+        currentVoteScore: null
+      }
     })
 
     await expect(unmarkedAgain.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual(unmarkedBody)
@@ -315,8 +340,10 @@ describe('catalog episodes Worker contract', () => {
     const movieWatchedPath = `/api/catalog/items/${movieId}/episodes/watched`
     const movie = await request(movieWatchedPath)
     const invalid = await request('/api/catalog/episodes/not-a-uuid/watched', 'PUT')
+    const missingWatchRequestId = crypto.randomUUID()
 
     const missing = await request('/api/catalog/episodes/01991a00-0000-7000-8000-999999999999/watched', 'DELETE', { body: {
+      requestId: missingWatchRequestId,
       currentViewingId: '71000000-0000-7000-8000-000000000004',
       contextVersion: 1,
       watchId: '71000000-0000-7000-8000-000000000005'
@@ -343,15 +370,21 @@ describe('catalog episodes Worker contract', () => {
     const response = await request(mutationPath, method)
     const state = await request(listingPath)
 
-    expect(response.status).toBe(409)
+    expect(response.status).toBe(400)
     expectNoStore(response)
-    await expect(response.json()).resolves.toMatchObject({ error: { code: 'CONFLICT' } })
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'INVALID_REQUEST' } })
 
     await expect(state.json<CatalogSeriesWatchesResponse>()).resolves.toStrictEqual({
-      watchedEpisodeIds: [],
       watches: [],
-      currentViewing: null,
-      contextVersion: 0
+      viewing: null,
+
+      summary: {
+        completedCount: 0,
+        currentViewingId: null,
+        contextVersion: 0,
+        currentViewingScore: null,
+        currentVoteScore: null
+      }
     })
   })
 

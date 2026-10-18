@@ -187,7 +187,7 @@ describe('catalog episode snapshot migration', () => {
     await insertSeriesEpisodeWatches(client, '72000000-0000-7000-8000-000000000001', {
       episodeIds: ['30000000-0000-7000-8000-000000000001'],
       markedAt: '2020-09-21T12:00:00.123456Z',
-      status: 'paused'
+      status: 'completed'
     })
 
     const oldEpisodes = await client.query('SELECT * FROM catalog_episodes ORDER BY id')

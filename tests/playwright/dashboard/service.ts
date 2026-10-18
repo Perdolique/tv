@@ -1,16 +1,14 @@
 import type { CatalogViewingHistoryItem, CatalogViewingSummaryResponse } from '../../../packages/shared/src/catalog.ts'
 import type { CatalogViewing } from '../../../packages/shared/src/catalog-viewings.ts'
+import type { CatalogSeriesEpisodeWatch } from '../../../packages/shared/src/catalog-series.ts'
 import { detailsItems } from '../catalog/details.fixtures.ts'
 import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 
-function createViewingItems(movieIds: Set<string>, episodeIds: Set<string>, viewings?: CatalogViewing[]): CatalogViewingHistoryItem[] {
+function createViewingItems(viewings: CatalogViewing[], watches: CatalogSeriesEpisodeWatch[]): CatalogViewingHistoryItem[] {
   const items: CatalogViewingHistoryItem[] = []
 
   for (const title of detailsItems) {
-    const movies = viewings?.filter(viewing => viewing.catalogItemId === title.id) ?? (movieIds.has(title.id) ? [{
-      id: title.id,
-      recordedAt: '2026-09-22T13:00:00.123456Z'
-    }] : [])
+    const movies = viewings.filter(viewing => viewing.catalogItemId === title.id)
 
     for (const viewing of movies) {
       items.push({
@@ -24,7 +22,7 @@ function createViewingItems(movieIds: Set<string>, episodeIds: Set<string>, view
         originalTitleLocale: title.originalTitleLocale,
         posterUrl: title.posterUrl,
         releaseYear: title.releaseYear,
-        markedAt: viewing.recordedAt,
+        markedAt: `${viewing.completedOn}T00:00:00.000000Z`,
         episodeNumber: null,
         seasonNumber: null,
         sourceTitle: null
@@ -32,10 +30,12 @@ function createViewingItems(movieIds: Set<string>, episodeIds: Set<string>, view
     }
 
     for (const episode of episodeFixtures.get(title.id) ?? []) {
-      if (episodeIds.has(episode.id)) {
+      const marked = watches.filter(watch => watch.catalogEpisodeId === episode.id)
+
+      for (const watch of marked) {
         items.push({
           id: title.id,
-          entryId: episode.id,
+          entryId: watch.id,
           kind: 'episode',
           type: 'series',
           title: title.title,
@@ -44,7 +44,7 @@ function createViewingItems(movieIds: Set<string>, episodeIds: Set<string>, view
           originalTitleLocale: title.originalTitleLocale,
           posterUrl: title.posterUrl,
           releaseYear: title.releaseYear,
-          markedAt: '2026-09-22T14:00:00.123456Z',
+          markedAt: watch.markedAt,
           episodeNumber: episode.episodeNumber,
           seasonNumber: episode.seasonNumber,
           sourceTitle: episode.sourceTitle

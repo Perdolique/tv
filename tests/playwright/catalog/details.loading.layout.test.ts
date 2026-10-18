@@ -96,7 +96,7 @@ for (const width of [320, 390, 768, 1440]) {
     label: 'Mark as watched'
   }, {
     watched: true,
-    label: 'Watched again'
+    label: 'Mark as watched'
   }]) {
     test(`keeps personal actions stable while loading at ${width}px with watched ${watched}`, async ({ context, page }) => {
       const release = Promise.withResolvers<boolean>()
@@ -128,9 +128,12 @@ for (const width of [320, 390, 768, 1440]) {
             catalogItemId: dune.id,
             status: 'completed',
             startedOn: null,
-            completedOn: null,
+            completedOn: '2026-10-17',
             recordedAt: '2020-01-01T12:00:00.123456Z',
-            revision: 1
+            revision: 1,
+            score: null,
+            isRewatch: false,
+            canCancelRewatch: false
           }] : [],
 
           nextCursor: null,
@@ -140,7 +143,9 @@ for (const width of [320, 390, 768, 1440]) {
 
             // oxlint-disable-next-line vitest/no-conditional-in-test -- Each table case has a fixed current-viewing fixture.
             currentViewingId: watched ? dune.id : null,
-            contextVersion: Number(watched)
+            contextVersion: Number(watched),
+            currentViewingScore: null,
+            currentVoteScore: null
           }
         } })
       })

@@ -1,13 +1,16 @@
-/* oxlint-disable eslint/max-lines -- This PostgreSQL fixture suite covers grouping, pagination and immutable event metadata together. */
+/* oxlint-disable eslint/max-lines -- PostgreSQL fixtures cover stable grouping, calendar invalidation and bounded pagination together. */
 import { env } from 'node:process'
 import assert from 'node:assert/strict'
 import { createDatabase } from '@tv/database'
-import { catalogTimelineEpisodesResponseSchema, catalogTimelineResponseSchema } from '@tv/shared/catalog-timeline'
+import { catalogTimelineResponseSchema } from '@tv/shared/catalog-timeline'
 import { Client } from 'pg'
 import * as v from 'valibot'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
-import { findCatalogTimeline, findCatalogTimelineEpisodes } from '../../timeline-repository.ts'
+import { findCatalogTimeline } from '../../timeline-repository.ts'
+import { findViewings } from '../../viewings-repository.ts'
+import { findViewingHistoryRows } from '../../viewing-repository.ts'
+import { createViewingHistoryResponse, decodeViewingCursor } from '../../viewing-history.ts'
 
 const userId = '93000000-0000-4000-8000-000000000011'
 const otherUserId = '93000000-0000-4000-8000-000000000012'
@@ -28,15 +31,17 @@ interface WatchSeed {
   seasonNumber?: number;
 }
 
-async function seedViewing(status: 'watching' | 'paused' | 'completed' = 'watching'): Promise<string> {
+async function seedViewing(status: 'watching' | 'completed' = 'watching'): Promise<string> {
+  const completedOn = status === 'completed' ? '2026-10-31' : null
+
   const result = await client.query<{ id: string }>(`
-    INSERT INTO catalog_viewings (user_id, catalog_item_id, status)
-    VALUES ($1, $2, $3) RETURNING id
-  `, [userId, seriesId, status])
+    INSERT INTO catalog_viewings (user_id, catalog_item_id, status, started_on, completed_on)
+    VALUES ($1, $2, $3, '2026-10-01', $4) RETURNING id
+  `, [userId, seriesId, status, completedOn])
 
   const id = result.rows[0]?.id
 
-  if (id === undefined) { throw new Error('Series viewing fixture is missing') }
+  assert.ok(id !== undefined, 'Series viewing fixture is missing')
 
   return id
 }
@@ -53,12 +58,34 @@ async function seedWatches(seed: WatchSeed): Promise<void> {
   `, [userId, seriesId, seed.viewingId, seed.timestamp, seed.seasonNumber ?? 1, seed.episodeNumbers])
 }
 
-async function seedRatings(count: number): Promise<void> {
+async function seedMilestones(viewingId: string, count: number, timestamp = '2026-10-01T12:00:00.123456Z'): Promise<void> {
   await client.query(`
-    INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, occurred_at, previous_score, score)
-    SELECT $1, $2, 'rating_changed', '2026-10-01T12:00:00.123456Z'::timestamptz, 7, 8
-    FROM generate_series(1, $3::integer)
-  `, [userId, seriesId, count])
+    INSERT INTO catalog_timeline_events (user_id, catalog_item_id, viewing_id, kind, season_number, episode_ids, occurred_at)
+    SELECT $1, $2, $3, 'season_completed', 1, jsonb_build_array((SELECT id FROM catalog_episodes WHERE catalog_item_id = $2 LIMIT 1)), $5::timestamptz
+    FROM generate_series(1, $4::integer)
+  `, [userId, seriesId, viewingId, count, timestamp])
+}
+
+interface SeededMovieDay {
+  id: string;
+  day: string;
+}
+
+async function seedMovieDays(days: string[]): Promise<SeededMovieDay[]> {
+  const result = await client.query<SeededMovieDay>(`
+    WITH viewings AS (
+      INSERT INTO catalog_viewings (user_id, catalog_item_id, status, completed_on, recorded_at)
+      SELECT $1, $2, 'completed', day, '2026-10-17T12:00:00Z'::timestamptz - number * interval '1 minute'
+      FROM unnest($3::date[]) WITH ORDINALITY AS days(day, number)
+      RETURNING id, user_id, catalog_item_id, completed_on, recorded_at
+    ), events AS (
+      INSERT INTO catalog_timeline_events (id, user_id, catalog_item_id, viewing_id, kind, occurred_at)
+      SELECT id, user_id, catalog_item_id, id, 'movie_viewing', recorded_at FROM viewings RETURNING viewing_id
+    )
+    SELECT viewings.id, completed_on::text AS day FROM viewings JOIN events ON events.viewing_id = viewings.id
+  `, [userId, movieId, days])
+
+  return result.rows
 }
 
 describe('private title timeline reads', () => {
@@ -91,7 +118,7 @@ describe('private title timeline reads', () => {
     await client.end()
   })
 
-  it('groups more than twenty episodes before paging and preserves gaps by season', async () => {
+  it('groups a complete day before paging and preserves episode gaps by season', async () => {
     // Arrange
     const viewingId = await seedViewing()
     const episodeNumbers = Array.from({ length: 28 }, (_value, index) => index + 1)
@@ -109,7 +136,7 @@ describe('private title timeline reads', () => {
       episodeNumbers: [1, 3]
     })
 
-    await seedRatings(23)
+    await seedMilestones(viewingId, 23)
 
     // Act
     const first = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
@@ -123,19 +150,13 @@ describe('private title timeline reads', () => {
       cursor: first.nextCursor
     })
 
-    const episodes = await findCatalogTimelineEpisodes(database, owner, {
-      timeZone: 'Europe/Tallinn',
-      viewingId,
-      localDate: group.localDate,
-      groupCursor: group.episodesCursor
-    })
-
-    // Assert
     const validTimeline = v.is(catalogTimelineResponseSchema, first)
 
+    // Assert
     expect(validTimeline).toBe(true)
     expect(first.items).toHaveLength(20)
     expect(group.totalCount).toBe(30)
+    expect(group.id).toBe(`episode_group:${viewingId}:2026-10-25`)
 
     expect(group.seasons).toStrictEqual([
       {
@@ -160,126 +181,23 @@ describe('private title timeline reads', () => {
     ])
 
     expect(next.items).toHaveLength(4)
-
-    const nextPageContainsOnlyRatings = next.items.every(item => item.kind === 'rating_changed')
-
-    expect(nextPageContainsOnlyRatings).toBe(true)
     expect(next.nextCursor).toBeNull()
-
-    const validEpisodes = v.is(catalogTimelineEpisodesResponseSchema, episodes)
-
-    expect(validEpisodes).toBe(true)
-    expect(episodes.items).toHaveLength(20)
-    expect(episodes.nextCursor).not.toBeNull()
   })
 
-  it('keeps detail pages on the same upper bound after new marks and boundary deletion', async () => {
+  it('uses local midnight across DST and separates repeated viewings of one episode', async () => {
     // Arrange
-    const viewingId = await seedViewing()
-    const episodeNumbers = Array.from({ length: 25 }, (_value, index) => index + 1)
-
-    await seedWatches({
-      viewingId,
-      timestamp: '2026-10-25T01:30:00.123456Z',
-      episodeNumbers
-    })
-
-    const timeline = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
-    const [group] = timeline.items
-
-    assert.ok(group?.kind === 'episode_group', 'Episode group is missing')
-
-    const query = {
-      timeZone: 'Europe/Tallinn',
-      viewingId,
-      localDate: group.localDate,
-      groupCursor: group.episodesCursor
-    }
-
-    const first = await findCatalogTimelineEpisodes(database, owner, query)
-
-    assert.ok(first.nextCursor !== null, 'Episode detail cursor is missing')
-
-    await seedWatches({
-      viewingId,
-      timestamp: '2026-10-25T01:30:00.123457Z',
-      episodeNumbers: [26]
-    })
-
-    const boundaryWatch = first.items.at(-1)
-
-    await client.query('DELETE FROM catalog_viewing_episode_watches WHERE id = $1', [boundaryWatch?.watchId])
-    await client.query('DELETE FROM catalog_viewing_episode_watches WHERE id = $1', [first.items[0]?.watchId])
-
-    // Act
-    const next = await findCatalogTimelineEpisodes(database, owner, {
-      ...query,
-      cursor: first.nextCursor
-    })
-
-    const repeatedFirstPage = await findCatalogTimelineEpisodes(database, owner, query)
-    const refreshed = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
-
-    // Assert
-    const nextPageExcludesNewMark = next.items.every(item => item.episodeNumber !== 26)
-    const repeatedPageExcludesNewMark = repeatedFirstPage.items.every(item => item.episodeNumber !== 26)
-
-    expect(next.items).toHaveLength(5)
-    expect(nextPageExcludesNewMark).toBe(true)
-    expect(repeatedPageExcludesNewMark).toBe(true)
-    expect(next.nextCursor).toBeNull()
-
-    const allItems = [...first.items, ...next.items]
-    const allIds = allItems.map(item => item.id)
-    const uniqueIds = new Set(allIds)
-
-    expect(uniqueIds.size).toBe(25)
-
-    expect(refreshed.items[0]).toMatchObject({
-      kind: 'episode_group',
-      totalCount: 24
-    })
-
-    await expect(findCatalogTimelineEpisodes(database, {
-      userId: otherUserId,
-      catalogItemId: seriesId
-    }, query)).rejects.toMatchObject({ status: 400 })
-  })
-
-  it('uses local midnight across DST and keeps separate viewings of the same episode', async () => {
-    // Arrange
-    const firstViewing = await seedViewing('paused')
+    const firstViewing = await seedViewing('completed')
     const secondViewing = await seedViewing()
+    const timestamps = ['2026-10-24T20:59:59.999999Z', '2026-10-24T21:00:00.000000Z', '2026-10-25T00:30:00.123456Z', '2026-10-25T01:30:00.123456Z', '2026-10-25T22:00:00.000000Z']
 
-    await seedWatches({
-      viewingId: firstViewing,
-      timestamp: '2026-10-24T20:59:59.999999Z',
-      episodeNumbers: [1]
-    })
-
-    await seedWatches({
-      viewingId: firstViewing,
-      timestamp: '2026-10-24T21:00:00.000000Z',
-      episodeNumbers: [2]
-    })
-
-    await seedWatches({
-      viewingId: firstViewing,
-      timestamp: '2026-10-25T00:30:00.123456Z',
-      episodeNumbers: [3]
-    })
-
-    await seedWatches({
-      viewingId: firstViewing,
-      timestamp: '2026-10-25T01:30:00.123456Z',
-      episodeNumbers: [4]
-    })
-
-    await seedWatches({
-      viewingId: firstViewing,
-      timestamp: '2026-10-25T22:00:00.000000Z',
-      episodeNumbers: [5]
-    })
+    for (const [index, timestamp] of timestamps.entries()) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- One PostgreSQL client executes its fixture writes serially.
+      await seedWatches({
+        viewingId: firstViewing,
+        timestamp,
+        episodeNumbers: [index + 1]
+      })
+    }
 
     await seedWatches({
       viewingId: secondViewing,
@@ -291,238 +209,60 @@ describe('private title timeline reads', () => {
     const timeline = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
     const groups = timeline.items.filter(item => item.kind === 'episode_group')
     const firstGroups = groups.filter(item => item.viewingId === firstViewing)
-    const firstGroupCounts = firstGroups.map(item => [item.localDate, item.totalCount])
-    const secondViewingGroup = groups.find(item => item.viewingId === secondViewing)
+    const counts = firstGroups.map(item => [item.localDate, item.totalCount])
+    const secondGroup = groups.find(item => item.viewingId === secondViewing)
 
     // Assert
-    expect(firstGroupCounts).toStrictEqual([
-      ['2026-10-26', 1], ['2026-10-25', 3], ['2026-10-24', 1]
-    ])
+    expect(counts).toStrictEqual([['2026-10-26', 1], ['2026-10-25', 3], ['2026-10-24', 1]])
 
-    expect(secondViewingGroup).toMatchObject({
+    expect(secondGroup).toMatchObject({
       localDate: '2026-10-25',
       totalCount: 1
     })
-
-    const timelineContainsOnlyGroups = timeline.items.every(item => item.kind === 'episode_group')
-
-    expect(timelineContainsOnlyGroups).toBe(true)
   })
 
-  it('pages exact timestamp ties without looking up a deleted boundary or adding new events', async () => {
+  it('keeps a group identity and page position after deleting its latest mark and revisiting an old viewing', async () => {
     // Arrange
-    await seedRatings(23)
-
-    await client.query(`
-      UPDATE catalog_timeline_events SET occurred_at = '2026-10-01T12:00:00.123455Z'
-      WHERE user_id = $1 AND id IN (SELECT id FROM catalog_timeline_events WHERE user_id = $1 ORDER BY id LIMIT 3)
-    `, [userId])
-
-    const expected = await client.query<{ id: string }>('SELECT id FROM catalog_timeline_events WHERE user_id = $1 ORDER BY occurred_at DESC, id DESC', [userId])
-    const first = await findCatalogTimeline(database, owner, { timeZone: 'UTC' })
-
-    assert.ok(first.nextCursor !== null, 'Timeline cursor is missing')
-
-    const boundaryEvent = first.items.at(-1)
-
-    await client.query('DELETE FROM catalog_timeline_events WHERE id = $1', [boundaryEvent?.id])
-    await client.query('DELETE FROM catalog_timeline_events WHERE id = $1', [first.items[0]?.id])
-    await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, occurred_at, score) VALUES ($1, $2, \'rating_changed\', \'2026-10-01T12:00:00.123457Z\', 9)', [userId, seriesId])
-
-    // Act
-    const next = await findCatalogTimeline(database, owner, {
-      timeZone: 'UTC',
-      cursor: first.nextCursor
-    })
-
-    const allItems = [...first.items, ...next.items]
-    const ids = allItems.map(item => item.id)
-    const expectedIds = expected.rows.map(row => row.id)
-    const nextPageHasEarlierEvents = next.items.every(item => item.occurredAt === '2026-10-01T12:00:00.123455Z')
-
-    // Assert
-    expect(first.items).toHaveLength(20)
-    expect(boundaryEvent?.occurredAt).toBe('2026-10-01T12:00:00.123456Z')
-    expect(next.items).toHaveLength(3)
-    expect(nextPageHasEarlierEvents).toBe(true)
-    expect(ids).toStrictEqual(expectedIds)
-    expect(next.nextCursor).toBeNull()
-  })
-
-  it('reads current movie dates while keeping rating changes independent from viewing deletion', async () => {
-    // Arrange
-    const result = await client.query<{ id: string }>('INSERT INTO catalog_viewings (user_id, catalog_item_id, started_on, recorded_at) VALUES ($1, $2, \'2024-02-29\', \'2026-01-01T12:00:00.123456Z\') RETURNING id', [userId, movieId])
-    const viewingId = result.rows[0]?.id
-
-    await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, occurred_at, previous_score, score) VALUES ($1, $2, \'rating_changed\', \'2026-01-02T12:00:00.123456Z\', 7, null)', [userId, movieId])
-    await client.query('UPDATE catalog_viewings SET started_on = \'2024-03-01\', completed_on = \'2024-03-02\' WHERE id = $1', [viewingId])
-
-    // Act
-    const timeline = await findCatalogTimeline(database, {
-      userId,
-      catalogItemId: movieId
-    }, { timeZone: 'UTC' })
-
-    await client.query('DELETE FROM catalog_viewings WHERE id = $1', [viewingId])
-
-    const remaining = await findCatalogTimeline(database, {
-      userId,
-      catalogItemId: movieId
-    }, { timeZone: 'UTC' })
-
-    // Assert
-    expect(timeline.items[1]).toMatchObject({
-      kind: 'movie_viewing',
-      viewingId,
-      startedOn: '2024-03-01',
-      completedOn: '2024-03-02',
-      occurredAt: '2026-01-01T12:00:00.123456Z'
-    })
-
-    expect(remaining.items).toHaveLength(1)
-
-    expect(remaining.items[0]).toMatchObject({
-      kind: 'rating_changed',
-      target: 'item',
-      previousScore: 7,
-      score: null
-    })
-
-    const validTimeline = v.is(catalogTimelineResponseSchema, remaining)
-
-    expect(validTimeline).toBe(true)
-  })
-
-  it('returns the stored rating targets and achievement count after the catalog grows', async () => {
-    // Arrange
-    const viewingId = await seedViewing()
-    const episodes = await client.query<{ id: string }>('SELECT id FROM catalog_episodes WHERE catalog_item_id = $1 ORDER BY season_number, episode_number LIMIT 2', [seriesId])
-    const episodeIds = episodes.rows.map(row => row.id)
-
-    await client.query(`
-      INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, season_number, catalog_episode_id, previous_score, score)
-      VALUES ($1, $2, 'rating_changed', null, null, null, 8),
-        ($1, $2, 'rating_changed', 1, null, 8, 9), ($1, $2, 'rating_changed', null, $3, 9, 7)
-    `, [userId, seriesId, episodeIds[0]])
-
-    const episodeIdsJson = JSON.stringify(episodeIds)
-
-    await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, viewing_id, season_number, episode_ids) VALUES ($1, $2, \'season_completed\', $3, 1, $4::jsonb)', [userId, seriesId, viewingId, episodeIdsJson])
-    await client.query('INSERT INTO catalog_episodes (catalog_item_id, season_number, episode_number) VALUES ($1, 1, 29)', [seriesId])
-
-    // Act
-    const timeline = await findCatalogTimeline(database, owner, { timeZone: 'UTC' })
-    const ratings = timeline.items.filter(item => item.kind === 'rating_changed')
-    const ratingChanges = ratings.map(item => [item.target, item.seasonNumber, item.episodeNumber, item.previousScore, item.score])
-
-    // Assert
-    expect(ratingChanges).toStrictEqual([
-      ['episode', 1, 1, 9, 7], ['season', 1, null, 8, 9], ['item', null, null, null, 8]
-    ])
-
-    expect(timeline.items[0]).toMatchObject({
-      kind: 'season_completed',
-      seasonNumber: 1,
-      totalCount: 2
-    })
-
-    const validTimeline = v.is(catalogTimelineResponseSchema, timeline)
-
-    expect(validTimeline).toBe(true)
-  })
-
-  it('does not repeat a paged group after its latest event is deleted', async () => {
-    // Arrange
-    const unseenViewing = await seedViewing('paused')
-    const firstViewing = await seedViewing()
-
-    // The old viewing closes before the new one starts, as the rewatch API requires.
-    await client.query('UPDATE catalog_viewings SET recorded_at = \'2026-10-25T00:00:00.000000Z\' WHERE id = $1', [unseenViewing])
-    await client.query('UPDATE catalog_viewings SET recorded_at = \'2026-10-25T00:30:00.000000Z\' WHERE id = $1', [firstViewing])
+    const olderViewing = await seedViewing('completed')
+    const newerViewing = await seedViewing()
 
     await seedWatches({
-      viewingId: firstViewing,
+      viewingId: olderViewing,
       timestamp: '2026-10-25T02:00:00.123456Z',
       episodeNumbers: [1]
     })
 
     await seedWatches({
-      viewingId: firstViewing,
+      viewingId: olderViewing,
       timestamp: '2026-10-25T01:00:00.123456Z',
       episodeNumbers: [2]
     })
 
     await seedWatches({
-      viewingId: unseenViewing,
-      timestamp: '2026-10-25T00:10:00.123456Z',
+      viewingId: newerViewing,
+      timestamp: '2026-10-24T01:00:00.123456Z',
       episodeNumbers: [1]
     })
 
-    await seedRatings(43)
-    await client.query('UPDATE catalog_timeline_events SET occurred_at = \'2026-10-25T01:30:00.123456Z\' WHERE user_id = $1 AND kind = \'rating_changed\'', [userId])
+    await seedMilestones(newerViewing, 43)
 
     const first = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
     const [group] = first.items
 
-    assert.ok(group?.kind === 'episode_group', 'Expected the latest episode group')
+    assert.ok(group?.kind === 'episode_group', 'Expected the old viewing group')
     assert.ok(first.nextCursor !== null, 'Expected a next timeline page')
-    await client.query('DELETE FROM catalog_viewing_episode_watches WHERE id = (SELECT watch_id FROM catalog_timeline_events WHERE id = $1)', [group.id])
 
-    // Act
-    const next = await findCatalogTimeline(database, owner, {
-      timeZone: 'Europe/Tallinn',
-      cursor: first.nextCursor
-    })
-
-    assert.ok(next.nextCursor !== null, 'Expected a third timeline page')
-
-    const last = await findCatalogTimeline(database, owner, {
-      timeZone: 'Europe/Tallinn',
-      cursor: next.nextCursor
-    })
-
-    const lastGroups = last.items.filter(item => item.kind === 'episode_group')
-    const lastViewingIds = lastGroups.map(item => item.viewingId)
-
-    // Assert
-    expect(first.items).toHaveLength(20)
-    expect(group.viewingId).toBe(firstViewing)
-    expect(next.items).toHaveLength(20)
-    expect(lastViewingIds).toStrictEqual([unseenViewing])
-    expect(last.items).toHaveLength(5)
-    expect(last.nextCursor).toBeNull()
-  })
-
-  it('resets the viewing watermark after crossing the local day boundary', async () => {
-    // Arrange
-    const viewingId = await seedViewing()
-
-    await client.query('UPDATE catalog_viewings SET recorded_at = \'2026-10-24T00:00:00.000000Z\' WHERE id = $1', [viewingId])
+    await client.query(`DELETE FROM catalog_viewing_episode_watches WHERE viewing_id = $1
+      AND catalog_episode_id = (SELECT id FROM catalog_episodes WHERE catalog_item_id = $2 AND season_number = 1 AND episode_number = 1)`, [olderViewing, seriesId])
 
     await seedWatches({
-      viewingId,
-      timestamp: '2026-10-25T13:00:00.123456Z',
-      episodeNumbers: [1]
+      viewingId: olderViewing,
+      timestamp: '2026-10-25T03:00:00.123456Z',
+      episodeNumbers: [3]
     })
-
-    await seedWatches({
-      viewingId,
-      timestamp: '2026-10-24T11:00:00.123456Z',
-      episodeNumbers: [2]
-    })
-
-    await seedRatings(25)
-    await client.query('UPDATE catalog_timeline_events SET occurred_at = \'2026-10-25T12:00:00.123456Z\' WHERE user_id = $1 AND kind = \'rating_changed\'', [userId])
-
-    await client.query(`
-      INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, occurred_at, previous_score, score)
-      SELECT $1, $2, 'rating_changed', '2026-10-24T12:00:00.123456Z'::timestamptz, 7, 8 FROM generate_series(1, 23)
-    `, [userId, seriesId])
 
     // Act
-    const first = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
-
-    assert.ok(first.nextCursor !== null, 'Expected a second timeline page')
+    const refreshed = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
 
     const second = await findCatalogTimeline(database, owner, {
       timeZone: 'Europe/Tallinn',
@@ -536,22 +276,309 @@ describe('private title timeline reads', () => {
       cursor: second.nextCursor
     })
 
-    const allItems = [...first.items, ...second.items, ...third.items]
-    const groups = allItems.filter(item => item.kind === 'episode_group')
-    const groupDays = groups.map(item => [item.viewingId, item.localDate])
+    const items = [...first.items, ...second.items, ...third.items]
+    const ids = items.map(item => item.id)
+    const uniqueIds = new Set(ids)
+    const groups = items.filter(item => item.kind === 'episode_group')
+    const groupKeys = groups.map(item => item.id)
 
     // Assert
-    expect(groupDays).toStrictEqual([
-      [viewingId, '2026-10-25'], [viewingId, '2026-10-24']
-    ])
+    expect(refreshed.items[0]).toMatchObject({
+      id: group.id,
+      occurredAt: group.occurredAt,
+      totalCount: 2
+    })
 
-    expect(third.items).toHaveLength(10)
+    expect(ids).toHaveLength(45)
+    expect(uniqueIds.size).toBe(45)
+    expect(groupKeys).toStrictEqual([`episode_group:${olderViewing}:2026-10-25`, `episode_group:${newerViewing}:2026-10-24`])
     expect(third.nextCursor).toBeNull()
+  })
+
+  it('pages microsecond ties after boundary deletion and excludes new source events', async () => {
+    // Arrange
+    const viewingId = await seedViewing()
+
+    await seedMilestones(viewingId, 23)
+
+    await client.query(`UPDATE catalog_timeline_events SET occurred_at = '2026-10-01T12:00:00.123455Z'
+      WHERE user_id = $1 AND id IN (SELECT id FROM catalog_timeline_events WHERE user_id = $1 ORDER BY id LIMIT 3)`, [userId])
+
+    const expected = await client.query<{ id: string }>('SELECT id FROM catalog_timeline_events WHERE user_id = $1 ORDER BY occurred_at DESC, id DESC', [userId])
+    const first = await findCatalogTimeline(database, owner, { timeZone: 'UTC' })
+
+    assert.ok(first.nextCursor !== null, 'Timeline cursor is missing')
+    await client.query('DELETE FROM catalog_timeline_events WHERE id = $1', [first.items.at(-1)?.id])
+    await client.query('DELETE FROM catalog_timeline_events WHERE id = $1', [first.items[0]?.id])
+    await seedMilestones(viewingId, 1, '2026-10-01T12:00:00.123457Z')
+
+    // Act
+    const next = await findCatalogTimeline(database, owner, {
+      timeZone: 'UTC',
+      cursor: first.nextCursor
+    })
+
+    const ids = [...first.items, ...next.items].map(item => item.id)
+    const expectedIds = expected.rows.map(row => row.id)
+
+    // Assert
+    expect(next.items).toHaveLength(3)
+    expect(ids).toStrictEqual(expectedIds)
+    expect(next.nextCursor).toBeNull()
+  })
+
+  it.each(['series_started', 'rewatch_started'] as const)('uses viewing dates and live item scores for movies, %s and completion rows', async startKind => {
+    // Arrange
+    const viewingId = await seedViewing('completed')
+
+    await client.query(`INSERT INTO catalog_timeline_events (user_id, catalog_item_id, viewing_id, kind, occurred_at)
+      VALUES ($1, $2, $3, $4, '2026-10-15'), ($1, $2, $3, 'series_completed', '2026-10-16')`, [userId, seriesId, viewingId, startKind])
+
+    await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, viewing_id, score) VALUES ($1, $2, $3, 7)', [userId, seriesId, viewingId])
+
+    const movie = await client.query<{ id: string }>(`INSERT INTO catalog_viewings (user_id, catalog_item_id, status, completed_on)
+      VALUES ($1, $2, 'completed', '2024-02-29') RETURNING id`, [userId, movieId])
+
+    const movieViewingId = movie.rows[0]?.id
+
+    await client.query(`INSERT INTO catalog_timeline_events (user_id, catalog_item_id, viewing_id, kind)
+      VALUES ($1, $2, $3, 'movie_viewing') ON CONFLICT DO NOTHING`, [userId, movieId, movieViewingId])
+
+    await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, viewing_id, score) VALUES ($1, $2, $3, 8)', [userId, movieId, movieViewingId])
+
+    // Act
+    const before = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
+
+    await client.query('UPDATE catalog_item_ratings SET score = 9 WHERE viewing_id = $1', [viewingId])
+
+    const after = await findCatalogTimeline(database, owner, { timeZone: 'Europe/Tallinn' })
+
+    const movieTimeline = await findCatalogTimeline(database, {
+      userId,
+      catalogItemId: movieId
+    }, { timeZone: 'America/New_York' })
+
+    // Assert
+    expect(before.items).toHaveLength(2)
+
+    expect(before.items[0]).toMatchObject({
+      kind: 'series_completed',
+      completedOn: '2026-10-31',
+      occurredAt: '2026-10-31T00:00:00.000000Z'
+    })
+
+    expect(before.items[1]).toMatchObject({
+      kind: startKind,
+      startedOn: '2026-10-01',
+      score: 7,
+      occurredAt: '2026-10-01T00:00:00.000000Z'
+    })
+
+    expect(after.items[1]).toStrictEqual({
+      ...before.items[1],
+      score: 9
+    })
+
+    expect(movieTimeline.items[0]).toMatchObject({
+      kind: 'movie_viewing',
+      viewingId: movieViewingId,
+      completedOn: '2024-02-29',
+      score: 8,
+      occurredAt: '2024-02-29T00:00:00.000000Z'
+    })
+
+    await client.query('DELETE FROM catalog_viewings WHERE id = $1', [movieViewingId])
+
+    await expect(findCatalogTimeline(database, {
+      userId,
+      catalogItemId: movieId
+    }, { timeZone: 'UTC' })).resolves.toStrictEqual({
+      items: [],
+      nextCursor: null
+    })
+  })
+
+  it('invalidates a bounded page on date correction and preserves it on rating edits', async () => {
+    // Arrange
+    const viewingId = await seedViewing('completed')
+
+    await seedMilestones(viewingId, 23)
+
+    await client.query(`INSERT INTO catalog_timeline_events (user_id, catalog_item_id, viewing_id, kind, occurred_at)
+      VALUES ($1, $2, $3, 'series_started', '2026-09-01')`, [userId, seriesId, viewingId])
+
+    const first = await findCatalogTimeline(database, owner, { timeZone: 'UTC' })
+
+    assert.ok(first.nextCursor !== null, 'Timeline cursor is missing')
+    await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, viewing_id, score) VALUES ($1, $2, $3, 9)', [userId, seriesId, viewingId])
+
+    // Act and assert
+    const afterRating = await findCatalogTimeline(database, owner, {
+      timeZone: 'UTC',
+      cursor: first.nextCursor
+    })
+
+    expect(afterRating.items).toHaveLength(4)
+    await client.query('UPDATE catalog_viewings SET started_on = \'2026-10-02\' WHERE id = $1', [viewingId])
+
+    await expect(findCatalogTimeline(database, owner, {
+      timeZone: 'UTC',
+      cursor: first.nextCursor
+    })).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+      status: 400
+    })
+
+    const refreshed = await findCatalogTimeline(database, owner, { timeZone: 'UTC' })
+
+    expect(refreshed.items[0]).toMatchObject({
+      kind: 'series_started',
+      startedOn: '2026-10-02',
+      score: 9
+    })
+  })
+
+  it('keeps skipped local calendar dates distinct across a movie timeline page boundary', async () => {
+    // Arrange
+    const laterDays = Array.from({ length: 19 }, () => '2012-01-01')
+    const days = ['2011-12-31', '2011-12-30', ...laterDays]
+    const seeded = await seedMovieDays(days)
+    const newer = seeded.find(viewing => viewing.day === '2011-12-31')
+    const older = seeded.find(viewing => viewing.day === '2011-12-30')
+
+    const movieOwner = {
+      userId,
+      catalogItemId: movieId
+    }
+
+    assert.ok(newer !== undefined, 'Newer movie viewing is missing')
+    assert.ok(older !== undefined, 'Older movie viewing is missing')
+
+    // Act
+    const first = await findCatalogTimeline(database, movieOwner, { timeZone: 'Pacific/Apia' })
+
+    assert.ok(first.nextCursor !== null, 'Movie timeline cursor is missing')
+
+    const second = await findCatalogTimeline(database, movieOwner, {
+      timeZone: 'Pacific/Apia',
+      cursor: first.nextCursor
+    })
+
+    const ids = [...first.items, ...second.items].map(item => item.id)
+    const distinct = new Set(ids)
+
+    // Assert
+    expect(first.items).toHaveLength(20)
+
+    expect(first.items.at(-1)).toMatchObject({
+      viewingId: newer.id,
+      completedOn: '2011-12-31',
+      occurredAt: '2011-12-31T00:00:00.000000Z'
+    })
+
+    expect(second.items).toHaveLength(1)
+
+    expect(second.items[0]).toMatchObject({
+      viewingId: older.id,
+      completedOn: '2011-12-30',
+      occurredAt: '2011-12-30T00:00:00.000000Z'
+    })
+
+    expect(second.nextCursor).toBeNull()
+    expect(distinct.size).toBe(21)
+  })
+
+  /* oxlint-disable eslint/no-await-in-loop, vitest/no-conditional-in-test -- Cursor pages are sequential; nullable inputs and date ties require choosing the next position. */
+  it('pages watched-date ties in the same order across viewings, timeline and dashboard history', async () => {
+    // Arrange
+    const days = Array.from({ length: 43 }, (_value, index) => {
+      const day = Math.floor(index / 2) + 1
+      const dayNumber = String(day).padStart(2, '0')
+
+      return `2020-01-${dayNumber}`
+    })
+
+    const seeded = await seedMovieDays(days)
+
+    const expected = seeded.toSorted((left, right) => {
+      const dayOrder = right.day.localeCompare(left.day)
+      const idOrder = right.id.localeCompare(left.id)
+
+      return dayOrder || idOrder
+    })
+
+    const expectedIds = expected.map(viewing => viewing.id)
+
+    const movieOwner = {
+      userId,
+      catalogItemId: movieId
+    }
+
+    const viewingIds: string[] = []
+    const timelineIds: string[] = []
+    const dashboardIds: string[] = []
+    let viewingCursor: string | null = null
+    let timelineCursor: string | null = null
+    let dashboardCursor: string | null = null
+
+    // Act
+    for (let pageNumber = 0; pageNumber < 3; pageNumber += 1) {
+      const viewingPage = await findViewings(database, movieOwner, viewingCursor)
+
+      const query = {
+        timeZone: 'Europe/Tallinn',
+        cursor: timelineCursor ?? undefined
+      }
+
+      const timelinePage = await findCatalogTimeline(database, movieOwner, query)
+      const cursor = decodeViewingCursor(dashboardCursor)
+      const historyRows = await findViewingHistoryRows(database, userId, cursor)
+      const dashboardPage = createViewingHistoryResponse(historyRows, 'en')
+      const pageViewingIds = viewingPage.items.map(viewing => viewing.id)
+      const movieEvents = timelinePage.items.filter(item => item.kind === 'movie_viewing')
+      const pageTimelineIds = movieEvents.map(item => item.viewingId)
+      const pageDashboardIds = dashboardPage.items.map(item => item.entryId)
+
+      viewingIds.push(...pageViewingIds)
+      timelineIds.push(...pageTimelineIds)
+      dashboardIds.push(...pageDashboardIds)
+
+      viewingCursor = viewingPage.nextCursor
+      timelineCursor = timelinePage.nextCursor
+      dashboardCursor = dashboardPage.nextCursor
+    }
+
+    // Assert
+    expect(viewingIds).toStrictEqual(expectedIds)
+    expect(timelineIds).toStrictEqual(expectedIds)
+    expect(dashboardIds).toStrictEqual(expectedIds)
+    expect([viewingCursor, timelineCursor, dashboardCursor]).toStrictEqual([null, null, null])
+  })
+  /* oxlint-enable eslint/no-await-in-loop, vitest/no-conditional-in-test */
+
+  it('keeps the stored milestone count when the catalog grows', async () => {
+    // Arrange
+    const viewingId = await seedViewing()
+
+    await seedMilestones(viewingId, 1)
+    await client.query('INSERT INTO catalog_episodes (catalog_item_id, season_number, episode_number) VALUES ($1, 1, 29)', [seriesId])
+
+    // Act
+    const timeline = await findCatalogTimeline(database, owner, { timeZone: 'UTC' })
+
+    // Assert
+    expect(timeline.items[0]).toMatchObject({
+      kind: 'season_completed',
+      seasonNumber: 1,
+      totalCount: 1
+    })
   })
 
   it('isolates accounts and rejects cursor reuse under a different title or zone', async () => {
     // Arrange
-    await seedRatings(23)
+    const viewingId = await seedViewing()
+
+    await seedMilestones(viewingId, 23)
 
     const first = await findCatalogTimeline(database, owner, { timeZone: 'UTC' })
 

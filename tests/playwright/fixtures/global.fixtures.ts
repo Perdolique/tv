@@ -1,4 +1,5 @@
 import { expect as playwrightExpect, test as base } from '@playwright/test'
+import { appBaseUrl } from '../constants.ts'
 
 interface ExpectedHttpError {
   pathname: string;
@@ -68,6 +69,18 @@ function getPathname(url: string): string | undefined {
 
 const test = base.extend<TestOptions>({
   expectedHttpErrors: [{ values: [] }, { option: true }],
+
+  context: async ({ context }, use) => {
+    const viewingState = globalThis.crypto.randomUUID()
+
+    await context.addCookies([{
+      name: 'tv_viewing_state',
+      value: viewingState,
+      url: appBaseUrl
+    }])
+
+    await use(context)
+  },
 
   page: async ({ expectedHttpErrors, page }, use) => {
     const browserErrors: string[] = []

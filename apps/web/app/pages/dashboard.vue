@@ -11,7 +11,7 @@
       <main :class="$style.content">
         <header :class="$style.pageHeader">
           <h1 ref="heading" :class="$style.heading" tabindex="-1">Dashboard</h1>
-          <p :class="$style.supportingText">Your movie viewings and watched episodes. Dates show when each entry was recorded.</p>
+          <p :class="$style.supportingText">Your movie viewings and watched episodes. Movies are sorted by viewing date.</p>
         </header>
 
         <section v-if="isSummaryLoading" :class="$style.metrics" aria-label="Loading viewing summary" aria-busy="true">
@@ -67,7 +67,7 @@
                     <h3 :class="$style.itemTitle" :lang="item.titleLocale">{{ item.title }}</h3>
                     <p :class="$style.metadata">{{ item.metadata }}</p>
                     <p v-if="item.sourceTitle" :class="$style.episodeTitle">{{ item.sourceTitle }}</p>
-                    <p :class="$style.timestamp">Recorded <NuxtTime :datetime="item.markedAt" date-style="medium" time-style="short" /></p>
+                    <p :class="$style.timestamp">Watched <time v-if="item.watchedOn" :datetime="item.watchedOn">{{ item.watchedLabel }}</time><NuxtTime v-else :datetime="item.markedAt" date-style="medium" time-style="short" /></p>
                   </div>
                 </NuxtLink>
               </li>
@@ -112,6 +112,7 @@
   import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useViewingHistory } from '~/composables/use-viewing-history.ts'
+  import { formatCalendarDateForDisplay } from '~/utils/calendar-date.ts'
   import { useViewingSummary } from '~/composables/use-viewing-summary.ts'
 
   definePageMeta({ middleware: 'authenticated' })
@@ -167,12 +168,16 @@
   const historyRows = computed(() => items.value.map((item) => {
     const movieMetadata = item.releaseYear === null ? 'Movie' : `Movie · ${item.releaseYear}`
     const metadata = item.kind === 'episode' ? `Episode · S${item.seasonNumber} · E${item.episodeNumber}` : movieMetadata
-    const location = item.kind === 'movie' ? `/titles/${item.id}?viewingId=${item.entryId}#viewing-${item.entryId}` : `/titles/${item.id}`
+    const location = `/titles/${item.id}`
+    const watchedOn = item.kind === 'movie' ? item.markedAt.slice(0, 10) : null
+    const watchedLabel = watchedOn === null ? '' : formatCalendarDateForDisplay(watchedOn, { dateStyle: 'medium' })
 
     return {
       key: `${item.kind}:${item.entryId}`,
       location,
       markedAt: item.markedAt,
+      watchedOn,
+      watchedLabel,
       metadata,
       posterUrl: item.posterUrl,
       sourceTitle: item.sourceTitle,

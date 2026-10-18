@@ -6,7 +6,7 @@ import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
 import { insertSeriesEpisodeWatches } from '../../../testing/series-watch-fixtures.ts'
 import { createViewingHistoryResponse, decodeViewingCursor } from '../../viewing-history.ts'
 import { findViewingHistoryRows, findViewingSummary } from '../../viewing-repository.ts'
-import { createMovieViewing, deleteMovieViewing } from '../../movie-viewings-repository.ts'
+import { createViewing, deleteViewing } from '../../viewings-repository.ts'
 
 const userId = '52000000-0000-7000-8000-000000000001'
 const otherUserId = '52000000-0000-7000-8000-000000000002'
@@ -15,8 +15,8 @@ const database = createDatabase(client)
 
 async function seedMarks(): Promise<void> {
   await client.query(`
-    INSERT INTO catalog_viewings (user_id, catalog_item_id, recorded_at)
-    SELECT $1, id, '2026-09-22T13:00:00.123456Z'::timestamptz
+    INSERT INTO catalog_viewings (user_id, catalog_item_id, completed_on, recorded_at)
+    SELECT $1, id, '2026-09-22'::date, '2026-09-22T13:00:00.123456Z'::timestamptz
     FROM catalog_items WHERE type = 'movie' ORDER BY id LIMIT 2
   `, [userId])
 
@@ -159,7 +159,7 @@ describe('private viewing data', () => {
 
     const firstRows = await findViewingHistoryRows(database, userId, null)
     const first = createViewingHistoryResponse(firstRows, 'en')
-    const cursor = decodeViewingCursor(first.nextCursor, 3)
+    const cursor = decodeViewingCursor(first.nextCursor)
     const expectedWatches = await client.query<{ id: string }>('SELECT id FROM catalog_viewing_episode_watches WHERE user_id = $1 ORDER BY id DESC', [userId])
 
     expect(first.items).toHaveLength(20)
@@ -191,14 +191,14 @@ describe('private viewing data', () => {
 
     const firstRows = await findViewingHistoryRows(database, userId, null)
     const first = createViewingHistoryResponse(firstRows, 'en')
-    const cursor = decodeViewingCursor(first.nextCursor, 3)
+    const cursor = decodeViewingCursor(first.nextCursor)
     const secondRows = await findViewingHistoryRows(database, userId, cursor)
     const second = createViewingHistoryResponse(secondRows, 'en')
 
     expect(cursor?.markedAt).toBe('2026-09-22T13:00:00.123456Z')
     expect(second.items).toHaveLength(5)
-    expect(second.items.slice(0, 2).every(item => item.kind === 'movie')).toBe(true)
-    expect(second.items.slice(2).every(item => item.markedAt === '2026-09-22T13:00:00.123455Z')).toBe(true)
+    expect(second.items.slice(3).every(item => item.kind === 'movie')).toBe(true)
+    expect(second.items.slice(0, 3).every(item => item.markedAt === '2026-09-22T13:00:00.123455Z')).toBe(true)
     expect(second.nextCursor).toBeNull()
   })
 
@@ -213,20 +213,24 @@ describe('private viewing data', () => {
       catalogItemId: id
     }
 
-    const first = await createMovieViewing(database, owner, {
+    const first = await createViewing(database, owner, {
       mode: 'current',
+      status: 'completed',
+      currentViewingId: null,
       requestId: crypto.randomUUID(),
       contextVersion: 0,
       startedOn: null,
-      completedOn: null
+      completedOn: '2026-10-17'
     })
 
-    const second = await createMovieViewing(database, owner, {
+    const second = await createViewing(database, owner, {
       mode: 'current',
+      status: 'completed',
+      currentViewingId: first.viewing.id,
       requestId: crypto.randomUUID(),
       contextVersion: 1,
       startedOn: null,
-      completedOn: null
+      completedOn: '2026-10-17'
     })
 
     const rows = await findViewingHistoryRows(database, userId, null)
@@ -235,10 +239,15 @@ describe('private viewing data', () => {
     expect(summary.watchedMovieCount).toBe(2)
     expect(createViewingHistoryResponse(rows, 'en').items.map(row => row.entryId)).toStrictEqual([second.viewing.id, first.viewing.id])
 
-    await deleteMovieViewing(database, {
+    const deletionRequestId = crypto.randomUUID()
+
+    await deleteViewing(database, {
       ...owner,
       viewingId: second.viewing.id
-    }, 1)
+    }, {
+      requestId: deletionRequestId,
+      revision: 1
+    })
 
     const remaining = await findViewingHistoryRows(database, userId, null)
 

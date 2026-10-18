@@ -13,7 +13,7 @@ import {
 } from '../../series-viewings-repository.ts'
 
 import { followCatalogItem } from '../../repository.ts'
-import { createMovieViewing } from '../../movie-viewings-repository.ts'
+import { createViewing } from '../../viewings-repository.ts'
 
 const databaseUrl = env.TEST_DATABASE_URL
 
@@ -40,7 +40,7 @@ async function findCatalogItemId(title: string): Promise<string> {
 
 async function findMarkedAt(userId: string, episodeId: string): Promise<Date> {
   const result = await client.query<{ marked_at: Date }>(`
-    SELECT marked_at FROM catalog_episode_watches
+    SELECT marked_at FROM catalog_viewing_episode_watches
     WHERE user_id = $1 AND catalog_episode_id = $2
   `, [userId, episodeId])
 
@@ -188,19 +188,23 @@ describe('postgreSQL catalog episodes and watches', () => {
         requestId: markRequestId,
         currentViewingId: null,
         contextVersion: 0,
-        timeZone: 'UTC'
+        timeZone: 'UTC',
+        viewingDate: '2026-10-17'
       })
 
       await followCatalogItem(database, secondUserId, chernobylId)
 
-      await createMovieViewing(database, {
+      await createViewing(database, {
         userId: secondUserId,
         catalogItemId: movieId
       }, {
         requestId: crypto.randomUUID(),
         mode: 'history',
+        status: 'completed',
+        currentViewingId: null,
+        contextVersion: 0,
         startedOn: null,
-        completedOn: null
+        completedOn: '2026-10-17'
       })
 
       await expect(findSeriesWatches(database, {
@@ -208,23 +212,31 @@ describe('postgreSQL catalog episodes and watches', () => {
         catalogItemId: chernobylId
       })).resolves.toStrictEqual(marked)
 
-      expect(marked.watchedEpisodeIds).toStrictEqual([episodeId])
+      const markedEpisodeIds = marked.watches.map(watch => watch.catalogEpisodeId)
+
+      expect(markedEpisodeIds).toStrictEqual([episodeId])
 
       await expect(findSeriesWatches(database, {
         userId: secondUserId,
         catalogItemId: chernobylId
       })).resolves.toStrictEqual({
-        watchedEpisodeIds: [],
-        watches: [],
-        currentViewing: null,
-        contextVersion: 0
+          watches: [],
+          viewing: null,
+
+        summary: {
+          completedCount: 0,
+          currentViewingId: null,
+          contextVersion: 0,
+          currentViewingScore: null,
+          currentVoteScore: null
+        }
       })
     } finally {
       await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[firstUserId, secondUserId]])
     }
   })
 
-  it('keeps repeated marks idempotent, refreshes time after delete and allows future episodes', async () => {
+  it('keeps repeated marks idempotent, refreshes time after delete and rejects unavailable episodes', async () => {
     await assertDisposableTestDatabase(client)
 
     const userId = '70000000-0000-7000-8000-000000000021'
@@ -245,19 +257,38 @@ describe('postgreSQL catalog episodes and watches', () => {
 
       const markRequestId = crypto.randomUUID()
 
+      const firstMark = {
+        requestId: markRequestId,
+        currentViewingId: null,
+        contextVersion: 0,
+        timeZone: 'UTC',
+        viewingDate: '2026-10-17'
+      }
+
+      await expect(markSeriesEpisodeWatched(database, userId, episodeId, firstMark)).rejects.toMatchObject({
+        status: 400,
+        fields: { episodes: 'This episode has no released air date in your local day.' }
+      })
+
+      await client.query('UPDATE catalog_episodes SET air_date = \'2019-05-06\' WHERE id = $1', [episodeId])
+
       const marked = await markSeriesEpisodeWatched(database, userId, episodeId, {
         requestId: markRequestId,
         currentViewingId: null,
         contextVersion: 0,
-        timeZone: 'UTC'
+        timeZone: 'UTC',
+        viewingDate: '2026-10-17'
       })
 
-      const viewingId = marked.currentViewing?.id
+      const viewingId = marked.viewing?.id
       const watchId = marked.watches[0]?.id
 
       assert(viewingId !== undefined)
       assert(watchId !== undefined)
-      expect(marked.watchedEpisodeIds).toStrictEqual([episodeId])
+
+      const markedEpisodeIds = marked.watches.map(watch => watch.catalogEpisodeId)
+
+      expect(markedEpisodeIds).toStrictEqual([episodeId])
 
       const initialTimestamp = await findMarkedAt(userId, episodeId)
 
@@ -268,22 +299,27 @@ describe('postgreSQL catalog episodes and watches', () => {
       const repeated = await markSeriesEpisodeWatched(database, userId, episodeId, {
         requestId: repeatRequestId,
         currentViewingId: viewingId,
-        contextVersion: marked.contextVersion,
-        timeZone: 'UTC'
+        contextVersion: marked.summary.contextVersion,
+        timeZone: 'UTC',
+        viewingDate: '2026-10-17'
       })
 
       expect(repeated.watches).toStrictEqual(marked.watches)
       await expect(findMarkedAt(userId, episodeId)).resolves.toStrictEqual(initialTimestamp)
 
+      const unwatchRequestId = crypto.randomUUID()
+
       const unwatch = {
+        requestId: unwatchRequestId,
+        confirmRatingRemoval: false,
         currentViewingId: viewingId,
-        contextVersion: marked.contextVersion,
+        contextVersion: marked.summary.contextVersion,
         watchId
       }
 
       const unmarked = await unmarkSeriesEpisodeWatched(database, userId, episodeId, unwatch)
 
-      expect(unmarked.watchedEpisodeIds).toStrictEqual([])
+      expect(unmarked.watches).toStrictEqual([])
       await expect(unmarkSeriesEpisodeWatched(database, userId, episodeId, unwatch)).resolves.toStrictEqual(unmarked)
       await client.query('SELECT pg_sleep(0.01)')
 
@@ -292,8 +328,9 @@ describe('postgreSQL catalog episodes and watches', () => {
       const renewed = await markSeriesEpisodeWatched(database, userId, episodeId, {
         requestId: renewRequestId,
         currentViewingId: viewingId,
-        contextVersion: marked.contextVersion,
-        timeZone: 'UTC'
+        contextVersion: unmarked.summary.contextVersion,
+        timeZone: 'UTC',
+        viewingDate: '2026-10-17'
       })
 
       const renewedTimestamp = await findMarkedAt(userId, episodeId)
@@ -328,8 +365,8 @@ describe('postgreSQL catalog episodes and watches', () => {
     `, [seriesId])
 
     await client.query(`
-      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number)
-      VALUES ($1, $2, 1, 1)
+      INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, air_date)
+      VALUES ($1, $2, 1, 1, '2019-05-06')
     `, [episodeId, seriesId])
 
     await client.query(`
@@ -343,7 +380,8 @@ describe('postgreSQL catalog episodes and watches', () => {
       requestId: firstMarkRequestId,
       currentViewingId: null,
       contextVersion: 0,
-      timeZone: 'UTC'
+      timeZone: 'UTC',
+      viewingDate: '2026-10-17'
     })
 
     await client.query('DELETE FROM catalog_items WHERE id = $1', [seriesId])
@@ -370,7 +408,8 @@ describe('postgreSQL catalog episodes and watches', () => {
         requestId: nextMarkRequestId,
         currentViewingId: null,
         contextVersion: 0,
-        timeZone: 'UTC'
+        timeZone: 'UTC',
+        viewingDate: '2026-10-17'
       }
     )
 

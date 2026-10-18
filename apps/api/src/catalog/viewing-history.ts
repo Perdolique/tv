@@ -25,7 +25,15 @@ const INVALID_CURSOR_MESSAGE = 'Use a valid viewing history cursor.'
 const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u
 
 function isViewingTimestamp(value: string): boolean {
-  if (!timestampPattern.test(value) || value.startsWith('0000')) {
+  const hasTimestampFormat = timestampPattern.test(value)
+
+  if (!hasTimestampFormat) {
+    return false
+  }
+
+  const hasZeroYear = value.startsWith('0000')
+
+  if (hasZeroYear) {
     return false
   }
 
@@ -35,8 +43,10 @@ function isViewingTimestamp(value: string): boolean {
     return false
   }
 
-  const normalized = new Date(milliseconds).toISOString()
-  const expected = `${value.slice(0, 23)}Z`
+  const date = new Date(milliseconds)
+  const normalized = date.toISOString()
+  const millisecondTimestamp = value.slice(0, 23)
+  const expected = `${millisecondTimestamp}Z`
 
   return normalized === expected
 }
@@ -45,23 +55,24 @@ const cursorSchema = v.strictObject({
   entryId: v.pipe(v.string(), v.uuid()),
   kind: v.picklist(['movie', 'episode']),
   markedAt: v.pipe(v.string(), v.check(isViewingTimestamp)),
-  version: v.picklist([2, 3])
+  version: v.literal(5)
 })
 
-function encodeViewingCursor(item: CatalogViewingCursor, version: 2 | 3 = 2): string {
+function encodeViewingCursor(item: CatalogViewingCursor): string {
   const payload = JSON.stringify({
     entryId: item.entryId,
     kind: item.kind,
     markedAt: item.markedAt,
-    version
+    version: 5
   })
 
-  const bytes = new TextEncoder().encode(payload)
+  const encoder = new TextEncoder()
+  const bytes = encoder.encode(payload)
 
   return encodeBase64Url(bytes)
 }
 
-function decodeViewingCursor(value: string | null, version: 2 | 3 = 2): CatalogViewingCursor | null {
+function decodeViewingCursor(value: string | null): CatalogViewingCursor | null {
   if (value === null) {
     return null
   }
@@ -73,15 +84,22 @@ function decodeViewingCursor(value: string | null, version: 2 | 3 = 2): CatalogV
 
     const bytes = decodeBase64Url(value)
 
-    const payload = new TextDecoder('utf-8', {
+    const decoder = new TextDecoder('utf-8', {
       fatal: true,
       ignoreBOM: false
-    }).decode(bytes)
+    })
 
+    const payload = decoder.decode(bytes)
     const json: unknown = JSON.parse(payload)
     const parsed = v.safeParse(cursorSchema, json)
 
-    if (!parsed.success || parsed.output.version !== version || encodeBase64Url(bytes) !== value) {
+    if (!parsed.success) {
+      throw new Error(INVALID_CURSOR_MESSAGE)
+    }
+
+    const canonicalValue = encodeBase64Url(bytes)
+
+    if (canonicalValue !== value) {
       throw new Error(INVALID_CURSOR_MESSAGE)
     }
 
@@ -135,7 +153,7 @@ function createViewingHistoryResponse(
   const hasMore = items.length > VIEWING_HISTORY_PAGE_SIZE
   const page = items.slice(0, VIEWING_HISTORY_PAGE_SIZE)
   const last = page.at(-1)
-  const nextCursor = hasMore && last !== undefined ? encodeViewingCursor(last, 3) : null
+  const nextCursor = hasMore && last !== undefined ? encodeViewingCursor(last) : null
 
   return {
     items: page,

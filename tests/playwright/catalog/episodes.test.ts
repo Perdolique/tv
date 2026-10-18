@@ -116,7 +116,8 @@ test('unmarks a loaded episode with DELETE and keeps it unmarked after reload', 
     requestId,
     currentViewingId: null,
     contextVersion: 0,
-    timeZone: 'Europe/Tallinn'
+    timeZone: 'Europe/Tallinn',
+    viewingDate: '2026-10-17'
   } })
 
   expect(response.status()).toBe(200)
@@ -360,7 +361,7 @@ test.describe('confirmed episode changes', () => {
     await expect(second).toBeDisabled()
     await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
     await expect(first).toHaveAttribute('aria-pressed', 'false')
-    await expect(page.getByText('We couldn’t save this change. Try again.', { exact: true })).toBeVisible()
+    await expect(page.getByText('We couldn’t confirm whether this change was saved. Retry to check the same change.', { exact: true })).toBeVisible()
     await expect(page.getByText('0 watched episodes', { exact: true })).toBeVisible()
   })
 })

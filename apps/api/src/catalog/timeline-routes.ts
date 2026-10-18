@@ -1,10 +1,10 @@
 import type { Context, Hono } from 'hono'
-import { catalogTimelineEpisodesQuerySchema, catalogTimelineQuerySchema } from '@tv/shared/catalog-timeline'
+import { catalogTimelineQuerySchema } from '@tv/shared/catalog-timeline'
 import * as v from 'valibot'
 import { validateCatalogItemId } from './details.ts'
 import { CatalogHttpError } from './errors.ts'
 import { withCatalogSession, type CatalogDependencies, type CatalogEnvironment } from './session.ts'
-import { findCatalogTimeline, findCatalogTimelineEpisodes } from './timeline-repository.ts'
+import { findCatalogTimeline } from './timeline-repository.ts'
 
 function readTimelineQuery<Schema extends v.GenericSchema>(context: Context<CatalogEnvironment>, schema: Schema): v.InferOutput<Schema> {
   const queries = context.req.queries()
@@ -59,20 +59,6 @@ function registerCatalogTimelineRoutes(app: Hono<CatalogEnvironment>, dependenci
     return context.json(response)
   })
 
-  app.get('/api/catalog/items/:id/timeline/episodes', async context => {
-    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
-      const rawId = context.req.param('id')
-      const catalogItemId = validateCatalogItemId(rawId)
-      const query = readTimelineQuery(context, catalogTimelineEpisodesQuerySchema)
-
-      return findCatalogTimelineEpisodes(session.database, {
-        userId: session.user.id,
-        catalogItemId
-      }, query)
-    })
-
-    return context.json(response)
-  })
 }
 
 export { registerCatalogTimelineRoutes }

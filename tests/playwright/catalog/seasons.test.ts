@@ -1,6 +1,6 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
-import { addCookie } from '../helpers.ts'
+import { addCookie, setCatalogTime } from '../helpers.ts'
 import { episodeEdgeSeries } from './details.fixtures.ts'
 import { openEpisodes } from './helpers.ts'
 
@@ -69,7 +69,7 @@ async function measureDisclosure(panel: Locator) {
 }
 
 test('opens the newest season and supports single-open keyboard disclosure with progress', async ({ context, page }) => {
-  await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+  await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
   await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(titlePath)
   await openEpisodes(page)
@@ -139,6 +139,8 @@ test('opens the newest season and supports single-open keyboard disclosure with 
 })
 
 test('reuses loaded season and episode ratings across season and tab disclosure', async ({ context, page }) => {
+  await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
+
   const reads: string[] = []
   const seasonsPath = `/api/catalog/items/${episodeEdgeSeries.id}/seasons/`
 

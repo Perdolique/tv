@@ -2,8 +2,18 @@ import type { Context, Hono } from 'hono'
 import * as v from 'valibot'
 import { validateCatalogItemId } from './details.ts'
 import { CatalogHttpError } from './errors.ts'
-import { readCatalogRatingScore } from './rating-routes.ts'
-import { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating } from './ratings-repository.ts'
+import { readRatingViewingId } from './rating-routes.ts'
+import { readViewingInput } from './viewings-routes.ts'
+
+import {
+  catalogRatingSaveSchema,
+  catalogRatingRemoveSchema,
+  catalogHistoricalRatingSaveSchema,
+  catalogHistoricalRatingRemoveSchema
+} from '@tv/shared/catalog-viewings'
+
+import { readRatingSnapshot, setCurrentCatalogRating, setHistoricalCatalogRating } from './rating-mutations.ts'
+import { findCatalogItemRatingSummary } from './ratings-repository.ts'
 
 import {
   withCatalogDatabase,
@@ -52,59 +62,103 @@ function registerCatalogSeasonRatingRoutes(app: Hono<CatalogEnvironment>, depend
   app.get('/api/catalog/items/:id/seasons/:seasonNumber/rating', async context => {
     const rating = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const { catalogItemId, seasonNumber } = readSeasonTarget(context)
+      const viewingId = readRatingViewingId(context)
 
-      const result = await findCatalogItemRating(session.database, session.user.id, {
-        catalogItemId,
-        seasonNumber
-      })
-
-      if (result === null) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
-
-      return result
+      return readRatingSnapshot(session.database, {
+        userId: session.user.id,
+        catalogItemId
+      }, {
+        seasonNumber,
+        catalogEpisodeId: null
+      }, viewingId)
     })
 
     return context.json(rating)
   })
 
   app.put('/api/catalog/items/:id/seasons/:seasonNumber/rating', async context => {
-    const score = await withCatalogSession(context, dependencies.connectDatabase, async session => {
+    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const { catalogItemId, seasonNumber } = readSeasonTarget(context)
-      const nextScore = await readCatalogRatingScore(context)
+      const input = await readViewingInput(context, catalogRatingSaveSchema)
 
-      const exists = await setCatalogItemRating(session.database, session.user.id, {
-        catalogItemId,
+      return setCurrentCatalogRating(session.database, {
+        userId: session.user.id,
+        catalogItemId
+      }, {
         seasonNumber,
-        score: nextScore
-      })
-
-      if (!exists) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
-
-      return nextScore
+        catalogEpisodeId: null
+      }, input)
     })
 
-    return context.json({ score })
+    return context.json(response)
   })
 
   app.delete('/api/catalog/items/:id/seasons/:seasonNumber/rating', async context => {
-    await withCatalogSession(context, dependencies.connectDatabase, async session => {
+    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const { catalogItemId, seasonNumber } = readSeasonTarget(context)
+      const input = await readViewingInput(context, catalogRatingRemoveSchema)
 
-      const exists = await setCatalogItemRating(session.database, session.user.id, {
-        catalogItemId,
+      return setCurrentCatalogRating(session.database, {
+        userId: session.user.id,
+        catalogItemId
+      }, {
         seasonNumber,
+        catalogEpisodeId: null
+      }, {
+        requestId: input.requestId,
+        currentViewingId: input.currentViewingId,
+        contextVersion: input.contextVersion,
+        timeZone: input.timeZone,
         score: null
       })
-
-      if (!exists) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
     })
 
-    return context.json({ score: null })
+    return context.json(response)
+  })
+
+  app.put('/api/catalog/items/:id/viewings/:viewingId/seasons/:seasonNumber/rating', async context => {
+    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
+      const { catalogItemId, seasonNumber } = readSeasonTarget(context)
+      const rawViewingId = context.req.param('viewingId')
+      const viewingId = validateCatalogItemId(rawViewingId)
+      const input = await readViewingInput(context, catalogHistoricalRatingSaveSchema)
+
+      return setHistoricalCatalogRating(session.database, {
+        userId: session.user.id,
+        catalogItemId,
+        viewingId
+      }, {
+        seasonNumber,
+        catalogEpisodeId: null
+      }, input)
+    })
+
+    return context.json(response)
+  })
+
+  app.delete('/api/catalog/items/:id/viewings/:viewingId/seasons/:seasonNumber/rating', async context => {
+    const response = await withCatalogSession(context, dependencies.connectDatabase, async session => {
+      const { catalogItemId, seasonNumber } = readSeasonTarget(context)
+      const rawViewingId = context.req.param('viewingId')
+      const viewingId = validateCatalogItemId(rawViewingId)
+      const input = await readViewingInput(context, catalogHistoricalRatingRemoveSchema)
+
+      return setHistoricalCatalogRating(session.database, {
+        userId: session.user.id,
+        catalogItemId,
+        viewingId
+      }, {
+        seasonNumber,
+        catalogEpisodeId: null
+      }, {
+        requestId: input.requestId,
+        revision: input.revision,
+        timeZone: input.timeZone,
+        score: null
+      })
+    })
+
+    return context.json(response)
   })
 }
 

@@ -3,9 +3,28 @@ import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie, expectNoHorizontalOverflow } from '../helpers.ts'
 import { dune } from './details.fixtures.ts'
 import { waitForHydration } from './helpers.ts'
+import type { Locator } from '@playwright/test'
+
+async function expectCompactActions(container: Locator): Promise<void> {
+  const buttons = container.getByRole('button')
+  const count = await buttons.count()
+
+  expect(count).toBeGreaterThan(0)
+
+  const actions = await buttons.all()
+
+  const checks = actions.map(async button => {
+    const bounds = await button.boundingBox()
+
+    expect(bounds?.height).toBe(44)
+    await expect(button).toHaveCSS('font-size', '14px')
+  })
+
+  await Promise.all(checks)
+}
 
 for (const colorScheme of ['light', 'dark'] as const) {
-  for (const [name, width, height] of [['mobile', 390, 844], ['tablet', 768, 1024], ['desktop', 1440, 1024]] as const) {
+  for (const [name, width, height] of [['narrow', 320, 844], ['mobile', 390, 844], ['zoom-equivalent', 720, 512], ['tablet', 768, 1024], ['desktop', 1440, 1024]] as const) {
     test(`${name} movie viewing history and dashboard in ${colorScheme}`, async ({ page, context }, testInfo) => {
       await addCookie(context, 'tv_session', 'e2e-session')
 
@@ -24,11 +43,48 @@ for (const colorScheme of ['light', 'dark'] as const) {
       }).click()
 
       await page.getByRole('button', {
-        name: 'Watched again',
+        name: 'Mark as watched',
         exact: true
       }).click()
 
-      await expect(page.getByText('2 viewings', { exact: true })).toBeVisible()
+      await expect(page.getByRole('list', { name: 'Movie viewings' }).getByRole('listitem')).toHaveCount(2)
+
+      const current = page.getByRole('list', { name: 'Movie viewings' }).getByRole('listitem').filter({ hasText: 'Current' })
+
+      await expectCompactActions(current)
+
+      await current.getByRole('button', {
+        name: 'Edit date',
+        exact: true
+      }).click()
+
+      await expectCompactActions(current)
+      await expect(page.getByLabel('Watched on', { exact: true })).toBeFocused()
+
+      const screenshotName = `viewing-edit-${colorScheme}-${name}.png`
+      const screenshotPath = testInfo.outputPath(screenshotName)
+
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true
+      })
+
+      await current.getByRole('button', {
+        name: 'Cancel',
+        exact: true
+      }).click()
+
+      await current.getByRole('button', {
+        name: 'Delete',
+        exact: true
+      }).click()
+
+      await expectCompactActions(current)
+
+      await current.getByRole('button', {
+        name: 'Cancel',
+        exact: true
+      }).click()
 
       const overview = page.getByRole('heading', {
         name: 'Overview',
@@ -56,7 +112,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
         exact: true
       }).click()
 
-      await expect(page.getByLabel('Started on', { exact: true })).toBeFocused()
+      await expect(page.getByLabel('Watched on', { exact: true })).toBeFocused()
       await expectNoHorizontalOverflow(page)
       await page.keyboard.press('Escape')
 

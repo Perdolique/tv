@@ -1,12 +1,16 @@
 import type { Page, Request } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
-import { addCookie } from '../helpers.ts'
+import { addCookie, setCatalogTime } from '../helpers.ts'
 import { chernobyl, episodeEdgeSeries, manyEpisodeSeries } from './details.fixtures.ts'
 import { openEpisodes, waitForHydration } from './helpers.ts'
 
 const titlePath = `/titles/${episodeEdgeSeries.id}`
 const firstEpisodeId = '30000000-0000-7000-8000-000000000013'
 const ratingPath = `/api/catalog/episodes/${firstEpisodeId}/rating`
+
+test.beforeEach(async ({ context, page }) => {
+  await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
+})
 
 function episodeRegion(page: Page, season = 2, episode = 1) {
   return page.getByRole('region', {
@@ -22,8 +26,8 @@ function isEpisodeRatingWrite(request: Request): boolean {
   return requestUrl.pathname === ratingPath && request.method() === 'PUT'
 }
 
-test('keeps episode ratings across sessions without changing watched, season or whole-title scores', async ({ context, page }) => {
-  await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+test('keeps episode ratings within a viewing, marks the episode and preserves independent parent scores', async ({ context, page }) => {
+  await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
 
   const first = episodeRegion(page)
 
@@ -53,21 +57,35 @@ test('keeps episode ratings across sessions without changing watched, season or 
     await expect(page.getByRole('region', {
       name: 'Personal score',
       exact: true
-    })).toHaveText(/^Your rating\s*—\s*$/u)
+    })).toHaveText(/^Current viewing\s*—\s*$/u)
   })
 
-  await test.step('toggle watched state without changing the rating', async () => {
+  await test.step('remove only the score and preserve its watched mark', async () => {
     const watched = page.getByRole('button', {
       name: 'Watched',
       exact: true
     }).first()
 
-    await expect(watched).toHaveAttribute('aria-pressed', 'false')
-    await watched.click()
     await expect(watched).toHaveAttribute('aria-pressed', 'true')
-    await watched.click()
-    await expect(watched).toHaveAttribute('aria-pressed', 'false')
-    await expect(first.getByText('8/10', { exact: true })).toBeVisible()
+
+    await first.getByRole('button', {
+      name: 'Your rating for season 2, episode 1: 8 out of 10',
+      exact: true
+    }).click()
+
+    await first.getByRole('button', {
+      name: 'Remove rating',
+      exact: true
+    }).click()
+
+    await expect(watched).toHaveAttribute('aria-pressed', 'true')
+    await expect(first.getByText('8/10', { exact: true })).toHaveCount(0)
+    await first.getByRole('button', { name: /^Rate episode,/u }).click()
+
+    await first.getByRole('button', {
+      name: '8 out of 10',
+      exact: true
+    }).click()
   })
 
   await test.step('rate an episode in another season and preserve both ratings', async () => {
@@ -76,7 +94,7 @@ test('keeps episode ratings across sessions without changing watched, season or 
       exact: true
     }).click()
 
-    const missingMetadata = episodeRegion(page, 1)
+    const missingMetadata = episodeRegion(page, 1, 2)
 
     await missingMetadata.getByRole('button', { name: /^Rate episode,/u }).click()
 
@@ -144,7 +162,7 @@ test('keeps episode ratings across sessions without changing watched, season or 
   await test.step('keep another series unrated', async () => {
     await page.goto(`/titles/${chernobyl.id}`)
     await openEpisodes(page)
-    await expect(episodeRegion(page, 1).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
+    await expect(episodeRegion(page, 1, 2).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
     await expect(episodeRegion(page, 1).getByText('0 ratings', { exact: true })).toBeVisible()
   })
 })
@@ -164,7 +182,7 @@ test('loads twenty episode ratings once and reuses them after reopening Episodes
   await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
   expect(paths.filter(path => path.startsWith(seasonPath))).toHaveLength(0)
   await openEpisodes(page)
-  await expect(episodeRegion(page, 1, 20).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
+  await expect(episodeRegion(page, 1, 20).getByRole('button', { name: /^Rate episode,/u })).toBeDisabled()
   expect(paths.filter(path => path === `${seasonPath}/ratings`)).toHaveLength(1)
   expect(paths.filter(path => path === `${seasonPath}/rating-summaries`)).toHaveLength(1)
   expect(paths.filter(path => /^\/api\/catalog\/episodes\/[^/]+\/rating/u.test(path))).toHaveLength(0)
@@ -188,7 +206,7 @@ test('loads twenty episode ratings once and reuses them after reopening Episodes
     exact: true
   }).click()
 
-  await expect(episodeRegion(page, 1, 20).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
+  await expect(episodeRegion(page, 1, 20).getByRole('button', { name: /^Rate episode,/u })).toBeDisabled()
   await expect(episodeRegion(page, 1, 20).getByText('0 ratings', { exact: true })).toBeVisible()
   expect(paths.filter(path => path === `${seasonPath}/ratings`)).toHaveLength(1)
   expect(paths.filter(path => path === `${seasonPath}/rating-summaries`)).toHaveLength(1)
@@ -228,9 +246,9 @@ test.describe('episode write and summary errors', () => {
       exact: true
     }).click()
 
-    await expect(first.getByRole('alert')).toHaveText('We couldn’t save your rating. Try again.')
+    await expect(first.getByRole('alert')).toHaveText('We couldn’t confirm whether this change was saved. Retry to check the same change.')
     await expect(first.getByText('8/10')).toHaveCount(0)
-    await expect(episodeRegion(page, 2, 2).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
+    await expect(episodeRegion(page, 2, 2).getByRole('button', { name: /^Rate episode,/u })).toBeDisabled()
 
     await page.route(`**${ratingPath}-summary`, async route => {
       await route.fulfill({
@@ -244,7 +262,7 @@ test.describe('episode write and summary errors', () => {
     }, { times: 1 })
 
     await first.getByRole('button', {
-      name: '8 out of 10',
+      name: 'Retry rating',
       exact: true
     }).click()
 
@@ -295,8 +313,13 @@ test('finishes an episode write in its cached season without reopening the edito
       exact: true
     }).click()
 
-    await expect(episodeRegion(page, 1).getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
-    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
+    await expect(episodeRegion(page, 1, 2).getByRole('button', { name: /^Rate episode,/u })).toBeDisabled()
+
+    await expect(page.getByRole('dialog', {
+      name: /^Your rating for season/u,
+      includeHidden: true
+    })).toHaveCount(0)
+
     release.resolve(true)
 
     const response = await saved
@@ -318,7 +341,10 @@ test('finishes an episode write in its cached season without reopening the edito
       exact: true
     })).toBeEnabled()
 
-    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
+    await expect(page.getByRole('dialog', {
+      name: /^Your rating for season/u,
+      includeHidden: true
+    })).toHaveCount(0)
   } finally {
     release.resolve(true)
   }

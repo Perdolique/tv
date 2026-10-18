@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '../fixtures/global.fixtures.ts'
-import { addCookie } from '../helpers.ts'
+import { addCookie, setCatalogTime } from '../helpers.ts'
 import { episodeEdgeSeries } from './details.fixtures.ts'
 import { openEpisodes } from './helpers.ts'
 
@@ -20,7 +20,7 @@ test.describe('private episode batch errors', () => {
   }] } })
 
   test('keeps the episode list usable after a private batch failure', async ({ context, page }) => {
-    await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+    await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
 
     const batchPath = `/api/catalog/items/${episodeEdgeSeries.id}/seasons/2/episodes/ratings`
 
@@ -71,7 +71,7 @@ test.describe('public episode batch errors', () => {
   }] } })
 
   test('keeps the episode list usable and restores focus after a public batch retry', async ({ context, page }) => {
-    await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+    await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
 
     const batchPath = `/api/catalog/items/${episodeEdgeSeries.id}/seasons/2/episodes/rating-summaries`
 

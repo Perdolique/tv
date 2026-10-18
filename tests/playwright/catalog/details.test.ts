@@ -29,7 +29,7 @@ async function signIn(
 
 function watchedButton(page: Page): Locator {
   return page.getByRole('button', {
-    name: /^(?:Mark as watched|Watched again)$/u
+    name: /^Mark as watched$/u
   })
 }
 

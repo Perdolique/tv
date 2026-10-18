@@ -24,7 +24,7 @@ test('shows count-only history for one and multiple episodes without detail requ
     await route.fulfill({ json: {
       items: [group, {
         ...group,
-        id: '50000000-0000-7000-8000-000000000099',
+        id: `episode_group:${nextViewingId}:2026-10-06`,
         viewingId: nextViewingId,
         totalCount: 1,
 

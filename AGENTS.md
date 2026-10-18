@@ -16,9 +16,12 @@
 ## Verification
 
 - Run applicable checks in parallel where practical.
-- During development, run only focused checks for the code changed. Do not run full suites manually unless the user explicitly asks; commit hooks run the mandatory verification suite.
+- Choose focused checks by tracing the changed behavior through its callers and related tests across the repository, including unchanged integration and browser tests. Update expectations when behavior changes and keep checks for behavior that still applies.
+- During development, run only focused checks for affected behavior. Do not run full suites manually unless the user explicitly asks; commit hooks run the mandatory verification suite.
 - If you are creating a commit, do not run the mandatory verification suite manually first; commit hooks will run it.
 - Pass changed file paths to test and lint commands when supported; otherwise use the narrowest applicable focused command.
+- After an authorized push, wait for all applicable GitHub checks on that exact commit to finish. Inspect failures and address change-related failures within the current task and publication permissions. Repeat this check after each new push.
+- Report completion only after those checks pass or are skipped by the workflow as expected. If verification is blocked, report the blocker, commit, run link, and checks that remain unfinished or failed.
 
 ### Markdown file changes
 

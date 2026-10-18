@@ -9,6 +9,14 @@ async function addCookie(context: BrowserContext, name: string, value: string): 
   }])
 }
 
+// The fake service clock follows test time; a chosen viewing date never unlocks a future episode.
+async function setCatalogTime(context: BrowserContext, page: Page, instant: string): Promise<void> {
+  const date = new Date(instant)
+
+  await addCookie(context, 'tv_catalog_now', instant)
+  await page.clock.setFixedTime(date)
+}
+
 function getRedirectLocation(response: APIResponse): URL {
   const { location } = response.headers()
 
@@ -39,5 +47,6 @@ export {
   addCookie,
   expectNoHorizontalOverflow,
   getRedirectLocation,
-  getVisibleLineCount
+  getVisibleLineCount,
+  setCatalogTime
 }

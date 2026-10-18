@@ -7,6 +7,7 @@ import { dune } from './details.fixtures.ts'
 import { waitForHydration } from './helpers.ts'
 
 const titlePath = `/titles/${dune.id}`
+const viewingsPath = `/api/catalog/items/${dune.id}/viewings`
 
 test.beforeEach(async ({ context }) => {
   await context.addCookies([{
@@ -193,11 +194,10 @@ test('keeps the editor usable at a narrow width and with double-sized text', asy
 
 function observeRatingReads(page: Page): () => number {
   let ratingReads = 0
-  const ratingPath = `/api/catalog/items/${dune.id}/rating`
 
   page.on('request', request => {
     const url = request.url()
-    const isRatingRead = request.method() === 'GET' && url.endsWith(ratingPath)
+    const isRatingRead = request.method() === 'GET' && url.endsWith(viewingsPath)
 
     if (isRatingRead) {
       ratingReads += 1
@@ -253,7 +253,7 @@ test('keeps one rating action and preserves the picker across the mobile breakpo
     await rate.click()
   })
 
-  await test.step('switch to a popover and save a score', async () => {
+  const readsAfterFirstRating = await test.step('switch to a popover and refresh ordered viewings after the first score', async () => {
     await page.setViewportSize({
       width: 640,
       height: 844
@@ -267,14 +267,27 @@ test('keeps one rating action and preserves the picker across the mobile breakpo
       exact: true
     })).toBeFocused()
 
+    expect(ratingReads()).toBe(1)
+
+    const historyRoute = `**${viewingsPath}`
+    const historyRefresh = page.waitForResponse(historyRoute)
+
     await picker.getByRole('button', {
       name: '7 out of 10',
       exact: true
     }).click()
 
+    await historyRefresh
+
     await expect(rate).toHaveAccessibleName('Rate, your rating: 7 out of 10')
     await expect(page.getByRole('region', { name: 'Personal score' })).toContainText('7 out of 10')
+
+    const readsAfterSave = ratingReads()
+
+    expect(readsAfterSave).toBe(2)
     await rate.click()
+
+    return readsAfterSave
   })
 
   await test.step('preserve the selected score across both presentations', async () => {
@@ -307,7 +320,7 @@ test('keeps one rating action and preserves the picker across the mobile breakpo
     await page.mouse.click(8, 8)
     await expect(picker).toHaveCount(0)
     await expect(rate).toBeFocused()
-    expect(ratingReads()).toBe(1)
+    expect(ratingReads()).toBe(readsAfterFirstRating)
   })
 })
 

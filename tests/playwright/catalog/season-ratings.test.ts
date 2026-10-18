@@ -1,6 +1,6 @@
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { appBaseUrl } from '../constants.ts'
-import { addCookie } from '../helpers.ts'
+import { setCatalogTime } from '../helpers.ts'
 import { chernobyl, episodeEdgeSeries } from './details.fixtures.ts'
 import { openEpisodes, waitForHydration } from './helpers.ts'
 
@@ -46,7 +46,7 @@ test('loads the season summary only after a guest opens Episodes without private
 })
 
 test('keeps season scores separate across seasons, titles and sessions', async ({ context, page }) => {
-  await page.clock.setFixedTime(new Date('2099-03-01T12:00:00Z'))
+  await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
 
   await context.addCookies([{
     name: 'tv_session',
@@ -95,7 +95,7 @@ test('keeps season scores separate across seasons, titles and sessions', async (
   }).click()
 
   await expect(secondSeason.getByText('1 rating', { exact: true })).toBeVisible()
-  await expect(wholeTitle).toHaveText(/^Your rating\s*—\s*$/u)
+  await expect(wholeTitle).toHaveText(/^Current viewing\s*—\s*$/u)
 
   await expect(page.getByRole('button', {
     name: 'Watched',
@@ -283,7 +283,7 @@ test('keeps episodes usable on rating failures and retries the affected data', a
     exact: true
   }).click()
 
-  await expect(season.getByRole('alert')).toContainText('We couldn’t save your rating.')
+  await expect(season.getByRole('alert')).toContainText('We couldn’t confirm whether this change was saved.')
   await expect(season).not.toContainText('private database details')
   await expect(season.getByRole('dialog')).toBeVisible()
   await expect(viewer).toContainText('Not rated')
@@ -295,7 +295,7 @@ test('keeps episodes usable on rating failures and retries the affected data', a
   }))
 
   await season.getByRole('button', {
-    name: '8 out of 10',
+    name: 'Retry rating',
     exact: true
   }).click()
 
@@ -322,68 +322,4 @@ test('keeps episodes usable on rating failures and retries the affected data', a
   await expect(viewer).toBeFocused()
 })
 
-})
-
-test('finishes a season rating in the cache while its editor is closed', async ({ context, page }) => {
-  await addCookie(context, 'tv_session', 'e2e-session')
-  await page.goto(titlePath)
-  await openEpisodes(page)
-
-  const season = page.getByRole('region', {
-    name: 'Season 2 ratings',
-    exact: true
-  })
-
-  const release = Promise.withResolvers<boolean>()
-
-  const firstSeason = page.getByRole('button', {
-    name: 'Season 1',
-    exact: true
-  })
-
-  await page.route(seasonRoute, async route => {
-    await release.promise
-
-    await route.continue()
-  })
-
-  try {
-    await season.getByRole('button', {
-      name: 'Rate season 2',
-      exact: true
-    }).click()
-
-    await season.getByRole('button', {
-      name: '9 out of 10',
-      exact: true
-    }).click()
-
-    await expect(season.getByText('Updating rating…', { exact: true })).toBeVisible()
-
-    const saved = page.waitForResponse(response => response.url().endsWith(seasonPath))
-
-    await firstSeason.click()
-    await expect(page.getByRole('button', { name: /^Rate season 1/u })).toBeEnabled()
-    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
-    release.resolve(true)
-
-    const response = await saved
-
-    expect(response.status()).toBe(200)
-    await expect(firstSeason).toBeFocused()
-
-    await page.getByRole('button', {
-      name: 'Season 2',
-      exact: true
-    }).click()
-
-    await expect(season.getByRole('button', {
-      name: 'Rate season 2, your rating: 9 out of 10',
-      exact: true
-    })).toBeEnabled()
-
-    await expect(page.getByRole('dialog', { includeHidden: true })).toHaveCount(0)
-  } finally {
-    release.resolve(true)
-  }
 })

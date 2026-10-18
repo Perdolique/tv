@@ -5,7 +5,7 @@ import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 import { calendarReleases } from '../calendar/fixtures.ts'
 import { watchlistItems } from '../watchlist/fixtures.ts'
 import { paginatedHistory } from '../dashboard/fixtures.ts'
-import { handleMovieViewings, movieViewings } from '../catalog/viewings.worker.ts'
+import { handleDiaryRequest, movieViewings, episodeWatches } from '../catalog/viewings.worker.ts'
 import { createViewingItems, createViewingSummary } from '../dashboard/service.ts'
 import { longEmail } from './constants.ts'
 import { handleImportRequest, OPERATOR_ID, POSTER_ID } from '../imports/worker.ts'
@@ -16,14 +16,6 @@ import {
   type TurnstileAction
 } from '../../../packages/shared/src/turnstile.ts'
 
-import {
-  catalogSeriesWatchSchema,
-  catalogSeriesUnwatchSchema,
-  catalogSeriesCancelRewatchSchema,
-  type CatalogSeriesWatchesResponse
-} from '../../../packages/shared/src/catalog-series.ts'
-
-import * as v from 'valibot'
 import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 
 interface Credentials {
@@ -69,10 +61,6 @@ const UNAVAILABLE_VERIFICATION_TOKEN = 'u'.repeat(43)
 const SESSION_COOKIE = 'tv_session=e2e-session'
 const LONG_EMAIL_SESSION_COOKIE = 'tv_session=e2e-long-email-session'
 const FOLLOW_COOKIE_NAME = 'tv_followed_item'
-const WATCHED_COOKIE_NAME = 'tv_watched_item'
-const LONG_EMAIL_WATCHED_COOKIE_NAME = 'tv_long_email_watched_item'
-const EPISODE_WATCHED_COOKIE_NAME = 'tv_watched_episode'
-const LONG_EMAIL_EPISODE_WATCHED_COOKIE_NAME = 'tv_long_email_watched_episode'
 const LONG_EMAIL_EMPTY_RELEASE_DATE = '2026-09-12'
 
 const LONG_EMAIL_USER = {
@@ -646,346 +634,6 @@ function getCookieValue(request: Request, name: string): string | undefined {
   return cookie?.slice(prefix.length)
 }
 
-function episodeRatingCookie(request: Request, episodeId: string, account: string): number | null {
-  const name = `tv_episode_rating_${account}_${episodeId}`
-  const value = getCookieValue(request, name)
-
-  return value === undefined ? null : Number(value)
-}
-
-function episodeRatingSummary(request: Request, episodeId: string) {
-  const scores = ['first', 'second'].flatMap(account => {
-    const score = episodeRatingCookie(request, episodeId, account)
-
-    return score === null ? [] : [score]
-  })
-
-  const ratingCount = scores.length
-  const total = scores.reduce((sum, score) => sum + score, 0)
-  const averageScore = ratingCount === 0 ? null : total / ratingCount
-
-  return {
-    averageScore,
-    ratingCount
-  }
-}
-
-async function handleEpisodeRating(request: Request, url: URL): Promise<Response> {
-  const segments = url.pathname.split('/')
-  const episodeId = segments[4] ?? ''
-  const episodes = [...episodeFixtures.values()].flat()
-  const exists = episodes.some(episode => episode.id === episodeId)
-
-  if (!exists) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'Episode not found.'
-    } }, 404)
-  }
-
-  if (segments[5] === 'rating-summary') {
-    const summary = episodeRatingSummary(request, episodeId)
-
-    return json(summary)
-  }
-
-  if (!hasAuthenticatedCatalogSession(request)) {
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401)
-  }
-
-  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
-  const name = `tv_episode_rating_${account}_${episodeId}`
-
-  if (request.method === 'DELETE') {
-    const clearedCookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`
-
-    return json({ score: null }, 200, { 'Set-Cookie': clearedCookie })
-  }
-
-  if (request.method === 'PUT') {
-    const input: unknown = await request.json()
-    const score = isRecord(input) ? input.score : undefined
-
-    if (typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10) {
-      return json({ error: {
-        code: 'INVALID_REQUEST',
-        message: 'Choose a score from 1 to 10.'
-      } }, 400)
-    }
-
-    const savedCookie = `${name}=${score}; Path=/; SameSite=Lax`
-
-    return json({ score }, 200, { 'Set-Cookie': savedCookie })
-  }
-
-  const score = episodeRatingCookie(request, episodeId, account)
-
-  return json({ score })
-}
-
-function handleEpisodeRatingBatch(request: Request, url: URL): Response {
-  const segments = url.pathname.split('/')
-  const itemId = segments[4] ?? ''
-  const seasonNumber = Number(segments[6])
-  const catalogEpisodes = episodeFixtures.get(itemId) ?? []
-  const episodes = catalogEpisodes.filter(episode => episode.seasonNumber === seasonNumber)
-
-  if (episodes.length === 0) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'Season not found.'
-    } }, 404)
-  }
-
-  if (segments[8] === 'rating-summaries') {
-    const items = episodes.map(episode => {
-      const summary = episodeRatingSummary(request, episode.id)
-
-      return {
-        episodeId: episode.id,
-        averageScore: summary.averageScore,
-        ratingCount: summary.ratingCount
-      }
-    })
-
-    return json({ items })
-  }
-
-  if (!hasAuthenticatedCatalogSession(request)) {
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401)
-  }
-
-  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
-
-  const items = episodes.map(episode => {
-    const score = episodeRatingCookie(request, episode.id, account)
-
-    return {
-      episodeId: episode.id,
-      score
-    }
-  })
-
-  return json({ items })
-}
-
-async function handleSeasonRating(request: Request, url: URL): Promise<Response> {
-  const segments = url.pathname.split('/')
-  const id = segments[4] ?? ''
-  const seasonNumber = Number(segments[6])
-  const episodes = episodeFixtures.get(id) ?? []
-  const exists = episodes.some(episode => episode.seasonNumber === seasonNumber)
-
-  if (!exists) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'This season could not be found.'
-    } }, 404)
-  }
-
-  const isSummary = segments[7] === 'rating-summary'
-
-  if (isSummary) {
-    const scores = ['first', 'second'].flatMap(account => {
-      const cookieName = `tv_season_rating_${account}_${id}_${seasonNumber}`
-      const value = getCookieValue(request, cookieName)
-
-      if (value === undefined) {
-        return []
-      }
-
-      const score = Number(value)
-
-      return [score]
-    })
-
-    const ratingCount = scores.length
-    const sum = scores.reduce((total, value) => total + value, 0)
-    const averageScore = ratingCount === 0 ? null : sum / ratingCount
-
-    return json({
-      averageScore,
-      ratingCount
-    })
-  }
-
-  if (!hasAuthenticatedCatalogSession(request)) {
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401)
-  }
-
-  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
-  const cookieName = `tv_season_rating_${account}_${id}_${seasonNumber}`
-
-  if (request.method === 'DELETE') {
-    const clearedCookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
-
-    return json({ score: null }, 200, { 'Set-Cookie': clearedCookie })
-  }
-
-  if (request.method === 'PUT') {
-    const input: unknown = await request.json()
-    const score = isRecord(input) ? input.score : undefined
-
-    if (typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10) {
-      return json({ error: {
-        code: 'INVALID_REQUEST',
-        message: 'Choose a score from 1 to 10.'
-      } }, 400)
-    }
-
-    const savedCookie = `${cookieName}=${score}; Path=/; SameSite=Lax`
-
-    return json({ score }, 200, { 'Set-Cookie': savedCookie })
-  }
-
-  const value = getCookieValue(request, cookieName)
-  const score = value === undefined ? null : Number(value)
-
-  return json({ score })
-}
-
-function handleCatalogRatingSummary(request: Request, url: URL): Response {
-  const id = url.pathname.split('/').at(-2)
-  const item = detailsItems.find(candidate => candidate.id === id)
-
-  if (item === undefined) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'This title could not be found.'
-    } }, 404)
-  }
-
-  if (hasCookie(request, 'fail_rating_summary=1')) {
-    return json({ error: {
-      code: 'SERVICE_UNAVAILABLE',
-      message: 'private summary database details'
-    } }, 503, {
-      'Set-Cookie': 'fail_rating_summary=; Max-Age=0; Path=/; SameSite=Lax'
-    })
-  }
-
-  if (hasCookie(request, 'large_rating_summary=1')) {
-    const largeRatingCount = 1234
-    const largeAverageScore = 10_798 / largeRatingCount
-
-    return json({
-      averageScore: largeAverageScore,
-      ratingCount: largeRatingCount
-    })
-  }
-
-  const scores: number[] = []
-
-  for (const account of ['first', 'second']) {
-    const cookieName = `tv_rating_${account}_${item.id}`
-    const value = getCookieValue(request, cookieName)
-
-    if (value !== undefined) {
-      const score = Number(value)
-
-      scores.push(score)
-    }
-  }
-
-  const ratingCount = scores.length
-  const scoreSum = scores.reduce((sum, score) => sum + score, 0)
-  const averageScore = ratingCount === 0 ? null : scoreSum / ratingCount
-
-  return json({
-    averageScore,
-    ratingCount
-  })
-}
-
-async function handleCatalogRating(request: Request, url: URL): Promise<Response> {
-  if (!hasAuthenticatedCatalogSession(request)) {
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401)
-  }
-
-  const segments = url.pathname.split('/')
-  const id = segments.at(4)
-  const item = detailsItems.find(candidate => candidate.id === id)
-
-  if (item === undefined) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'This title could not be found.'
-    } }, 404)
-  }
-
-  const account = hasCookie(request, LONG_EMAIL_SESSION_COOKIE) ? 'second' : 'first'
-  const cookieName = `tv_rating_${account}_${item.id}`
-
-  if (request.method === 'DELETE') {
-    const removedCookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
-
-    return json({ score: null }, 200, { 'Set-Cookie': removedCookie })
-  }
-
-  if (request.method === 'PUT') {
-    const input: unknown = await request.json()
-    const score = isRecord(input) ? input.score : undefined
-    const isInvalidScore = typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10
-
-    if (isInvalidScore) {
-      return json({ error: {
-        code: 'INVALID_REQUEST',
-        message: 'Choose a score from 1 to 10.'
-      } }, 400)
-    }
-
-    const savedCookie = `${cookieName}=${score}; Path=/; SameSite=Lax`
-
-    return json({ score }, 200, { 'Set-Cookie': savedCookie })
-  }
-
-  const value = getCookieValue(request, cookieName)
-  const score = value === undefined ? null : Number(value)
-
-  return json({ score })
-}
-
-function getWatchedCookieName(request: Request): string {
-  return hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
-    ? LONG_EMAIL_WATCHED_COOKIE_NAME
-    : WATCHED_COOKIE_NAME
-}
-
-function getEpisodeWatchedCookieName(request: Request): string {
-  return hasCookie(request, LONG_EMAIL_SESSION_COOKIE)
-    ? LONG_EMAIL_EPISODE_WATCHED_COOKIE_NAME
-    : EPISODE_WATCHED_COOKIE_NAME
-}
-
-function getWatchedCatalogItemIds(request: Request, cookieName: string): Set<string> {
-  const value = getCookieValue(request, cookieName)
-  const ids = value === undefined || value === '' ? [] : value.split('|')
-
-  return new Set(ids)
-}
-
-function createWatchedCookie(cookieName: string, catalogItemIds: Set<string>): string {
-  if (catalogItemIds.size === 0) {
-    return `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
-  }
-
-  const value = [...catalogItemIds].join('|')
-
-  return `${cookieName}=${value}; Path=/; SameSite=Lax`
-}
-
 async function handleCatalogFollow(request: Request, url: URL): Promise<Response> {
   const expiresDuringMutation = request.method !== 'GET' && hasCookie(request, 'expire_follow_mutation=1')
 
@@ -1072,161 +720,6 @@ async function handleCatalogEpisodes(request: Request, url: URL): Promise<Respon
   return json({ items: episodeFixtures.get(id) ?? [] })
 }
 
-function seriesWatches(request: Request, itemId: string, watchedIds: Set<string>): CatalogSeriesWatchesResponse {
-  const episodes = episodeFixtures.get(itemId) ?? []
-  const catalogEpisodeIds = episodes.map(episode => episode.id)
-  const episodeIds = new Set(catalogEpisodeIds)
-  const markedEpisodeIds = [...watchedIds]
-  const watchedEpisodeIds = markedEpisodeIds.filter(id => episodeIds.has(id))
-  let hasViewing = watchedEpisodeIds.length > 0
-
-  if (!hasViewing) {
-    const currentViewingCookie = `tv_series_current_${itemId}=1`
-
-    hasViewing = hasCookie(request, currentViewingCookie)
-  }
-
-  const watches = watchedEpisodeIds.map(id => {return {
-    id,
-    catalogEpisodeId: id,
-    viewingId: itemId,
-    markedAt: '2026-10-08T10:00:00.000000Z'
-  }})
-
-  const currentViewing: CatalogSeriesWatchesResponse['currentViewing'] = hasViewing ? {
-    id: itemId,
-    catalogItemId: itemId,
-    status: 'watching',
-    isRewatch: false,
-    recordedAt: '2026-10-08T10:00:00.000000Z',
-    revision: 1
-  } : null
-
-  const contextVersion = hasViewing ? 1 : 0
-
-  return {
-    watchedEpisodeIds,
-    watches,
-    currentViewing,
-    contextVersion
-  }
-}
-
-function handleCatalogEpisodeWatches(request: Request, url: URL): Response {
-  if (!hasAuthenticatedCatalogSession(request) || hasCookie(request, 'expire_episode_watches=1')) {
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401, {
-      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
-    })
-  }
-
-  if (hasCookie(request, 'fail_episode_watches_load=1')) {
-    return json({ error: {
-      code: 'SERVICE_UNAVAILABLE',
-      message: 'private database connection details'
-    } }, 503, {
-      'Set-Cookie': 'fail_episode_watches_load=; Max-Age=0; Path=/; SameSite=Lax'
-    })
-  }
-
-  const id = url.pathname.split('/').at(-3)
-  const item = detailsItems.find(candidate => candidate.id === id)
-
-  if (item === undefined || id === undefined) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'This title could not be found.'
-    } }, 404)
-  }
-
-  if (item.type !== 'series') {
-    return json({ error: {
-      code: 'INVALID_REQUEST',
-      message: 'The request is invalid.'
-    } }, 400)
-  }
-
-  const cookieName = getEpisodeWatchedCookieName(request)
-  const watchedIds = getWatchedCatalogItemIds(request, cookieName)
-  const response = seriesWatches(request, id, watchedIds)
-
-  return json(response)
-}
-
-async function handleCatalogEpisodeWatched(request: Request, url: URL): Promise<Response> {
-  const expiresDuringMutation = hasCookie(request, 'expire_episode_watched_mutation=1')
-
-  if (!hasAuthenticatedCatalogSession(request) || expiresDuringMutation) {
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401, {
-      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
-    })
-  }
-
-  if (hasCookie(request, 'fail_episode_watched=1')) {
-    // oxlint-disable-next-line promise/avoid-new -- Browser tests require an observable saving state before the failure.
-    await new Promise(resolve => { globalThis.setTimeout(resolve, 500) })
-
-    return json({ error: {
-      code: 'SERVICE_UNAVAILABLE',
-      message: 'private database connection details'
-    } }, 503, {
-      'Set-Cookie': 'fail_episode_watched=; Max-Age=0; Path=/; SameSite=Lax'
-    })
-  }
-
-  const episodeId = url.pathname.split('/').at(-2)
-  const itemEntry = [...episodeFixtures.entries()].find(([, episodes]) => episodes.some(episode => episode.id === episodeId))
-
-  if (episodeId === undefined || itemEntry === undefined) {
-    return json({ error: {
-      code: 'NOT_FOUND',
-      message: 'This title could not be found.'
-    } }, 404)
-  }
-
-  const raw: unknown = await request.json().catch(() => null)
-  const parsed = request.method === 'PUT' ? v.safeParse(catalogSeriesWatchSchema, raw) : v.safeParse(catalogSeriesUnwatchSchema, raw)
-
-  if (!parsed.success) {
-    return json({ error: {
-    code: 'INVALID_REQUEST',
-    message: 'Refresh your viewing and try again.'
-  } }, 409)
-  }
-
-  const [itemId] = itemEntry
-  const cookieName = getEpisodeWatchedCookieName(request)
-  const watchedIds = getWatchedCatalogItemIds(request, cookieName)
-  const headers = new Headers()
-
-  if (request.method === 'PUT') { watchedIds.add(episodeId) } else { watchedIds.delete(episodeId) }
-
-  const watchedCookie = createWatchedCookie(cookieName, watchedIds)
-  const currentViewingCookie = `tv_series_current_${itemId}=1; Path=/; SameSite=Lax`
-
-  headers.append('Set-Cookie', watchedCookie)
-  headers.append('Set-Cookie', currentViewingCookie)
-
-  const result = seriesWatches(request, itemId, watchedIds)
-
-  result.currentViewing ??= {
-    id: itemId,
-    catalogItemId: itemId,
-    status: 'watching',
-    isRewatch: false,
-    recordedAt: '2026-10-08T10:00:00.000000Z',
-    revision: 1
-  }
-  result.contextVersion = 1
-
-  return json(result, 200, headers)
-}
-
 async function handleCatalogViewing(request: Request, url: URL): Promise<Response> {
   if (!hasAuthenticatedCatalogSession(request) || hasCookie(request, 'expire_viewing=1')) {
     return json({ error: {
@@ -1258,12 +751,11 @@ async function handleCatalogViewing(request: Request, url: URL): Promise<Respons
     await new Promise(resolve => { globalThis.setTimeout(resolve, 1200) })
   }
 
-  const movieIds = getWatchedCatalogItemIds(request, getWatchedCookieName(request))
-  const episodeIds = getWatchedCatalogItemIds(request, getEpisodeWatchedCookieName(request))
+  const watches = episodeWatches(request)
 
-  // Fixed fixture times make local-time and SSR assertions deterministic; mark cookies own membership.
-  const viewings = movieViewings(request, movieIds)
-  const items = hasCookie(request, 'paginated_viewing=1') ? paginatedHistory : createViewingItems(movieIds, episodeIds, viewings)
+  // Diary state supplies every repeated mark and its identity to the dashboard.
+  const viewings = movieViewings(request)
+  const items = hasCookie(request, 'paginated_viewing=1') ? paginatedHistory : createViewingItems(viewings, watches)
 
   if (isSummary) {
     const summary = createViewingSummary(items)
@@ -1335,102 +827,21 @@ export default {
   // oxlint-disable-next-line eslint/complexity -- One explicit dispatcher keeps the fake service routes auditable.
   async fetch(request): Promise<Response> {
     const url = new URL(request.url)
-
-    if (request.method === 'GET' && /^\/api\/catalog\/items\/[^/]+\/timeline(?:\/episodes)?$/u.test(url.pathname)) {
-      return json({
-        items: [],
-        nextCursor: null
-      })
-    }
-
     const authenticated = hasAuthenticatedCatalogSession(request)
     const importResponse = await handleImportRequest(request, url, authenticated)
 
     if (importResponse !== null) {return importResponse}
 
-    const isRewatchCancellation = request.method === 'DELETE' && /^\/api\/catalog\/items\/[^/]+\/rewatch$/u.test(url.pathname)
+    const diaryResponse = await handleDiaryRequest(request, url, authenticated)
 
-    if (isRewatchCancellation) {
-      if (!authenticated) {
-        return json({ error: { code: 'AUTHENTICATION_REQUIRED' } }, 401)
-      }
+    if (diaryResponse !== null) { return diaryResponse }
 
-      const body: unknown = await request.json()
-      const parsed = v.safeParse(catalogSeriesCancelRewatchSchema, body)
-
-      if (!parsed.success) {
-        return json({ error: { code: 'INVALID_REQUEST' } }, 400)
-      }
-
-      return json({
-        watchedEpisodeIds: [],
-        watches: [],
-        currentViewing: null,
-        contextVersion: parsed.output.contextVersion + 1
-      })
-    }
-
-    if (
-      request.method === 'GET'
-      && url.pathname.startsWith('/api/catalog/items/')
-      && url.pathname.endsWith('/episodes/watched')
-    ) {
-      return handleCatalogEpisodeWatches(request, url)
-    }
-
-    if (
-      request.method === 'GET'
-      && url.pathname.startsWith('/api/catalog/items/')
-      && url.pathname.endsWith('/episodes')
-    ) {
+    if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/episodes')) {
       return handleCatalogEpisodes(request, url)
     }
 
-    if (
-      ['PUT', 'DELETE'].includes(request.method)
-      && url.pathname.startsWith('/api/catalog/episodes/')
-      && url.pathname.endsWith('/watched')
-    ) {
-      return handleCatalogEpisodeWatched(request, url)
-    }
-
-    if (
-      ['GET', 'PUT', 'DELETE'].includes(request.method)
-      && url.pathname.startsWith('/api/catalog/items/')
-      && url.pathname.endsWith('/follow')
-    ) {
+    if (['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/follow')) {
       return handleCatalogFollow(request, url)
-    }
-
-    if (/^\/api\/catalog\/items\/[^/]+\/viewings(?:\/[^/]+)?$/u.test(url.pathname)) {
-      const movieIds = getWatchedCatalogItemIds(request, getWatchedCookieName(request))
-
-      return handleMovieViewings(request, url, {
-        authenticated,
-        movieIds
-      })
-    }
-
-    if (/^\/api\/catalog\/episodes\/[^/]+\/rating(?:-summary)?$/u.test(url.pathname)) {
-      return handleEpisodeRating(request, url)
-    }
-
-    if (/^\/api\/catalog\/items\/[^/]+\/seasons\/[^/]+\/episodes\/rating(?:s|-summaries)$/u.test(url.pathname)) {
-      return handleEpisodeRatingBatch(request, url)
-    }
-
-    if (/^\/api\/catalog\/items\/[^/]+\/seasons\/[^/]+\/rating(?:-summary)?$/u.test(url.pathname)) {
-      return handleSeasonRating(request, url)
-    }
-
-    if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating-summary')) {
-      return handleCatalogRatingSummary(request, url)
-    }
-
-    const isRatingRequest = ['GET', 'PUT', 'DELETE'].includes(request.method) && url.pathname.startsWith('/api/catalog/items/') && url.pathname.endsWith('/rating')
-
-    if (isRatingRequest) {
-      return handleCatalogRating(request, url)
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/')) {

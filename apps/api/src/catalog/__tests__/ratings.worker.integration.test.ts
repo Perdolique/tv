@@ -1,411 +1,252 @@
-import { env, exports } from 'cloudflare:workers'
-import { Client } from 'pg'
+import { randomUUID } from 'node:crypto'
 import * as v from 'valibot'
-import { catalogViewingMutationResponseSchema } from '@tv/shared/catalog-viewings'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSessionToken, hashSessionToken } from '../../auth/session.ts'
-import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
+import { catalogRatingMutationResponseSchema } from '@tv/shared/catalog-viewings'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { ratingWorkerFixture, withRatingClient } from '../../testing/rating-worker-fixtures.ts'
 
-const token = createSessionToken()
-const userId = '79000000-0000-4000-8000-000000000001'
-const otherUserId = '79000000-0000-4000-8000-000000000002'
-const thirdUserId = '79000000-0000-4000-8000-000000000003'
-const cookie = `__Host-tv_session=${token}`
+const fixture = ratingWorkerFixture()
 
-async function withClient<Result>(run: (client: Client) => Promise<Result>): Promise<Result> {
-  const client = new Client({ connectionString: env.DATABASE.connectionString })
-
-  try {
-    await client.connect()
-    await assertDisposableTestDatabase(client)
-
-    return await run(client)
-  } finally {
-    await client.end()
-  }
-}
-
-async function itemId(title: string): Promise<string> {
-  return withClient(async client => {
-    const rows = await client.query<{ id: string }>('SELECT catalog_item_id AS id FROM catalog_item_titles WHERE title = $1 AND is_original', [title])
-    const id = rows.rows[0]?.id
-
-    if (id === undefined) { throw new Error(`Missing title: ${title}`) }
-
-    return id
-  })
-}
-
-interface RatingRequestOptions {
-  input?: unknown;
-  session?: string | null;
-}
-
-async function request(id: string, method = 'GET', { input, session = cookie }: RatingRequestOptions = {}): Promise<Response> {
-  const headers = new Headers()
-
-  const init: RequestInit = {
-    headers,
-    method
-  }
-
-  if (session !== null) { headers.set('Cookie', session) }
-
-  if (input !== undefined && method !== 'GET') {
-    headers.set('Content-Type', 'application/json')
-
-    init.body = JSON.stringify(input)
-  }
-
-  const apiRequest = new Request(`https://tv-api.test/api/catalog/items/${id}/rating`, init)
-
-  return exports.default.fetch(apiRequest)
-}
-
-async function expectScore(response: Response, score: number | null): Promise<void> {
-  expect(response.status).toBe(200)
-  expect(response.headers.get('cache-control')).toBe('no-store')
-  await expect(response.json()).resolves.toStrictEqual({ score })
-}
-
-async function expectSummary(response: Response, averageScore: number | null, ratingCount: number): Promise<void> {
+async function readRating(response: Response) {
   expect(response.status).toBe(200)
   expect(response.headers.get('cache-control')).toBe('no-store')
 
-  const body: unknown = await response.json()
+  const value: unknown = await response.json()
 
-  expect(body).toStrictEqual({
-    averageScore,
-    ratingCount
-  })
+  return v.parse(catalogRatingMutationResponseSchema, value)
 }
 
-describe('catalog rating Worker contract', () => {
-  beforeEach(async () => {
-    const hash = await hashSessionToken(token)
-
-    await withClient(async client => {
-      await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherUserId, thirdUserId]])
-      await client.query('INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4), ($5, $6)', [userId, 'ratings@example.com', otherUserId, 'other-ratings@example.com', thirdUserId, 'third-ratings@example.com'])
-      await client.query('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval \'30 days\')', [userId, hash])
-    })
-  })
-
-  afterEach(() => { vi.restoreAllMocks() })
-
-  it.each(['Dead Man', 'Spartacus'])('saves, changes, removes and reloads ratings for %s without changing follows or watches', async title => {
-    const id = await itemId(title)
-
-    await withClient(async client => {
-      await client.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [userId, id])
-    })
-
-    const unrated = await request(id)
-
-    await expectScore(unrated, null)
-
-    const created = await request(id, 'PUT', { input: { score: 1 } })
-
-    await expectScore(created, 1)
-
-    const corrected = await request(id, 'PUT', { input: { score: 10 } })
-
-    await expectScore(corrected, 10)
-
-    const unchanged = await request(id, 'PUT', { input: { score: 10 } })
-
-    await expectScore(unchanged, 10)
-
-    const newToken = createSessionToken()
-    const newHash = await hashSessionToken(newToken)
-
-    await withClient(async client => {
-      await client.query('DELETE FROM sessions WHERE user_id = $1', [userId])
-      await client.query('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval \'30 days\')', [userId, newHash])
-    })
-
-    const newCookie = `__Host-tv_session=${newToken}`
-    const reloaded = await request(id, 'GET', { session: newCookie })
-
-    await expectScore(reloaded, 10)
-
-    const removed = await request(id, 'DELETE', { session: newCookie })
-
-    await expectScore(removed, null)
-
-    const alreadyRemoved = await request(id, 'DELETE', { session: newCookie })
-
-    await expectScore(alreadyRemoved, null)
-
-    await withClient(async client => {
-      const follows = await client.query('SELECT * FROM catalog_item_follows WHERE user_id = $1 AND catalog_item_id = $2', [userId, id])
-      const movies = await client.query('SELECT * FROM catalog_movie_watches WHERE user_id = $1', [userId])
-      const episodes = await client.query('SELECT * FROM catalog_episode_watches WHERE user_id = $1', [userId])
-
-      expect(follows.rows).toHaveLength(1)
-      expect(movies.rows).toHaveLength(0)
-      expect(episodes.rows).toHaveLength(0)
-    })
-  })
-
-  // oxlint-disable-next-line vitest/expect-expect -- expectSummary asserts the complete HTTP and JSON contract.
-  it.each(['Dead Man', 'Spartacus'])('publicly reads current averages after real writes for %s', async title => {
-    const id = await itemId(title)
-    const summaryUrl = `https://tv-api.test/api/catalog/items/${id}/rating-summary`
-    const anonymous = new Request(summaryUrl)
-    const invalidSession = new Request(summaryUrl, { headers: { Cookie: '__Host-tv_session=invalid' } })
-    const empty = await exports.default.fetch(anonymous)
-
-    await expectSummary(empty, null, 0)
-    await request(id, 'PUT', { input: { score: 6 } })
-
-    const oneVote = await exports.default.fetch(invalidSession)
-
-    await expectSummary(oneVote, 6, 1)
-
-    await withClient(async client => {
-      await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 6), ($3, $2, 9)', [otherUserId, id, thirdUserId])
-    })
-
-    const threeVotesRequest = new Request(summaryUrl)
-    const threeVotes = await exports.default.fetch(threeVotesRequest)
-
-    await expectSummary(threeVotes, 7, 3)
-    await request(id, 'PUT', { input: { score: 7 } })
-    await request(id, 'PUT', { input: { score: 7 } })
-
-    const correctedRequest = new Request(summaryUrl)
-    const corrected = await exports.default.fetch(correctedRequest)
-
-    await expectSummary(corrected, 22 / 3, 3)
-    await request(id, 'DELETE')
-
-    const removedRequest = new Request(summaryUrl)
-    const removed = await exports.default.fetch(removedRequest)
-
-    await expectSummary(removed, 7.5, 2)
-
-    await withClient(async client => {
-      await client.query('DELETE FROM catalog_item_ratings WHERE catalog_item_id = $1', [id])
-    })
-
-    const noVotesRequest = new Request(summaryUrl)
-    const noVotes = await exports.default.fetch(noVotesRequest)
-
-    await expectSummary(noVotes, null, 0)
-  })
-
-  it.each([['invalid', 400], ['79000000-0000-4000-8000-999999999999', 404]])('rejects the public summary target %s', async (id, status) => {
-    const summaryRequest = new Request(`https://tv-api.test/api/catalog/items/${id}/rating-summary`)
-    const response = await exports.default.fetch(summaryRequest)
-
-    expect(response.status).toBe(status)
-    expect(response.headers.get('cache-control')).toBe('no-store')
-  })
-
-  it('returns a safe summary failure and keeps its database diagnostic', async () => {
-    const id = await itemId('Dead Man')
-    const log = vi.spyOn(console, 'error').mockReturnValue()
-
-    await withClient(async client => {
-      await client.query('ALTER TABLE catalog_item_ratings RENAME TO unavailable_test_ratings')
-
-      try {
-        const summaryRequest = new Request(`https://tv-api.test/api/catalog/items/${id}/rating-summary`)
-        const response = await exports.default.fetch(summaryRequest)
-        const body: unknown = await response.json()
-        const loggedCalls = JSON.stringify(log.mock.calls)
-
-        expect(response.status).toBe(503)
-        expect(response.headers.get('cache-control')).toBe('no-store')
-
-        expect(body).toStrictEqual({ error: {
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'The catalog is temporarily unavailable.'
-        } })
-
-        expect(loggedCalls).toContain('catalog_item_ratings')
-        expect(loggedCalls).toContain('requestId')
-      } finally {
-        await client.query('ALTER TABLE unavailable_test_ratings RENAME TO catalog_item_ratings')
-      }
-    })
-  })
-
-  it.each(['GET', 'PUT', 'DELETE'])('rejects anonymous and expired sessions before validating %s inputs', async method => {
-    const anonymous = await request('invalid', method, { session: null })
-
-    expect(anonymous.status).toBe(401)
-
-    await withClient(async client => {
-      await client.query('UPDATE sessions SET expires_at = now() - interval \'1 day\' WHERE user_id = $1', [userId])
-    })
-
-    const expired = await request('invalid', method)
-
-    expect(expired.status).toBe(401)
-  })
-
-  it.each([0, 11, 1.5, '7', null, true])('rejects an invalid score %s without changing an existing rating', async score => {
-    const id = await itemId('Dead Man')
-
-    await request(id, 'PUT', { input: { score: 7 } })
-
-    const invalid = await request(id, 'PUT', { input: { score } })
-
-    expect(invalid.status).toBe(400)
-
-    const preserved = await request(id)
-
-    await expectScore(preserved, 7)
-  })
-
-  it('isolates accounts and rejects a supplied owner', async () => {
-    const id = await itemId('Dead Man')
-
-    await withClient(async client => {
-      await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 4)', [otherUserId, id])
-    })
-
-    const ownRating = await request(id)
-
-    await expectScore(ownRating, null)
-
-    const spoofed = await request(id, 'PUT', { input: {
-      score: 9,
-      userId: otherUserId
-    } })
-
-    expect(spoofed.status).toBe(400)
-
-    const saved = await request(id, 'PUT', { input: { score: 8 } })
-
-    await expectScore(saved, 8)
-
-    const removed = await request(id, 'DELETE')
-
-    await expectScore(removed, null)
-
-    await withClient(async client => {
-      const rows = await client.query('SELECT score FROM catalog_item_ratings WHERE user_id = $1 AND catalog_item_id = $2', [otherUserId, id])
-
-      expect(rows.rows).toStrictEqual([{ score: 4 }])
-    })
+describe('unified rating HTTP contracts', () => {
+  beforeEach(fixture.setup)
+
+  afterAll(async () => {
+    await fixture.cleanup()
   })
 
   it.each([
     {
-      method: 'GET',
-      input: undefined
+      kind: 'movie',
+      catalogItemId: fixture.movieId
     },
     {
-      method: 'PUT',
-      input: { score: 7 }
+      kind: 'series',
+      catalogItemId: fixture.seriesId
     },
     {
-      method: 'DELETE',
-      input: undefined
+      kind: 'season',
+      catalogItemId: fixture.seriesId
+    },
+    {
+      kind: 'episode',
+      catalogItemId: fixture.seriesId
     }
-  ])('rejects malformed and unknown targets for $method', async ({ method, input }) => {
-    const malformed = await request('invalid', method, { input })
-    const missing = await request('79000000-0000-4000-8000-999999999999', method, { input })
+  ] as const)('saves, corrects, reloads and removes a $kind score with confirmed context', async ({ kind, catalogItemId }) => {
+    const path = fixture.path(kind)
+    const initial = await fixture.request(path)
+    const empty = await readRating(initial)
 
-    expect(malformed.status).toBe(400)
-    expect(missing.status).toBe(404)
+    expect(empty.score).toBeNull()
+    expect(empty.viewing).toBeNull()
+
+    const context = await fixture.context(catalogItemId)
+
+    const created = await fixture.request(path, 'PUT', {
+      ...context,
+      score: 7,
+      viewingDate: '2026-01-15'
+    })
+
+    const rated = await readRating(created)
+
+    expect(rated.score).toBe(7)
+    expect(rated.summary.currentViewingId).toBe(rated.viewing?.id)
+
+    const nextContext = await fixture.context(catalogItemId)
+
+    const correctedResponse = await fixture.request(path, 'PUT', {
+      ...nextContext,
+      score: 9
+    })
+
+    const corrected = await readRating(correctedResponse)
+    const reload = await fixture.request(path)
+    const reloaded = await readRating(reload)
+
+    expect(corrected.score).toBe(9)
+    expect(corrected.viewing?.id).toBe(rated.viewing?.id)
+    expect(reloaded).toStrictEqual(corrected)
+
+    const removeContext = await fixture.context(catalogItemId)
+    const removedResponse = await fixture.request(path, 'DELETE', removeContext)
+    const removed = await readRating(removedResponse)
+
+    expect(removed.score).toBeNull()
+    expect(removed.viewing?.id).toBe(rated.viewing?.id)
+
+    const summary = await fixture.request(`${path}-summary`, 'GET', undefined, null)
+
+    expect(summary.status).toBe(200)
+
+    await expect(summary.json()).resolves.toStrictEqual({
+      averageScore: null,
+      ratingCount: 0
+    })
   })
 
-  it('preserves a rating when its movie viewing is deleted', async () => {
-    const id = await itemId('Dead Man')
-    const rated = await request(id, 'PUT', { input: { score: 8 } })
+  it.each(['movie', 'series', 'season', 'episode'] as const)('requires authentication before reading or parsing %s writes', async kind => {
+    const path = fixture.path(kind)
+    const get = await fixture.request(path, 'GET', undefined, null)
+    const put = await fixture.request(path, 'PUT', { score: 100 }, null)
+    const remove = await fixture.request(path, 'DELETE', undefined, null)
 
-    await expectScore(rated, 8)
+    expect([get.status, put.status, remove.status]).toStrictEqual([401, 401, 401])
+  })
 
-    const viewingsUrl = `https://tv-api.test/api/catalog/items/${id}/viewings`
-    const requestId = crypto.randomUUID()
+  it.each([0, 11, 1.5, '8', null, true])('rejects invalid score %s at the HTTP boundary while preserving the saved score', async score => {
+    const initialContext = await fixture.context(fixture.movieId)
 
-    const creationBody = JSON.stringify({
-      mode: 'current',
-      contextVersion: 0,
-      requestId
+    const initial = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...initialContext,
+      score: 6,
+      viewingDate: '2026-01-15'
     })
 
-    const creationRequest = new Request(viewingsUrl, {
-      headers: {
-        Cookie: cookie,
-        'Content-Type': 'application/json'
-      },
+    const rated = await readRating(initial)
+    const context = await fixture.context(fixture.movieId)
 
-      method: 'POST',
-      body: creationBody
+    const response = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...context,
+      score,
+      viewingDate: '2026-01-15'
     })
 
-    const created = await exports.default.fetch(creationRequest)
+    expect(response.status).toBe(400)
 
-    expect(created.status).toBe(200)
+    const count = await withRatingClient(async client => client.query<{ count: number }>('SELECT count(*)::integer AS count FROM catalog_viewings WHERE user_id = $1', [fixture.userId]))
 
-    const creationResponse: unknown = await created.json()
-    const result = v.parse(catalogViewingMutationResponseSchema, creationResponse)
-    const viewingUrl = `${viewingsUrl}/${result.viewing.id}`
-    const deletionBody = JSON.stringify({ revision: result.viewing.revision })
+    expect(count.rows[0]?.count).toBe(1)
 
-    const deletionRequest = new Request(viewingUrl, {
-      headers: {
-        Cookie: cookie,
-        'Content-Type': 'application/json'
-      },
+    const current = await fixture.request(fixture.path('movie'))
+    const saved = await readRating(current)
 
-      method: 'DELETE',
-      body: deletionBody
+    expect(saved.score).toBe(6)
+    expect(saved.viewing?.id).toBe(rated.viewing?.id)
+  })
+
+  it('requires request IDs and valid dates, rejects stale context, and returns a safe missing-target response', async () => {
+    const legacy = await fixture.request(fixture.path('series'), 'PUT', { score: 7 })
+    const context = await fixture.context(fixture.movieId)
+
+    const invalidDate = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...context,
+      score: 7,
+      viewingDate: '2026-02-30'
     })
 
-    const deleted = await exports.default.fetch(deletionRequest)
+    const noDate = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...context,
+      score: 7
+    })
 
-    expect(deleted.status).toBe(200)
+    const valid = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...context,
+      score: 7,
+      viewingDate: '2026-01-15'
+    })
 
-    await expect(deleted.json()).resolves.toStrictEqual({ summary: {
-      completedCount: 0,
-      currentViewingId: null,
-      contextVersion: 2
+    const movieRatingPath = fixture.path('movie')
+    const staleRequestId = randomUUID()
+
+    const stale = await fixture.request(movieRatingPath, 'PUT', {
+      ...context,
+      requestId: staleRequestId,
+      score: 9
+    })
+
+    const missingCatalogItemId = randomUUID()
+    const missingRatingPath = `/items/${missingCatalogItemId}/rating`
+    const unknownRequestId = randomUUID()
+
+    const unknown = await fixture.request(missingRatingPath, 'PUT', {
+      ...context,
+      requestId: unknownRequestId,
+      score: 7,
+      viewingDate: '2026-01-15'
+    })
+
+    expect([legacy.status, invalidDate.status, noDate.status, valid.status, stale.status, unknown.status]).toStrictEqual([400, 400, 400, 200, 409, 404])
+
+    await expect(unknown.json()).resolves.toStrictEqual({ error: {
+      code: 'NOT_FOUND',
+      message: 'This title could not be found.'
     } })
-
-    const stillRated = await request(id)
-
-    await expectScore(stillRated, 8)
   })
 
-  it('keeps a failed write out of persistence and logs the technical cause without exposing it', async () => {
-    const id = await itemId('Dead Man')
+  it('returns the live score on an old successful retry after a correction or removal', async () => {
+    const context = await fixture.context(fixture.movieId)
 
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {
-      // Capture the expected database failure.
+    const input = {
+      ...context,
+      score: 7,
+      viewingDate: '2026-01-15'
+    }
+
+    const first = await fixture.request(fixture.path('movie'), 'PUT', input)
+
+    await readRating(first)
+
+    const nextContext = await fixture.context(fixture.movieId)
+
+    const correction = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...nextContext,
+      score: 9
     })
 
-    await request(id, 'PUT', { input: { score: 7 } })
+    await readRating(correction)
 
-    await withClient(async client => {
-      await client.query(`CREATE FUNCTION reject_test_rating() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION 'private rating database details'; END $$`)
+    const replay = await fixture.request(fixture.path('movie'), 'PUT', input)
+    const corrected = await readRating(replay)
 
-      await client.query('CREATE TRIGGER reject_test_rating BEFORE UPDATE ON catalog_item_ratings FOR EACH ROW EXECUTE FUNCTION reject_test_rating()')
+    expect(corrected.score).toBe(9)
 
-      try {
-        const failed = await request(id, 'PUT', { input: { score: 9 } })
-        const body = await failed.text()
+    const removeContext = await fixture.context(fixture.movieId)
 
-        expect(failed.status).toBe(503)
-        expect(body).not.toContain('private rating database details')
+    await fixture.request(fixture.path('movie'), 'DELETE', removeContext)
 
-        const loggedCalls = JSON.stringify(log.mock.calls)
+    const deletedReplay = await fixture.request(fixture.path('movie'), 'PUT', input)
+    const deleted = await readRating(deletedReplay)
 
-        expect(loggedCalls).toContain('private rating database details')
-
-        const preserved = await request(id)
-
-        await expectScore(preserved, 7)
-      } finally {
-        await client.query('DROP TRIGGER reject_test_rating ON catalog_item_ratings')
-        await client.query('DROP FUNCTION reject_test_rating()')
-      }
-    })
+    expect(deleted.score).toBeNull()
   })
+
+  it('keeps personal scores within the authenticated account and rejects a supplied owner', async () => {
+    const context = await fixture.context(fixture.movieId)
+
+    const created = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...context,
+      score: 6,
+      viewingDate: '2026-01-15'
+    })
+
+    await readRating(created)
+
+    const otherResponse = await fixture.request(fixture.path('movie'), 'GET', undefined, fixture.otherCookie)
+    const other = await readRating(otherResponse)
+    const currentContext = await fixture.context(fixture.movieId)
+
+    const forged = await fixture.request(fixture.path('movie'), 'PUT', {
+      ...currentContext,
+      userId: fixture.otherUserId,
+      score: 9
+    })
+
+    expect(other.score).toBeNull()
+    expect(other.viewing).toBeNull()
+    expect(forged.status).toBe(400)
+
+    const currentResponse = await fixture.request(fixture.path('movie'))
+    const current = await readRating(currentResponse)
+
+    expect(current.score).toBe(6)
+  })
+
 })

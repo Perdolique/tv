@@ -1,18 +1,25 @@
 import { useRequestFetch } from '#app'
-import { catalogTimelineResponseSchema, type CatalogTimelineItem } from '@tv/shared/catalog-timeline'
+
+import {
+  catalogTimelineResponseSchema,
+  type CatalogTimelineItem,
+  type CatalogTimelineQuery
+} from '@tv/shared/catalog-timeline'
+
 import { isRecord } from '@tv/shared/type-guards'
-import { computed, ref, shallowRef, watch, type Ref } from 'vue'
+import { ref, shallowRef, toRef, watch, type Ref } from 'vue'
 import * as v from 'valibot'
 import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
 import { timelineItemKey } from '~/utils/title-timeline.ts'
 
 interface TimelineOptions {
   automaticLoad?: boolean;
+  mutationVersion: Readonly<Ref<number>>;
   timeZone: Readonly<Ref<string | null>>;
   viewingContext: Readonly<Ref<string>>;
 }
 
-function useTitleTimeline(catalogItemId: Readonly<Ref<string | null>>, accountId: Readonly<Ref<string | null>>, { automaticLoad = import.meta.client, timeZone, viewingContext }: TimelineOptions) {
+function useTitleTimeline(catalogItemId: Readonly<Ref<string | null>>, accountId: Readonly<Ref<string | null>>, { automaticLoad = import.meta.client, mutationVersion, timeZone, viewingContext }: TimelineOptions) {
   const requestFetch = useRequestFetch()
   const reads = useRequestCancellation()
   const items = ref<CatalogTimelineItem[]>([])
@@ -22,7 +29,8 @@ function useTitleTimeline(catalogItemId: Readonly<Ref<string | null>>, accountId
   const readError = shallowRef('')
   const failedPage = shallowRef<'first' | 'more' | null>(null)
   const unauthorized = shallowRef(false)
-  const canLoadMore = computed(() => nextCursor.value !== null && !isLoadingMore.value)
+  const didRecoverCursor = shallowRef(false)
+  const canLoadMore = toRef(() => nextCursor.value !== null && !isLoadingMore.value)
 
   function reset(): void {
     reads.cancel()
@@ -34,6 +42,7 @@ function useTitleTimeline(catalogItemId: Readonly<Ref<string | null>>, accountId
     readError.value = ''
     failedPage.value = null
     unauthorized.value = false
+    didRecoverCursor.value = false
   }
 
   function path(): string | null {
@@ -42,6 +51,57 @@ function useTitleTimeline(catalogItemId: Readonly<Ref<string | null>>, accountId
     const encodedId = encodeURIComponent(catalogItemId.value)
 
     return `/api/catalog/items/${encodedId}/timeline`
+  }
+
+  async function requestHistoryPage(url: string, query: CatalogTimelineQuery, signal: AbortSignal) {
+    try {
+      const response: unknown = await requestFetch(url, {
+        query,
+        retry: 0,
+        signal
+      })
+
+      return {
+        response,
+        recovered: false
+      }
+    } catch (error) {
+      const expiredCursor = query.cursor !== undefined && isRecord(error) && error.statusCode === 400
+
+      if (!expiredCursor || signal.aborted) { throw error }
+
+      // Preserve visible history while replacing a cursor invalidated by a deployment.
+      const response: unknown = await requestFetch(url, {
+        query: { timeZone: query.timeZone },
+        retry: 0,
+        signal
+      })
+
+      return {
+        response,
+        recovered: true
+      }
+    }
+  }
+
+  function mergePage(nextItems: CatalogTimelineItem[], replacePage: boolean): void {
+    const entries = replacePage ? [] : items.value.map(item => {
+      const key = timelineItemKey(item)
+
+      return [key, item] as const
+    })
+
+    const records = new Map<string, CatalogTimelineItem>(entries)
+
+    for (const item of nextItems) {
+      const key = timelineItemKey(item)
+
+      records.set(key, item)
+    }
+
+    const recordsIterator = records.values()
+
+    items.value = [...recordsIterator]
   }
 
   async function load(more = false): Promise<boolean> {
@@ -62,31 +122,21 @@ function useTitleTimeline(catalogItemId: Readonly<Ref<string | null>>, accountId
     isLoadingMore.value = more
     readError.value = ''
     failedPage.value = null
+    didRecoverCursor.value = false
 
     if (!hadData) { status.value = 'loading' }
 
     try {
-      const response: unknown = await requestFetch(url, {
-        query,
-        retry: 0,
-        signal: request.signal
-      })
-
+      const pageRequest = await requestHistoryPage(url, query, request.signal)
       const isCurrent = reads.isCurrent(request)
 
       if (!isCurrent) { return false }
 
-      const page = v.parse(catalogTimelineResponseSchema, response)
-      const existingIds = items.value.map(timelineItemKey)
-      const known = new Set(existingIds)
+      const page = v.parse(catalogTimelineResponseSchema, pageRequest.response)
 
-      const added = page.items.filter(item => {
-        const key = timelineItemKey(item)
+      mergePage(page.items, !more || pageRequest.recovered)
 
-        return !known.has(key)
-      })
-
-      items.value = more ? [...items.value, ...added] : page.items
+      didRecoverCursor.value = pageRequest.recovered
       nextCursor.value = page.nextCursor
       status.value = 'loaded'
 
@@ -120,24 +170,30 @@ function useTitleTimeline(catalogItemId: Readonly<Ref<string | null>>, accountId
     }
   }
 
-  watch([catalogItemId, accountId, timeZone], () => {
-    reset()
+  const identitySources = [() => catalogItemId.value, () => accountId.value, () => timeZone.value]
+  const mutationSources = [() => viewingContext.value, () => mutationVersion.value]
+  const reloadSources = [...identitySources, ...mutationSources]
 
-    if (automaticLoad) { void load() }
+  watch(identitySources, () => {
+    reset()
   }, {
     flush: 'sync',
     immediate: true
   })
 
-  watch(viewingContext, () => {
+  watch(mutationSources, () => {
     reads.cancel()
 
     isLoadingMore.value = false
-
-    if (automaticLoad) { void load() }
   }, { flush: 'sync' })
 
+  // Batch identity, context and confirmed-mutation changes into one reload.
+  watch(reloadSources, () => {
+    if (automaticLoad) { void load() }
+  }, { immediate: true })
+
   return {
+    didRecoverCursor,
     failedPage,
     isLoadingMore,
     items,

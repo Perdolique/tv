@@ -4,7 +4,7 @@ import type { Locator } from '@playwright/test'
 import * as v from 'valibot'
 import { catalogSeriesBulkWatchSchema } from '../../../packages/shared/src/catalog-series.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
-import { addCookie, expectNoHorizontalOverflow } from '../helpers.ts'
+import { addCookie, expectNoHorizontalOverflow, setCatalogTime } from '../helpers.ts'
 import { episodeEdgeSeries } from './details.fixtures.ts'
 import { openEpisodes } from './helpers.ts'
 import { seriesResponse, viewingId } from './timeline.fixtures.ts'
@@ -18,9 +18,9 @@ const secondSeasonEpisodeId = '30000000-0000-7000-8000-000000000013'
 function edgeSeriesState(ids: string[]) {
   const state = seriesResponse(ids, viewingId, 1)
 
-  assert.ok(state.currentViewing)
+  assert.ok(state.viewing)
 
-  state.currentViewing.catalogItemId = episodeEdgeSeries.id
+  state.viewing.catalogItemId = episodeEdgeSeries.id
 
   return state
 }
@@ -29,7 +29,7 @@ test.use({ timezoneId: 'Europe/Tallinn' })
 
 test.beforeEach(async ({ context, page }) => {
   // One dated episode in each season is available; the other two are future or undated.
-  await page.clock.setFixedTime(new Date('2099-02-05T12:00:00Z'))
+  await setCatalogTime(context, page, '2099-02-05T12:00:00Z')
   await addCookie(context, 'tv_session', 'e2e-session')
 })
 
@@ -220,7 +220,7 @@ test.describe('bulk scope and retry', () => {
     assert.ok(during)
     expect(during.height).toBe(before.height)
     allPending.resolve(null)
-    await expect(episodes.getByRole('alert')).toHaveText('We couldn’t save this change. Try again.')
+    await expect(episodes.getByRole('alert')).toHaveText('We couldn’t confirm whether this change was saved. Retry to check the same change.')
     await expect(all).toBeEnabled()
     await expect(episodes.getByText('1 watched episode', { exact: true })).toBeVisible()
     await all.click()
@@ -256,10 +256,8 @@ test.describe('bulk scope and retry', () => {
   })
 })
 
-test('keeps series and season commands visible but disabled when no episode is eligible', async ({ page }) => {
-  const beforeEveryRelease = new Date('2098-12-31T12:00:00Z')
-
-  await page.clock.setFixedTime(beforeEveryRelease)
+test('keeps series and season commands visible but disabled when no episode is eligible', async ({ context, page }) => {
+  await setCatalogTime(context, page, '2098-12-31T12:00:00Z')
   await page.goto(titlePath)
   await openEpisodes(page)
 

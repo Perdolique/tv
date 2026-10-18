@@ -1,135 +1,102 @@
-/* oxlint-disable eslint/max-lines -- One current-viewing owner keeps mutation retry keys, cancellation and confirmed marks in the same request boundary. */
 import { useRequestFetch } from '#app'
-
-import {
-  catalogSeriesWatchesResponseSchema,
-  type CatalogSeriesCancelRewatchInput,
-  type CatalogSeriesUnwatchInput,
-  type CatalogSeriesWatchInput,
-  type CatalogSeriesWatchesResponse
-} from '@tv/shared/catalog-series'
-
+import { catalogSeriesWatchesResponseSchema, type CatalogSeriesEpisodeWatch } from '@tv/shared/catalog-series'
 import { isRecord } from '@tv/shared/type-guards'
-import { computed, reactive, ref, shallowRef, watch, type Ref } from 'vue'
+import { computed, ref, shallowRef, toRef, watch, type Ref } from 'vue'
 import * as v from 'valibot'
+import type { CatalogViewingsState } from '~/composables/use-catalog-viewings.ts'
 import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
-
-type EpisodeWatchesStatus = 'idle' | 'loading' | 'loaded' | 'error'
-type EpisodeWatchesUnauthorized = 'load' | 'mutation' | null
-type SeriesMutationBody = CatalogSeriesWatchInput | CatalogSeriesUnwatchInput | CatalogSeriesCancelRewatchInput
-
-interface SeriesMutation {
-  action: string;
-  url: string;
-  method: 'POST' | 'PUT' | 'DELETE';
-  body: SeriesMutationBody;
-  episodeId: string | null;
-}
+import { getLocalCalendarDate } from '~/utils/calendar-date.ts'
 
 interface CatalogEpisodeWatchesOptions {
   automaticLoad?: boolean;
   timeZone: Readonly<Ref<string | null>>;
+  viewings: CatalogViewingsState;
 }
-
-function useCatalogEpisodeWatches(
-  catalogItemId: Readonly<Ref<string | null>>,
-  accountId: Readonly<Ref<string | null>>,
-  { automaticLoad = import.meta.client, timeZone }: CatalogEpisodeWatchesOptions
-) {
+interface SeriesMutation {
+  action: string;
+  url: string;
+  method: 'POST' | 'PUT' | 'DELETE';
+  body: Record<string, unknown>;
+  episodeId: string | null;
+}
+function useCatalogEpisodeWatches(catalogItemId: Readonly<Ref<string | null>>, accountId: Readonly<Ref<string | null>>, { automaticLoad = import.meta.client, timeZone, viewings }: CatalogEpisodeWatchesOptions) {
   const requestFetch = useRequestFetch()
   const reads = useRequestCancellation()
-  const writes = useRequestCancellation()
-  const status = shallowRef<EpisodeWatchesStatus>('idle')
-  const watchedEpisodeIds = ref<string[]>([])
-  const watches = ref<CatalogSeriesWatchesResponse['watches']>([])
-  const currentViewing = ref<CatalogSeriesWatchesResponse['currentViewing']>(null)
-  const contextVersion = shallowRef(0)
-  const mutationVersion = shallowRef(0)
-  const isSaving = shallowRef(false)
+  const status = shallowRef<'idle' | 'loading' | 'loaded' | 'error'>('idle')
+  const watches = ref<CatalogSeriesEpisodeWatch[]>([])
+  const watchedEpisodeIds = computed(() => watches.value.map(mark => mark.catalogEpisodeId))
+  const watchedCount = toRef(() => watches.value.length)
+  const { isSaving, currentViewing } = viewings
   const savingEpisodeId = shallowRef<string | null>(null)
   const savingAction = shallowRef<string | null>(null)
-  const saveErrors = reactive(new Map<string, string>())
   const readError = shallowRef('')
   const actionError = shallowRef('')
-  const rewatchError = shallowRef('')
-  const unauthorized = shallowRef<EpisodeWatchesUnauthorized>(null)
-  const pendingRequests = new Map<string, SeriesMutationBody>()
-  const watchedCount = computed(() => watchedEpisodeIds.value.length)
-  const canCancelRewatch = computed(() => currentViewing.value?.isRewatch === true && watchedCount.value === 0)
-  const currentViewingId = computed(() => currentViewing.value?.id ?? null)
-  const contextKey = computed(() => `${currentViewingId.value ?? 'none'}:${contextVersion.value}`)
+  const initialSaveErrors = new Map<string, string>()
+  const saveErrors = ref(initialSaveErrors)
+  const unauthorized = shallowRef<'load' | 'mutation' | null>(null)
+  const confirmationEpisodeId = shallowRef<string | null>(null)
+  const currentViewingId = toRef(() => viewings.summary.value.currentViewingId)
+  const contextVersion = toRef(() => viewings.summary.value.contextVersion)
 
   function reset(): void {
     reads.cancel()
-    writes.cancel()
 
-    watchedEpisodeIds.value = []
     watches.value = []
-    currentViewing.value = null
-    contextVersion.value = 0
-    isSaving.value = false
-    savingEpisodeId.value = null
-    savingAction.value = null
-
-    saveErrors.clear()
-    pendingRequests.clear()
-
     status.value = 'idle'
     readError.value = ''
     actionError.value = ''
-    rewatchError.value = ''
-    unauthorized.value = null
-  }
 
+    saveErrors.value.clear()
+
+    unauthorized.value = null
+    confirmationEpisodeId.value = null
+    savingEpisodeId.value = null
+    savingAction.value = null
+  }
   function apply(response: unknown): void {
     const result = v.parse(catalogSeriesWatchesResponseSchema, response)
+    const selectedId = viewings.selectedViewingId.value
 
-    watchedEpisodeIds.value = result.watchedEpisodeIds
+    if (selectedId !== null && result.viewing?.id !== selectedId) { throw new Error('Episode watches viewing mismatch') }
+
+    viewings.applyConfirmed(result)
+
     watches.value = result.watches
-    currentViewing.value = result.currentViewing
-    contextVersion.value = result.contextVersion
     status.value = 'loaded'
   }
-
-  async function fetchWatches(): Promise<boolean> {
+  async function load(): Promise<boolean> {
     const itemId = catalogItemId.value
 
-    if (accountId.value === null || itemId === null || timeZone.value === null) { return false }
+    if (accountId.value === null || itemId === null || timeZone.value === null || isSaving.value || viewings.pendingMutation.value !== null) { return false }
 
     const request = reads.start()
     const hadData = status.value === 'loaded'
 
     readError.value = ''
-    unauthorized.value = null
 
     if (!hadData) { status.value = 'loading' }
 
     try {
-      const encodedId = encodeURIComponent(itemId)
-      const url = `/api/catalog/items/${encodedId}/episodes/watched`
+      const id = encodeURIComponent(itemId)
+      const viewingId = viewings.selectedViewingId.value
+      const url = `/api/catalog/items/${id}/episodes/watched`
 
       const response: unknown = await requestFetch(url, {
+        query: viewingId === null ? undefined : { viewingId },
         retry: 0,
         signal: request.signal
       })
 
-      const isCurrent = reads.isCurrent(request)
-
-      if (!isCurrent) { return false }
+      if (!reads.isCurrent(request)) { return false }
 
       apply(response)
 
       return true
     } catch (error) {
-      const isCurrent = reads.isCurrent(request)
+      if (!reads.isCurrent(request)) { return false }
 
-      if (!isCurrent) { return false }
-
-      const isErrorRecord = isRecord(error)
-
-      if (isErrorRecord && error.statusCode === 401) {
-        unauthorized.value = 'load'
-      } else {
+      if (isRecord(error) && error.statusCode === 401) { unauthorized.value = 'load' }
+      else {
         globalThis.console.warn({
           error,
           message: 'Catalog episode watches request failed.'
@@ -141,233 +108,121 @@ function useCatalogEpisodeWatches(
       }
 
       return false
-    } finally {
-      reads.finish(request)
-    }
+    } finally { reads.finish(request) }
   }
-
-  async function load(): Promise<boolean> {
-    if (isSaving.value) { return false }
-
-    return fetchWatches()
-  }
-
-  function newBody(): CatalogSeriesWatchInput | null {
-    if (timeZone.value === null) { return null }
-
-    const requestId = globalThis.crypto.randomUUID()
+  function newBody(requestId: string): Record<string, unknown> {
+    const viewingDate = getLocalCalendarDate()
 
     return {
       requestId,
       currentViewingId: currentViewingId.value,
       contextVersion: contextVersion.value,
-      timeZone: timeZone.value
+      timeZone: timeZone.value,
+      viewingDate
     }
   }
-
-  function showSaveError(action: string, episodeId: string | null, message: string): void {
-    const isRewatchAction = action.startsWith('rewatch:')
-
-    if (isRewatchAction) {
-      rewatchError.value = message
-    } else if (episodeId === null) {
-      actionError.value = message
-    } else {
-      saveErrors.set(episodeId, message)
-    }
-  }
-
-
   async function mutate({ action, url, method, body, episodeId }: SeriesMutation): Promise<boolean> {
-    if (accountId.value === null || catalogItemId.value === null || status.value !== 'loaded' || isSaving.value) { return false }
+    if (status.value !== 'loaded' || viewings.isHistorical.value || isSaving.value) { return false }
 
     reads.cancel()
 
-    const request = writes.start()
-
-    isSaving.value = true
-    savingEpisodeId.value = episodeId
     savingAction.value = action
+    savingEpisodeId.value = episodeId
     actionError.value = ''
-    rewatchError.value = ''
-    unauthorized.value = null
 
-    if (episodeId !== null) { saveErrors.delete(episodeId) }
+    if (episodeId !== null) { saveErrors.value.delete(episodeId) }
 
-    try {
-      const response: unknown = await requestFetch(url, {
-        body,
-        method,
-        retry: 0,
-        signal: request.signal
-      })
-
-      const isCurrent = writes.isCurrent(request)
-
-      if (!isCurrent) { return false }
-
-      apply(response)
-      pendingRequests.delete(action)
-
-      mutationVersion.value += 1
-
-      await fetchWatches()
-
-      return writes.isCurrent(request)
-    } catch (error) {
-      const isCurrent = writes.isCurrent(request)
-
-      if (!isCurrent) { return false }
-
-      const isErrorRecord = isRecord(error)
-      const code = isErrorRecord ? error.statusCode : undefined
-
-      if (code === 401) {
-        unauthorized.value = 'mutation'
-      } else {
-        globalThis.console.warn({
-          error,
-          message: 'Catalog series viewing update request failed.'
-        })
-
-        let message = 'We couldn’t save this change. Try again.'
-        const isRewatchAction = action.startsWith('rewatch:')
-
-        if (code === 409) {
-          message = 'Your current viewing changed. Check the updated episodes and try again.'
-        } else if (code === 400 && episodeId === null && !isRewatchAction) {
-          message = 'No released episodes with a known air date are available for this action.'
-        }
-
-        showSaveError(action, episodeId, message)
-
-        if (code === 400 || code === 409) { pendingRequests.delete(action) }
-
-        if (code === 409) { await fetchWatches() }
-      }
-
-      return false
-    } finally {
-      const isFinished = writes.finish(request)
-
-      if (isFinished) {
-        isSaving.value = false
-        savingEpisodeId.value = null
-        savingAction.value = null
-      }
-    }
-  }
-
-  async function toggle(episodeId: string): Promise<boolean> {
-    if (isSaving.value || status.value !== 'loaded') { return false }
-
-    const existing = watches.value.find(mark => mark.catalogEpisodeId === episodeId)
-    const action = `episode:${episodeId}`
-    let body = pendingRequests.get(action)
-
-    if (body === undefined) {
-      if (existing !== undefined && currentViewingId.value !== null) {
-        body = {
-          currentViewingId: currentViewingId.value,
-          contextVersion: contextVersion.value,
-          watchId: existing.id
-        }
-      } else {
-        body = newBody() ?? undefined
-      }
-
-      if (body === undefined) { return false }
-
-      pendingRequests.set(action, body)
-    }
-
-    const method = 'watchId' in body ? 'DELETE' : 'PUT'
-    const encodedId = encodeURIComponent(episodeId)
-    const url = `/api/catalog/episodes/${encodedId}/watched`
-
-    return mutate({
-      action,
+    const response = await viewings.mutate({
+      key: action,
       url,
       method,
+      body,
+      operation: 'watches'
+    })
+
+    savingAction.value = null
+    savingEpisodeId.value = null
+
+    if (response === null) {
+      unauthorized.value = viewings.unauthorized.value
+
+      if (viewings.fields.value.confirmRatingRemoval !== undefined && episodeId !== null) {
+        confirmationEpisodeId.value = episodeId
+        viewings.saveError.value = ''
+      } else if (episodeId === null) { actionError.value = viewings.saveError.value }
+      else { saveErrors.value.set(episodeId, viewings.saveError.value) }
+
+      return false
+    }
+
+    apply(response)
+
+    confirmationEpisodeId.value = null
+
+    return true
+  }
+  async function toggle(episodeId: string, isRated = false, confirmed = false): Promise<boolean> {
+    if (isSaving.value || viewings.isHistorical.value) { return false }
+
+    const existing = watches.value.find(mark => mark.catalogEpisodeId === episodeId)
+
+    if (existing !== undefined && isRated && !confirmed) {
+      confirmationEpisodeId.value = episodeId
+
+      return false
+    }
+
+    const requestId = globalThis.crypto.randomUUID()
+
+    const body = existing === undefined ? newBody(requestId) : {
+      requestId,
+      currentViewingId: currentViewingId.value,
+      contextVersion: contextVersion.value,
+      watchId: existing.id,
+      confirmRatingRemoval: confirmed
+    }
+
+    const id = encodeURIComponent(episodeId)
+
+    return mutate({
+      action: `episode:${episodeId}`,
+      url: `/api/catalog/episodes/${id}/watched`,
+      method: existing === undefined ? 'PUT' : 'DELETE',
       body,
       episodeId
     })
   }
+  async function confirmUnwatch(): Promise<boolean> {
+    const id = confirmationEpisodeId.value
 
+    if (id === null) { return false }
+
+    return toggle(id, true, true)
+  }
+  function cancelUnwatch(): void { if (!isSaving.value) { confirmationEpisodeId.value = null } }
   async function markReleased(seasonNumber: number | null): Promise<boolean> {
     const itemId = catalogItemId.value
 
-    if (itemId === null || isSaving.value || status.value !== 'loaded') { return false }
+    if (itemId === null) { return false }
 
-    const action = seasonNumber === null ? 'all' : `season:${seasonNumber}`
-    let body = pendingRequests.get(action)
-
-    if (body === undefined) {
-      body = newBody() ?? undefined
-
-      if (body === undefined) { return false }
-
-      pendingRequests.set(action, body)
-    }
-
-    const encodedId = encodeURIComponent(itemId)
+    const id = encodeURIComponent(itemId)
     const suffix = seasonNumber === null ? 'episodes/watched' : `seasons/${seasonNumber}/watched`
-    const url = `/api/catalog/items/${encodedId}/${suffix}`
+    const action = seasonNumber === null ? 'all' : `season:${seasonNumber}`
+    const requestId = globalThis.crypto.randomUUID()
+    const body = newBody(requestId)
 
     return mutate({
       action,
-      url,
+      url: `/api/catalog/items/${id}/${suffix}`,
       method: 'POST',
       body,
       episodeId: null
     })
   }
-
-  async function changeRewatch(mode: 'start' | 'cancel'): Promise<boolean> {
-    const itemId = catalogItemId.value
-    const viewingId = currentViewingId.value
-
-    if (itemId === null || viewingId === null || isSaving.value || status.value !== 'loaded') { return false }
-
-    const action = `rewatch:${mode}`
-    let body = pendingRequests.get(action)
-
-    if (body === undefined) {
-      if (mode === 'cancel') {
-        if (!canCancelRewatch.value) { return false }
-
-        body = {
-          currentViewingId: viewingId,
-          contextVersion: contextVersion.value
-        }
-      } else {
-        if (watchedCount.value === 0) { return false }
-
-        body = newBody() ?? undefined
-      }
-
-      if (body === undefined) { return false }
-
-      pendingRequests.set(action, body)
-    }
-
-    const encodedId = encodeURIComponent(itemId)
-    const url = `/api/catalog/items/${encodedId}/rewatch`
-    const method = mode === 'start' ? 'POST' : 'DELETE'
-
-    return mutate({
-      action,
-      url,
-      method,
-      body,
-      episodeId: null
-    })
-  }
-
+  function saveErrorFor(id: string): string { return saveErrors.value.get(id) ?? '' }
   function clearUnauthorized(): void { unauthorized.value = null }
-  function saveErrorFor(episodeId: string): string { return saveErrors.get(episodeId) ?? '' }
 
-  watch([catalogItemId, accountId, timeZone], () => {
+  watch([() => catalogItemId.value, () => accountId.value, () => timeZone.value, () => viewings.selectionKey.value], () => {
     reset()
 
     if (automaticLoad) { void load() }
@@ -376,25 +231,33 @@ function useCatalogEpisodeWatches(
     immediate: true
   })
 
+  watch(viewings.isSaving, saving => {
+    if (saving) { reads.cancel() }
+    else if (automaticLoad && viewings.pendingMutation.value === null) { void load() }
+  }, { flush: 'sync' })
+
+  watch(viewings.confirmedWatches, marks => {
+    const selected = viewings.selectedViewingId.value ?? currentViewingId.value
+
+    if (marks !== null && viewings.watchesViewingId.value === selected) { watches.value = marks; status.value = 'loaded' }
+  }, { flush: 'post' })
+
   return {
     actionError,
-    canCancelRewatch,
-    cancelRewatch: async () => changeRewatch('cancel'),
-    rewatchError,
+    cancelUnwatch,
     clearUnauthorized,
-    contextKey,
+    confirmUnwatch,
+    confirmationEpisodeId,
     contextVersion,
     currentViewing,
     currentViewingId,
     isSaving,
     load,
     markReleased,
-    mutationVersion,
     readError,
     saveErrorFor,
     savingAction,
     savingEpisodeId,
-    startRewatch: async () => changeRewatch('start'),
     status,
     toggle,
     unauthorized,
@@ -403,6 +266,5 @@ function useCatalogEpisodeWatches(
     watches
   }
 }
-
 export { useCatalogEpisodeWatches }
 export type CatalogEpisodeWatchesState = ReturnType<typeof useCatalogEpisodeWatches>

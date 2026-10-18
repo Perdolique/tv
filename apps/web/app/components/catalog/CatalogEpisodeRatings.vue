@@ -2,11 +2,11 @@
   <section ref="region" :class="$style.component" :aria-label="label" tabindex="-1">
     <div v-if="hasSummaryError" :class="$style.error">
       <AppMessage role="alert" tone="danger">We couldn’t load episode viewer ratings. The episode list is still available.</AppMessage>
-      <AppButton ref="summaryRetry" :disabled="isSummaryLoading" variant="secondary" @click="retry('summary')">Retry episode viewer ratings</AppButton>
+      <AppButton size="small" ref="summaryRetry" :disabled="isSummaryLoading" variant="secondary" @click="retry('summary')">Retry episode viewer ratings</AppButton>
     </div>
     <div v-if="hasPersonalError" :class="$style.error">
       <AppMessage role="alert" tone="danger">We couldn’t load your episode ratings. The episode list is still available.</AppMessage>
-      <AppButton ref="personalRetry" :disabled="isPersonalLoading" variant="secondary" @click="retry('personal')">Retry your episode ratings</AppButton>
+      <AppButton size="small" ref="personalRetry" :disabled="isPersonalLoading" variant="secondary" @click="retry('personal')">Retry your episode ratings</AppButton>
     </div>
     <slot :ratings="ratings" :summaries="summaries" />
   </section>
@@ -16,11 +16,13 @@
   import { computed, nextTick, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
+  import type { CatalogViewingsState } from '~/composables/use-catalog-viewings.ts'
   import { useCatalogEpisodeRatings } from '~/composables/use-catalog-episode-ratings.ts'
   import { useCatalogEpisodeRatingSummaries } from '~/composables/use-catalog-episode-rating-summaries.ts'
 
   interface Props {
     accountId: string | null;
+    viewings: CatalogViewingsState;
     catalogItemId: string;
     seasonNumber: number;
     episodeIds: string[];
@@ -30,7 +32,7 @@
     unauthorized: [reason: 'load' | 'mutation'];
   }
 
-  const { accountId, catalogItemId, seasonNumber, episodeIds } = defineProps<Props>()
+  const { accountId, catalogItemId, seasonNumber, episodeIds, viewings } = defineProps<Props>()
   const emit = defineEmits<Emits>()
   const account = computed(() => accountId)
   const label = computed(() => `Season ${seasonNumber} episode ratings`)
@@ -41,13 +43,25 @@
     seasonNumber
   }
 
-  const ratings = useCatalogEpisodeRatings(season, episodeIds, account)
+  const ratings = useCatalogEpisodeRatings({
+    season,
+    episodeIds,
+    accountId: account,
+    viewings
+  })
+
   const summaries = useCatalogEpisodeRatingSummaries(season, episodeIds)
   const { batchError: hasPersonalError, isBatchLoading: isPersonalLoading, unauthorized } = ratings
   const { batchError: hasSummaryError, isBatchLoading: isSummaryLoading } = summaries
   const region = useTemplateRef('region')
   const personalRetry = useTemplateRef('personalRetry')
   const summaryRetry = useTemplateRef('summaryRetry')
+
+  watch(viewings.mutationVersion, () => {
+    const mutation = viewings.completedMutation.value
+
+    if (mutation?.method === 'DELETE' && (mutation.operation === 'viewing' || mutation.operation === 'watches')) { void summaries.ready.execute({ dedupe: 'cancel' }) }
+  })
 
   watch(unauthorized, reason => {
     if (reason !== null) {

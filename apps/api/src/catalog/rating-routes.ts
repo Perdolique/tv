@@ -1,9 +1,10 @@
 import type { Context, Hono } from 'hono'
-import { bodyLimit } from 'hono/body-limit'
-import * as v from 'valibot'
+import { catalogRatingSaveSchema, catalogRatingRemoveSchema } from '@tv/shared/catalog-viewings'
+import { readViewingInput } from './viewings-routes.ts'
 import { validateCatalogItemId } from './details.ts'
 import { CatalogHttpError } from './errors.ts'
-import { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating } from './ratings-repository.ts'
+import { findCatalogItemRatingSummary } from './ratings-repository.ts'
+import { readRatingSnapshot, setCurrentCatalogRating } from './rating-mutations.ts'
 
 import {
   withCatalogDatabase,
@@ -12,52 +13,23 @@ import {
   type CatalogEnvironment
 } from './session.ts'
 
-const ratingBodySchema = v.strictObject({
-  score: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10))
-})
+function readRatingViewingId(context: Context<CatalogEnvironment>): string | undefined {
+  const rawViewingId = context.req.query('viewingId')
 
-const ratingBodyLimit = bodyLimit({
-  maxSize: 2 ** 14,
-  onError: () => { throw new CatalogHttpError('INVALID_REQUEST', 413) }
-})
+  if (rawViewingId === undefined) { return }
 
-async function readCatalogRatingScore(context: Context<CatalogEnvironment, string>): Promise<number> {
-  const header = context.req.header('Content-Type')
-  const mediaType = header?.split(';', 1)[0]
-  const trimmedMediaType = mediaType?.trim()
-  const contentType = trimmedMediaType?.toLowerCase()
-
-  if (contentType !== 'application/json') {
-    throw new CatalogHttpError('INVALID_REQUEST', 400)
-  }
-
-  await ratingBodyLimit(context, async () => {
-    // The authenticated handler continues below after the size check.
-  })
-
-  const input: unknown = await context.req.json().catch(() => null)
-  const parsed = v.safeParse(ratingBodySchema, input)
-
-  if (!parsed.success) {
-    throw new CatalogHttpError('INVALID_REQUEST', 400, {
-      fields: { score: 'Choose a whole-number score from 1 to 10.' }
-    })
-  }
-
-  return parsed.output.score
+  return validateCatalogItemId(rawViewingId)
 }
 
 function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies: CatalogDependencies): void {
-  app.get('/api/catalog/items/:id/rating-summary', async (context) => {
+  app.get('/api/catalog/items/:id/rating-summary', async context => {
     const rawId = context.req.param('id')
     const id = validateCatalogItemId(rawId)
 
     const summary = await withCatalogDatabase(context, dependencies.connectDatabase, async database => {
       const result = await findCatalogItemRatingSummary(database, id)
 
-      if (result === null) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
+      if (result === null) { throw new CatalogHttpError('NOT_FOUND', 404) }
 
       return result
     })
@@ -65,64 +37,65 @@ function registerCatalogRatingRoutes(app: Hono<CatalogEnvironment>, dependencies
     return context.json(summary)
   })
 
-  app.get('/api/catalog/items/:id/rating', async (context) => {
-    const rating = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+  app.get('/api/catalog/items/:id/rating', async context => {
+    const rating = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const rawId = context.req.param('id')
-      const id = validateCatalogItemId(rawId)
+      const catalogItemId = validateCatalogItemId(rawId)
+      const viewingId = readRatingViewingId(context)
 
-      const result = await findCatalogItemRating(session.database, session.user.id, {
-        catalogItemId: id,
-        seasonNumber: null
-      })
-
-      if (result === null) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
-
-      return result
+      return readRatingSnapshot(session.database, {
+        userId: session.user.id,
+        catalogItemId
+      }, {
+        seasonNumber: null,
+        catalogEpisodeId: null
+      }, viewingId)
     })
 
     return context.json(rating)
   })
 
-  app.put('/api/catalog/items/:id/rating', async (context) => {
-    const score = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+  app.put('/api/catalog/items/:id/rating', async context => {
+    const result = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const rawId = context.req.param('id')
-      const id = validateCatalogItemId(rawId)
-      const nextScore = await readCatalogRatingScore(context)
+      const catalogItemId = validateCatalogItemId(rawId)
+      const input = await readViewingInput(context, catalogRatingSaveSchema)
 
-      const exists = await setCatalogItemRating(session.database, session.user.id, {
-        catalogItemId: id,
-        score: nextScore
-      })
-
-      if (!exists) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
-
-      return nextScore
+      return setCurrentCatalogRating(session.database, {
+        userId: session.user.id,
+        catalogItemId
+      }, {
+        seasonNumber: null,
+        catalogEpisodeId: null
+      }, input)
     })
 
-    return context.json({ score })
+    return context.json(result)
   })
 
-  app.delete('/api/catalog/items/:id/rating', async (context) => {
-    await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
+  app.delete('/api/catalog/items/:id/rating', async context => {
+    const result = await withCatalogSession(context, dependencies.connectDatabase, async session => {
       const rawId = context.req.param('id')
-      const id = validateCatalogItemId(rawId)
+      const catalogItemId = validateCatalogItemId(rawId)
+      const input = await readViewingInput(context, catalogRatingRemoveSchema)
 
-      const exists = await setCatalogItemRating(session.database, session.user.id, {
-        catalogItemId: id,
+      return setCurrentCatalogRating(session.database, {
+        userId: session.user.id,
+        catalogItemId
+      }, {
+        seasonNumber: null,
+        catalogEpisodeId: null
+      }, {
+        requestId: input.requestId,
+        currentViewingId: input.currentViewingId,
+        contextVersion: input.contextVersion,
+        timeZone: input.timeZone,
         score: null
       })
-
-      if (!exists) {
-        throw new CatalogHttpError('NOT_FOUND', 404)
-      }
     })
 
-    return context.json({ score: null })
+    return context.json(result)
   })
 }
 
-export { readCatalogRatingScore, registerCatalogRatingRoutes }
+export { readRatingViewingId, registerCatalogRatingRoutes }
