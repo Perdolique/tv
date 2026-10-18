@@ -1,8 +1,8 @@
 import type { Hono } from 'hono'
 import { canonicalizeTitleLocale } from './search.ts'
 import { withCatalogSession, type CatalogDependencies, type CatalogEnvironment } from './session.ts'
-import { createViewingHistoryResponse, decodeViewingCursor } from './viewing-history.ts'
-import { findViewingHistoryRows, findViewingSummary } from './viewing-repository.ts'
+import { parseViewingStatus } from './viewing-history.ts'
+import { findViewingHistory, findViewingSummary } from './viewing-repository.ts'
 
 function registerCatalogViewingRoutes(app: Hono<CatalogEnvironment>, dependencies: CatalogDependencies): void {
   app.get('/api/catalog/viewing-history', async (context) => {
@@ -11,11 +11,15 @@ function registerCatalogViewingRoutes(app: Hono<CatalogEnvironment>, dependencie
     const response = await withCatalogSession(context, dependencies.connectDatabase, async (session) => {
       const cursorValue = url.searchParams.get('cursor')
       const localeValue = url.searchParams.get('titleLocale')
-      const cursor = decodeViewingCursor(cursorValue)
       const locale = canonicalizeTitleLocale(localeValue)
-      const rows = await findViewingHistoryRows(session.database, session.user.id, cursor)
+      const statusValue = url.searchParams.get('status')
+      const status = parseViewingStatus(statusValue)
 
-      return createViewingHistoryResponse(rows, locale)
+      return findViewingHistory(session.database, {
+        userId: session.user.id,
+        status,
+        titleLocale: locale
+      }, cursorValue)
     })
 
     return context.json(response)

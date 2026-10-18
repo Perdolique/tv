@@ -13,7 +13,7 @@ function marks(page: Page) {
 
 async function expectOtherSection(page: Page, target: string): Promise<void> {
   const assertion = target === 'history'
-    ? expect(page.locator('dd')).toHaveText(['0', '25'])
+    ? expect(page.locator('dd')).toHaveText(['0', '18', '7', '0'])
     : expect(marks(page)).toHaveCount(20)
 
   await assertion
@@ -62,7 +62,7 @@ for (const target of ['history', 'summary'] as const) {
 
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/dashboard`)
     await expect(marks(page)).toHaveCount(0)
-    await expect(page.getByRole('list', { name: 'Watched episodes by series' })).toHaveCount(0)
+    await expect(page.getByRole('list', { name: 'Currently watching series' })).toHaveCount(0)
     await expect(page.locator('dd')).toHaveCount(0)
   })
 }

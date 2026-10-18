@@ -1269,15 +1269,10 @@ async function handleDiaryRequest(request: Request, url: URL, authenticated: boo
   })
 }
 
-function movieViewings(request: Request): CatalogViewing[] {
+function diaryViewings(request: Request): CatalogViewing[] {
   const account = accountStore(request)
-  const movieIds = new Set<string>()
 
-  for (const item of detailsItems) {
-    if (item.type === 'movie') { movieIds.add(item.id) }
-  }
-
-  return account.items.filter(item => movieIds.has(item.catalogItemId))
+  return account.items
 }
 
 function episodeWatches(request: Request): Watch[] {
@@ -1286,4 +1281,4 @@ function episodeWatches(request: Request): Watch[] {
   return account.watches
 }
 
-export { handleDiaryRequest, movieViewings, episodeWatches }
+export { handleDiaryRequest, diaryViewings, episodeWatches }

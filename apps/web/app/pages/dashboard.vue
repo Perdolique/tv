@@ -11,18 +11,14 @@
       <main :class="$style.content">
         <header :class="$style.pageHeader">
           <h1 ref="heading" :class="$style.heading" tabindex="-1">Dashboard</h1>
-          <p :class="$style.supportingText">Your movie viewings and watched episodes. Movies are sorted by viewing date.</p>
+          <p :class="$style.supportingText">Your movie and series viewings, with all-time totals.</p>
         </header>
 
         <section v-if="isSummaryLoading" :class="$style.metrics" aria-label="Loading viewing summary" aria-busy="true">
-          <div v-for="metric in 2" :key="metric" :class="$style.metric" aria-hidden="true">
+          <div v-for="metric in 4" :key="metric" :class="$style.metric" aria-hidden="true">
             <span :class="$style.skeletonText" />
             <span :class="$style.skeletonValue" />
           </div>
-        </section>
-        <section v-else-if="hasSummaryError" :class="$style.message" aria-label="Viewing summary">
-          <AppMessage role="alert" tone="danger">We couldn’t load your viewing summary. Try again.</AppMessage>
-          <AppButton ref="summaryRetryButton" variant="secondary" @click="retrySummary">Retry summary</AppButton>
         </section>
         <dl v-else-if="summary" :class="$style.metrics" aria-label="Viewing summary">
           <div :class="$style.metric">
@@ -30,15 +26,39 @@
             <dd :class="$style.metricValue">{{ summary.watchedMovieCount }}</dd>
           </div>
           <div :class="$style.metric">
+            <dt :class="$style.metricLabel">Series completed</dt>
+            <dd :class="$style.metricValue">{{ summary.completedSeriesCount }}</dd>
+          </div>
+          <div :class="$style.metric">
+            <dt :class="$style.metricLabel">Watching series</dt>
+            <dd :class="$style.metricValue">{{ summary.watchingSeriesCount }}</dd>
+          </div>
+          <div :class="$style.metric">
             <dt :class="$style.metricLabel">Episodes watched</dt>
             <dd :class="$style.metricValue">{{ summary.watchedEpisodeCount }}</dd>
           </div>
         </dl>
+        <section v-if="showSummaryError" :class="$style.message" aria-label="Viewing summary error">
+          <AppButton ref="summaryRetryButton" :class="$style.action" size="small" variant="secondary" :aria-disabled="isSummaryRefreshing" :aria-busy="isSummaryRefreshing" @click="retrySummary">Retry summary</AppButton>
+          <AppMessage role="alert" tone="danger">{{ summaryErrorMessage }}</AppMessage>
+        </section>
 
         <div :class="$style.columns">
           <section :class="$style.history" :aria-labelledby="historyHeadingId">
-            <h2 :id="historyHeadingId" ref="historyHeading" :class="$style.subheading" tabindex="-1">Viewing history</h2>
-            <p role="status" :class="$style.status">{{ announcement }}</p>
+            <div :class="$style.sectionHeader">
+              <h2 :id="historyHeadingId" ref="historyHeading" :class="$style.subheading" tabindex="-1">Viewing history</h2>
+              <AppButton :class="$style.action" size="small" variant="secondary" :aria-disabled="isRefreshing" :aria-busy="isRefreshing" @click="refreshDashboard">Refresh history</AppButton>
+            </div>
+            <fieldset :class="$style.filters">
+              <legend :class="$style.visuallyHidden">Viewing status</legend>
+              <label v-for="filter in filters" :key="filter.label" :class="$style.filter">
+                <input :name="filterName" type="radio" :value="filter.value ?? 'all'" :checked="selectedStatus === filter.value" @change="selectStatus(filter.value)">
+                <span>{{ filter.label }}</span>
+              </label>
+            </fieldset>
+            <p role="status" :class="$style.visuallyHidden">{{ announcement }}</p>
+            <AppMessage v-if="needsRefresh" tone="neutral">Your viewings changed. Refresh history to load more.</AppMessage>
+            <AppMessage v-if="hasHistoryRefreshError" role="alert" tone="danger">We couldn’t refresh your history. Your loaded viewings are still here. Try again.</AppMessage>
 
             <div v-if="isHistoryLoading" :class="$style.list" aria-label="Loading viewing history" role="region" aria-busy="true">
               <div v-for="row in 3" :key="row" :class="$style.row" aria-hidden="true">
@@ -51,46 +71,58 @@
               </div>
             </div>
             <div v-else-if="hasHistoryError" :class="$style.message">
+              <AppButton ref="historyRetryButton" :class="$style.action" size="small" variant="secondary" :aria-disabled="isHistoryRefreshing" :aria-busy="isHistoryRefreshing" @click="retryHistory">Retry history</AppButton>
               <AppMessage role="alert" tone="danger">We couldn’t load your viewing history. Try again.</AppMessage>
-              <AppButton ref="historyRetryButton" variant="secondary" @click="retryHistory">Retry history</AppButton>
             </div>
             <div v-else-if="isHistoryEmpty" :class="$style.message">
-              <h3 :class="$style.itemTitle">Nothing marked as watched yet</h3>
-              <p :class="$style.supportingText">Open a movie or series and mark what you have watched to see it here.</p>
-              <NuxtLink :class="$style.catalogLink" to="/">Browse catalog</NuxtLink>
+              <h3 :class="$style.itemTitle">{{ emptyHeading }}</h3>
+              <AppButton v-if="isFiltered" size="small" variant="secondary" @click="showAll">Show all</AppButton>
+              <template v-else>
+                <p :class="$style.supportingText">Open a movie or series to record your first viewing.</p>
+                <NuxtLink :class="$style.catalogLink" to="/">Browse catalog</NuxtLink>
+              </template>
             </div>
             <ul v-else ref="historyList" :class="$style.list" aria-label="Viewing entries">
-              <li v-for="item in historyRows" :key="item.key">
-                <NuxtLink :class="$style.row" :to="item.location" :data-entry-key="item.key">
+              <li v-for="item in historyRows" :key="item.viewingId">
+                <NuxtLink :class="$style.row" :to="item.location" :data-viewing-id="item.viewingId">
                   <CatalogPoster compact :poster-url="item.posterUrl" :title="item.title" />
                   <div :class="$style.copy">
                     <h3 :class="$style.itemTitle" :lang="item.titleLocale">{{ item.title }}</h3>
                     <p :class="$style.metadata">{{ item.metadata }}</p>
-                    <p v-if="item.sourceTitle" :class="$style.episodeTitle">{{ item.sourceTitle }}</p>
-                    <p :class="$style.timestamp">Watched <time v-if="item.watchedOn" :datetime="item.watchedOn">{{ item.watchedLabel }}</time><NuxtTime v-else :datetime="item.markedAt" date-style="medium" time-style="short" /></p>
+                    <div :class="$style.viewingState">
+                      <AppStatusChip :tone="item.tone">{{ item.statusLabel }}</AppStatusChip>
+                      <span :class="[$style.score, { 'is-rated': item.isRated }]">{{ item.scoreLabel }}</span>
+                    </div>
+                    <p v-for="date in item.dates" :key="date.label" :class="$style.timestamp">{{ date.label }} <time :datetime="date.value">{{ date.display }}</time></p>
                   </div>
                 </NuxtLink>
               </li>
             </ul>
 
-            <div v-if="hasMore" :class="$style.more">
-              <AppMessage v-if="hasLoadMoreError" role="alert" tone="danger">We couldn’t load older marks. Try again.</AppMessage>
-              <AppButton ref="loadMoreButton" :disabled="isLoadingMore" :aria-busy="isLoadingMore" variant="secondary" @click="loadOlderMarks">Load more</AppButton>
+            <div v-if="showLoadMore" :class="$style.more">
+              <AppButton :class="$style.action" size="small" :aria-disabled="isLoadingMore" :aria-busy="isLoadingMore" variant="secondary" @click="loadOlderViewings">Load more</AppButton>
+              <AppMessage v-if="hasLoadMoreError" role="alert" tone="danger">We couldn’t load older viewings. Try again.</AppMessage>
             </div>
           </section>
 
           <section :class="$style.series" :aria-labelledby="seriesHeadingId">
-            <h2 :id="seriesHeadingId" :class="$style.subheading">By series</h2>
-            <div v-if="isSummaryLoading" :class="$style.seriesSkeleton" aria-label="Loading series summary" aria-busy="true">
+            <div :class="$style.sectionHeader">
+              <h2 :id="seriesHeadingId" :class="$style.subheading">Currently watching</h2>
+              <NuxtLink v-if="hasMoreActiveSeries" :class="$style.catalogLink" :to="watchingLocation" @click.prevent="viewAllWatching">View all</NuxtLink>
+            </div>
+            <div v-if="isSummaryLoading" :class="$style.seriesSkeleton" aria-label="Loading active series" aria-busy="true">
               <div v-for="row in 3" :key="row" :class="$style.skeletonText" aria-hidden="true" />
             </div>
-            <p v-else-if="hasSummaryError" :class="$style.supportingText">Series counts are unavailable. Retry the viewing summary above.</p>
-            <p v-else-if="isSeriesEmpty" :class="$style.supportingText">No episodes marked as watched yet.</p>
-            <ul v-else :class="$style.seriesList" aria-label="Watched episodes by series">
-              <li v-for="item in seriesRows" :key="item.id">
+            <p v-else-if="hasSummaryError" :class="$style.supportingText">Active series are unavailable. Retry the viewing summary above.</p>
+            <p v-else-if="isSeriesEmpty" :class="$style.supportingText">No series in progress.</p>
+            <ul v-else :class="$style.seriesList" aria-label="Currently watching series">
+              <li v-for="item in seriesRows" :key="item.viewingId">
                 <NuxtLink :class="$style.seriesLink" :to="item.location">
-                  <h3 :class="$style.itemTitle" :lang="item.titleLocale">{{ item.title }}</h3>
-                  <p :class="$style.metadata">{{ item.label }}</p>
+                  <CatalogPoster compact :poster-url="item.posterUrl" :title="item.title" />
+                  <div :class="$style.copy">
+                    <h3 :class="$style.itemTitle" :lang="item.titleLocale">{{ item.title }}</h3>
+                    <p :class="$style.metadata">{{ item.label }}</p>
+                  </div>
                 </NuxtLink>
               </li>
             </ul>
@@ -103,13 +135,15 @@
 
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
-  import { navigateTo, useHead, useResponseHeader } from '#app'
-  import { NuxtTime } from '#components'
+  import { navigateTo, useHead, useResponseHeader, useRoute, useRouter } from '#app'
+  import { useEventListener } from '@vueuse/core'
+  import type { CatalogViewingStatus } from '@tv/shared/catalog'
   import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
   import AppShell from '~/components/app/AppShell.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
+  import AppStatusChip, { type StatusChipTone } from '~/components/ui/AppStatusChip.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useViewingHistory } from '~/composables/use-viewing-history.ts'
   import { formatCalendarDateForDisplay } from '~/utils/calendar-date.ts'
@@ -122,107 +156,195 @@
 
   cacheControlHeader.value = 'private, no-store'
 
+  const route = useRoute()
+  const router = useRouter()
   const { restoreSession, setAnonymous, state } = useAuthSession()
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
   const hasSessionError = computed(() => state.value.status === 'error')
   const accountId = computed(() => state.value.status === 'authenticated' ? state.value.user.id : null)
+  const selectedStatus = computed(() => route.query.status === 'watching' || route.query.status === 'completed' ? route.query.status : null)
+  const isFiltered = computed(() => selectedStatus.value !== null)
+
+  const filters = [{
+    label: 'All',
+    value: null
+  }, {
+    label: 'Watching',
+    value: 'watching'
+  }, {
+    label: 'Completed',
+    value: 'completed'
+  }] as const
+
+  const filterName = useId()
   const historyHeadingId = useId()
   const seriesHeadingId = useId()
   const isRetryingSession = ref(false)
+  const isAddingPage = ref(false)
   const announcement = ref('')
+  let actionGeneration = 0
+  let focusGeneration = 0
+
+  useEventListener('focusin', () => { focusGeneration += 1 })
+  useEventListener('pointerdown', () => { focusGeneration += 1 })
+
   const heading = useTemplateRef('heading')
   const historyHeading = useTemplateRef('historyHeading')
   const historyList = useTemplateRef('historyList')
   const historyRetryButton = useTemplateRef('historyRetryButton')
   const summaryRetryButton = useTemplateRef('summaryRetryButton')
   const sessionRetryButton = useTemplateRef('sessionRetryButton')
-  const loadMoreButton = useTemplateRef('loadMoreButton')
 
   const {
-    didRecoverCursor,
     hasError: hasHistoryError,
+    hasRefreshError: hasHistoryRefreshError,
     hasLoadMoreError,
     hasMore,
     isLoading: isHistoryLoading,
     isLoadingMore,
+    isRefreshing: isHistoryRefreshing,
     items,
     loadMore,
+    needsRefresh,
     ready: historyReady,
     reload: reloadHistory,
     unauthorized: historyUnauthorized
-  } = useViewingHistory(accountId)
+  } = useViewingHistory(accountId, selectedStatus)
 
   const {
     hasError: hasSummaryError,
+    hasRefreshError: hasSummaryRefreshError,
     isLoading: isSummaryLoading,
+    isRefreshing: isSummaryRefreshing,
     ready: summaryReady,
     reload: reloadSummary,
     summary,
     unauthorized: summaryUnauthorized
   } = useViewingSummary(accountId)
 
+  const isRefreshing = computed(() => isHistoryRefreshing.value || isSummaryRefreshing.value || isHistoryLoading.value || isSummaryLoading.value)
+  const showSummaryError = computed(() => hasSummaryError.value || hasSummaryRefreshError.value)
+  const summaryErrorMessage = computed(() => hasSummaryRefreshError.value ? 'We couldn’t refresh your summary. Your previous totals are still here. Try again.' : 'We couldn’t load your viewing summary. Try again.')
+  const showLoadMore = computed(() => hasMore.value || isAddingPage.value)
   const isHistoryEmpty = computed(() => items.value.length === 0)
-  const isSeriesEmpty = computed(() => (summary.value?.series.length ?? 0) === 0)
+  const emptyHeading = computed(() => isFiltered.value ? 'No viewings with this status' : 'No viewings yet')
+  const isSeriesEmpty = computed(() => (summary.value?.activeSeries.length ?? 0) === 0)
+  const hasMoreActiveSeries = computed(() => (summary.value?.watchingSeriesCount ?? 0) > 5)
+
+  const watchingLocation = computed(() => {return {
+    path: '/dashboard',
+
+    query: {
+      ...route.query,
+      status: 'watching'
+    }
+  }})
+
   const shouldSignIn = computed(() => state.value.status === 'anonymous' || historyUnauthorized.value || summaryUnauthorized.value)
 
-  const historyRows = computed(() => items.value.map((item) => {
-    const movieMetadata = item.releaseYear === null ? 'Movie' : `Movie · ${item.releaseYear}`
-    const metadata = item.kind === 'episode' ? `Episode · S${item.seasonNumber} · E${item.episodeNumber}` : movieMetadata
-    const location = `/titles/${item.id}`
-    const watchedOn = item.kind === 'movie' ? item.markedAt.slice(0, 10) : null
-    const watchedLabel = watchedOn === null ? '' : formatCalendarDateForDisplay(watchedOn, { dateStyle: 'medium' })
+  const historyRows = computed(() => items.value.map(item => {
+    const typeLabel = item.type === 'movie' ? 'Movie' : 'Series'
+    const metadata = item.releaseYear === null ? typeLabel : `${typeLabel} · ${item.releaseYear}`
+    const tone: StatusChipTone = item.status === 'completed' ? 'success' : 'info'
+    const dates = []
+
+    if (item.startedOn !== null) {
+      const display = formatCalendarDateForDisplay(item.startedOn, { dateStyle: 'medium' })
+
+      dates.push({
+        label: 'Started on',
+        value: item.startedOn,
+        display
+      })
+    }
+
+    if (item.completedOn !== null) {
+      const display = formatCalendarDateForDisplay(item.completedOn, { dateStyle: 'medium' })
+      const label = item.type === 'movie' ? 'Watched on' : 'Completed on'
+
+      dates.push({
+        label,
+        value: item.completedOn,
+        display
+      })
+    }
 
     return {
-      key: `${item.kind}:${item.entryId}`,
-      location,
-      markedAt: item.markedAt,
-      watchedOn,
-      watchedLabel,
+      viewingId: item.viewingId,
+      location: `/titles/${item.id}`,
+      dates,
       metadata,
+      tone,
+      statusLabel: item.status === 'completed' ? 'Completed' : 'Watching',
+      scoreLabel: item.score === null ? 'Not rated' : `${item.score}/10`,
+      isRated: item.score !== null,
       posterUrl: item.posterUrl,
-      sourceTitle: item.sourceTitle,
       title: item.title,
       titleLocale: item.titleLocale
     }
   }))
 
-  const seriesRows = computed(() => (summary.value?.series ?? []).map((item) => {
+  const seriesRows = computed(() => (summary.value?.activeSeries ?? []).map(item => {
     const noun = item.watchedEpisodeCount === 1 ? 'episode' : 'episodes'
 
     return {
-      id: item.id,
+      viewingId: item.viewingId,
       label: `${item.watchedEpisodeCount} ${noun} watched`,
       location: `/titles/${item.id}`,
+      posterUrl: item.posterUrl,
       title: item.title,
       titleLocale: item.titleLocale
     }
   }))
 
-  watch(accountId, () => { announcement.value = '' }, { flush: 'sync' })
+  watch([accountId, selectedStatus], () => {
+    actionGeneration += 1
+    announcement.value = ''
+    isAddingPage.value = false
+  }, { flush: 'sync' })
 
-  watch(shouldSignIn, async (redirect) => {
-    if (!redirect) {
-      return
-    }
+  watch(shouldSignIn, async redirect => {
+    if (!redirect) { return }
 
-    if (historyUnauthorized.value || summaryUnauthorized.value) {
-      setAnonymous()
-    }
+    if (historyUnauthorized.value || summaryUnauthorized.value) { setAnonymous() }
 
     await navigateTo({
       path: '/sign-in',
-      query: { redirectTo: '/dashboard' }
+      query: { redirectTo: route.fullPath }
     }, { replace: true })
   }, {
     flush: 'sync',
     immediate: true
   })
 
-  if (import.meta.server) {
-    await Promise.all([historyReady, summaryReady])
+  if (import.meta.server) { await Promise.all([historyReady, summaryReady]) }
+
+  async function selectStatus(status: CatalogViewingStatus | null): Promise<void> {
+    const query = { ...route.query }
+
+    if (status === null) { delete query.status } else { query.status = status }
+
+    await router.push({
+      path: '/dashboard',
+      query
+    })
+  }
+
+  async function viewAllWatching(): Promise<void> {
+    await selectStatus('watching')
+    await nextTick()
+    historyHeading.value?.focus()
+  }
+
+  async function showAll(): Promise<void> {
+    await selectStatus(null)
+    await nextTick()
+    historyHeading.value?.focus()
   }
 
   async function retrySession(): Promise<void> {
+    const requestedFocus = focusGeneration
+
     isRetryingSession.value = true
 
     await restoreSession({ force: true })
@@ -231,73 +353,97 @@
 
     await nextTick()
 
-    if (hasSessionError.value) {
-      sessionRetryButton.value?.focus()
-    } else {
-      heading.value?.focus()
-    }
+    if (requestedFocus !== focusGeneration) { return }
+
+    if (hasSessionError.value) { sessionRetryButton.value?.focus() } else { heading.value?.focus() }
   }
 
   async function retrySummary(): Promise<void> {
-    await reloadSummary()
+    if (isSummaryRefreshing.value) { return }
+
+    const requestedFocus = focusGeneration
+    const requestedAction = actionGeneration
+    const succeeded = await reloadSummary()
+
     await nextTick()
 
-    if (hasSummaryError.value) {
-      summaryRetryButton.value?.focus()
-    } else {
-      heading.value?.focus()
-    }
+    if (requestedFocus !== focusGeneration || requestedAction !== actionGeneration) { return }
+
+    if (succeeded) { heading.value?.focus() } else { summaryRetryButton.value?.focus() }
   }
 
   async function retryHistory(): Promise<void> {
-    await reloadHistory()
+    if (isHistoryRefreshing.value) { return }
+
+    const requestedFocus = focusGeneration
+    const requestedAction = actionGeneration
+    const succeeded = await reloadHistory()
+
     await nextTick()
 
-    if (hasHistoryError.value) {
-      historyRetryButton.value?.focus()
-    } else {
-      historyHeading.value?.focus()
+    if (requestedFocus !== focusGeneration || requestedAction !== actionGeneration) { return }
+
+    if (succeeded) { historyHeading.value?.focus() } else { historyRetryButton.value?.focus() }
+  }
+
+  async function refreshDashboard(): Promise<void> {
+    if (isRefreshing.value) { return }
+
+    isAddingPage.value = false
+    actionGeneration += 1
+
+    const requestGeneration = actionGeneration
+
+    announcement.value = 'Refreshing history…'
+
+    const [historySucceeded] = await Promise.all([reloadHistory(), reloadSummary()])
+
+    if (requestGeneration === actionGeneration) {
+      announcement.value = historySucceeded ? 'History refreshed.' : ''
     }
   }
 
-  async function loadOlderMarks(): Promise<void> {
-    const requestedAccountId = accountId.value
+  async function loadOlderViewings(event: MouseEvent): Promise<void> {
+    if (isLoadingMore.value || isRefreshing.value) { return }
 
-    announcement.value = 'Loading older marks…'
+    const trigger = event.currentTarget
+
+    actionGeneration += 1
+
+    const requestGeneration = actionGeneration
+
+    isAddingPage.value = true
+    announcement.value = 'Loading older viewings…'
 
     const added = await loadMore()
 
     await nextTick()
 
-    if (!isAuthenticated.value || requestedAccountId !== accountId.value) {
-      return
+    const isCurrent = isAuthenticated.value && requestGeneration === actionGeneration
+
+    if (isCurrent) {
+      const succeeded = !hasLoadMoreError.value && !needsRefresh.value
+      const addedAnnouncement = added.length === 1 ? '1 older viewing added.' : `${added.length} older viewings added.`
+      const pageAnnouncement = succeeded ? addedAnnouncement : ''
+
+      announcement.value = needsRefresh.value ? 'Your viewings changed. Refresh history to load more.' : pageAnnouncement
+
+      if (globalThis.document.activeElement === trigger) {
+        const [first] = added
+
+        if (first !== undefined) {
+          const selector = `a[data-viewing-id="${first.viewingId}"]`
+
+          historyList.value?.querySelector<HTMLAnchorElement>(selector)?.focus()
+        } else if (!hasMore.value) {
+          historyHeading.value?.focus()
+        }
+      }
     }
 
-    if (hasLoadMoreError.value) {
-      announcement.value = ''
-
-      loadMoreButton.value?.focus()
-
-      return
-    }
-
-    const [first] = added
-    const addedAnnouncement = added.length === 1 ? '1 older mark added.' : `${added.length} older marks added.`
-
-    announcement.value = didRecoverCursor.value ? 'History refreshed.' : addedAnnouncement
-
-    if (first !== undefined) {
-      const selector = `a[data-entry-key="${first.kind}:${first.entryId}"]`
-
-      historyList.value?.querySelector<HTMLAnchorElement>(selector)?.focus()
-    } else if (hasMore.value) {
-      loadMoreButton.value?.focus()
-    } else {
-      historyHeading.value?.focus()
-    }
+    if (isCurrent) { isAddingPage.value = false }
   }
 </script>
-
 <style module>
   @layer reset, vendor, tokens, base, components, utilities;
 
@@ -310,36 +456,53 @@
     .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-block-end: var(--space-8); }
     .metric { min-block-size: 7rem; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
     .metricLabel { color: var(--color-text-secondary); font-size: 0.875rem; }
-    .metricValue { font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .metricValue { margin-block-start: auto; font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
     .columns { display: grid; gap: var(--space-8); }
     .history, .series { min-inline-size: 0; }
-    .subheading { margin-block-end: var(--space-4); font-size: 1.375rem; font-weight: 600; }
+    .subheading { font-size: 1.375rem; font-weight: 600; }
+    .sectionHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-block-end: var(--space-4); }
+    .filters { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0; border: 0; margin-block-end: var(--space-4); }
+    .filter { display: inline-flex; align-items: center; gap: var(--space-2); min-block-size: 2.75rem; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); font-size: 0.875rem; cursor: pointer; }
+    .filter:has(:checked) { border-color: var(--color-accent); }
+    .filter input { accent-color: var(--color-accent); }
+    .action[aria-disabled='true'] { background: var(--color-surface-muted); color: var(--color-text-secondary); cursor: progress; }
+    .viewingState { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-1); }
+    .score {
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+      font-variant-numeric: tabular-nums;
+      &:global(.is-rated) { color: var(--color-accent); font-weight: 600; }
+    }
     .list, .seriesList { display: grid; gap: var(--space-3); padding: 0; list-style: none; }
     .row { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: center; gap: var(--space-4); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-text-primary); text-decoration: none; }
     .row:hover, .seriesLink:hover { border-color: var(--color-border-strong); }
     .copy { display: grid; gap: var(--space-1); }
-    .itemTitle { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 1rem; line-height: 1.5; font-weight: 600; }
-    .metadata, .episodeTitle, .timestamp { color: var(--color-text-secondary); font-size: 0.875rem; }
-    .episodeTitle { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .itemTitle { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 1rem; line-height: 1.5; font-weight: 600; }
+    .metadata, .timestamp { color: var(--color-text-secondary); font-size: 0.875rem; }
     .timestamp { font-variant-numeric: tabular-nums; }
     .more, .message { display: grid; justify-items: start; gap: var(--space-4); margin-block: var(--space-4); }
     .catalogLink { display: inline-flex; align-items: center; min-block-size: 2.75rem; }
-    .seriesLink { display: block; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text-primary); text-decoration: none; }
+    .seriesLink { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text-primary); text-decoration: none; }
     .skeletonPoster, .skeletonText, .skeletonValue { background: var(--color-surface-muted); border-radius: var(--radius-sm); }
     .skeletonPoster { inline-size: 5rem; aspect-ratio: 2 / 3; }
     .skeletonText { block-size: 1.25rem; inline-size: 85%; }
     .skeletonValue { block-size: 2.5rem; inline-size: 3rem; }
     .seriesSkeleton { display: grid; gap: var(--space-6); }
-    .status { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .visuallyHidden { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .sessionPanel { display: grid; justify-items: start; gap: var(--space-4); max-inline-size: 38rem; margin-inline: auto; padding: var(--space-8) var(--space-4); }
     .wordmark { color: var(--color-accent); font-size: 2rem; font-weight: 700; }
     @media (width >= 40rem) {
       .content { padding: var(--space-8) var(--layout-page-compact); }
       .heading { font-size: 2.25rem; }
+      .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .subheading { font-size: 1.5rem; }
       .row { grid-template-columns: 6rem minmax(0, 1fr); }
+      .seriesLink { grid-template-columns: 6rem minmax(0, 1fr); }
       .skeletonPoster { inline-size: 6rem; }
       .columns { grid-template-columns: minmax(0, 1fr) 15rem; gap: var(--space-6); }
+    }
+    @media (forced-colors: active) {
+      .filter:has(:checked) { border-color: Highlight; }
     }
     @media (width >= 64rem) {
       .content { padding-inline: var(--layout-page-wide); }

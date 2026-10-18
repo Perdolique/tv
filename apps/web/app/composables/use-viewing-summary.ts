@@ -2,7 +2,7 @@ import { clearNuxtData, useAsyncData, useRequestFetch } from '#app'
 import type { CatalogViewingSummaryResponse } from '@tv/shared/catalog'
 import { isRecord } from '@tv/shared/type-guards'
 import * as v from 'valibot'
-import { computed, onScopeDispose, watch, type Ref } from 'vue'
+import { computed, onScopeDispose, shallowRef, watch, type Ref } from 'vue'
 import { catalogViewingSummaryResponseSchema } from '~/utils/catalog-response.ts'
 
 type SummaryOutcome =
@@ -18,10 +18,14 @@ function summaryKey(accountId: string | null): string {
 function useViewingSummary(accountId: Readonly<Ref<string | null>>) {
   const requestFetch = useRequestFetch()
   const key = computed(() => summaryKey(accountId.value))
-  let generation = 0
+  const generation = shallowRef(0)
+  const failedRead = shallowRef(false)
+  const confirmed = shallowRef<CatalogViewingSummaryResponse | null>(null)
 
   watch(accountId, (_accountId, previousAccountId) => {
-    generation += 1
+    generation.value += 1
+    confirmed.value = null
+    failedRead.value = false
 
     const previousKey = summaryKey(previousAccountId)
 
@@ -30,7 +34,7 @@ function useViewingSummary(accountId: Readonly<Ref<string | null>>) {
 
   const ready = useAsyncData(key, async (_app, { signal }): Promise<SummaryOutcome> => {
     const requestedAccountId = accountId.value
-    const requestGeneration = generation
+    const requestGeneration = generation.value
 
     if (requestedAccountId === null) {
       return { status: 'idle' }
@@ -90,36 +94,62 @@ function useViewingSummary(accountId: Readonly<Ref<string | null>>) {
   const outcome = computed(() => {
     const current = ready.data.value
 
-    if (current?.status === 'idle' || current?.generation !== generation || current.accountId !== accountId.value) {
+    if (current?.status === 'idle' || current?.generation !== generation.value || current.accountId !== accountId.value) {
       return
     }
 
     return current
   })
 
-  const summary = computed(() => outcome.value?.status === 'loaded' ? outcome.value.summary : null)
-  const hasError = computed(() => outcome.value?.status === 'error')
+  watch(outcome, current => {
+    if (current?.status === 'loaded') {
+      confirmed.value = current.summary
+      failedRead.value = false
+    } else if (current?.status === 'error') {
+      failedRead.value = true
+    } else if (current?.status === 'unauthorized') {
+      confirmed.value = null
+      failedRead.value = false
+    }
+  }, {
+    flush: 'sync',
+    immediate: true
+  })
+
+  const summary = computed(() => confirmed.value)
+  const hasError = computed(() => failedRead.value && summary.value === null)
+  const hasRefreshError = computed(() => failedRead.value && summary.value !== null)
   const unauthorized = computed(() => outcome.value?.status === 'unauthorized')
-  const isLoading = computed(() => accountId.value !== null && (ready.status.value === 'pending' || outcome.value === undefined))
+  const isLoading = computed(() => accountId.value !== null && summary.value === null && !hasError.value && !unauthorized.value)
+  const isRefreshing = computed(() => accountId.value !== null && ready.status.value === 'pending')
 
   function clear(): void {
-    generation += 1
+    generation.value += 1
+    confirmed.value = null
+    failedRead.value = false
 
     ready.clear()
   }
 
-  async function reload(): Promise<void> {
-    clear()
+  async function reload(): Promise<boolean> {
+    generation.value += 1
 
-    if (accountId.value !== null) {
-      await ready.execute({ dedupe: 'cancel' })
-    }
+    if (accountId.value === null) { return false }
+
+    const requestedAccountId = accountId.value
+    const requestGeneration = generation.value
+
+    await ready.execute({ dedupe: 'cancel' })
+
+    return requestedAccountId === accountId.value && requestGeneration === generation.value && outcome.value?.status === 'loaded'
   }
 
   onScopeDispose(clear)
 
   return {
     hasError,
+    hasRefreshError,
+    isRefreshing,
     isLoading,
     ready,
     reload,

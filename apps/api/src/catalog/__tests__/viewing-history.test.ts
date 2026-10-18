@@ -1,120 +1,73 @@
 import { describe, expect, it } from 'vitest'
+import { decodeViewingCursor, encodeViewingCursor, parseViewingStatus } from '../viewing-history.ts'
 
-import {
-  createViewingHistoryResponse,
-  decodeViewingCursor,
-  encodeViewingCursor,
-  type CatalogViewingHistoryRow
-} from '../viewing-history.ts'
+const scope = {
+  userId: '30000000-0000-7000-8000-000000000001',
+  status: null,
+  titleLocale: 'en'
+} as const
 
 const cursor = {
-  entryId: '30000000-0000-7000-8000-000000000001',
-  kind: 'episode',
-  markedAt: '2026-09-22T13:00:00.123456Z'
+  ...scope,
+  viewingId: '30000000-0000-7000-8000-000000000002',
+  calendarDate: '2026-09-22',
+  historyVersion: 'a'.repeat(32),
+  version: 6
 } as const
 
 describe('viewing history cursors', () => {
-  it('round trips all timestamp digits and accepts an initial request', () => {
+  it('round trips a scoped calendar position and accepts an initial request', () => {
     const encoded = encodeViewingCursor(cursor)
-    const serialized = atob(encoded)
-    const payload: unknown = JSON.parse(serialized)
 
-    expect(payload).toStrictEqual({
-      ...cursor,
-      version: 5
-    })
-
-    expect(decodeViewingCursor(encoded)).toStrictEqual(cursor)
-    expect(decodeViewingCursor(null)).toBeNull()
+    expect(decodeViewingCursor(encoded, scope)).toStrictEqual(cursor)
+    expect(decodeViewingCursor(null, scope)).toBeNull()
   })
 
-  it.each([undefined, 0, 1, 2, 3, 4])('rejects cursor version %s', (version) => {
+  it.each([
+    { version: undefined }, { version: 0 }, { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 },
+    { calendarDate: '2026-02-30' }, { calendarDate: '0000-01-01' }, { calendarDate: '2026-09-22T00:00:00Z' },
+    { historyVersion: 'invalid' }, { viewingId: 'invalid' }, { status: 'paused' },
+    { userId: '30000000-0000-7000-8000-000000000003' }, { status: 'watching' }, { titleLocale: 'ru' }
+  ])('rejects invalid or out-of-scope cursor data: %j', override => {
     const payload = JSON.stringify({
       ...cursor,
-      version
+      ...override
     })
 
     const encoded = btoa(payload).replace(/=+$/u, '')
 
-    expect(() => decodeViewingCursor(encoded)).toThrow('The request is invalid.')
+    expect(() => decodeViewingCursor(encoded, scope)).toThrow('The request is invalid.')
   })
 
-  it('rejects padded and noncanonical cursor encodings', () => {
-    const encoded = encodeViewingCursor({
-      ...cursor,
-      kind: 'movie'
-    })
-
-    const paddedLength = Math.ceil(encoded.length / 4) * 4
-    const padded = encoded.padEnd(paddedLength, '=')
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-    const lastCharacter = encoded.slice(-1)
-    const lastIndex = alphabet.indexOf(lastCharacter)
-    const prefix = encoded.slice(0, -1)
-    const noncanonical = `${prefix}${alphabet[lastIndex + 1]}`
-    const decodedNoncanonical = atob(noncanonical)
-    const decodedCanonical = atob(encoded)
-
-    expect(padded).not.toBe(encoded)
-    expect(decodedNoncanonical).toBe(decodedCanonical)
-    expect(() => decodeViewingCursor(padded)).toThrow('The request is invalid.')
-    expect(() => decodeViewingCursor(noncanonical)).toThrow('The request is invalid.')
+  it.each(['', 'invalid', 'e30', 'a'.repeat(2049)])('rejects a malformed encoding: %s', value => {
+    expect(() => decodeViewingCursor(value, scope)).toThrow('The request is invalid.')
   })
 
-  it.each(['', 'invalid', 'e30', 'a'.repeat(1025)])('rejects an invalid cursor: %s', (value) => {
-    expect(() => decodeViewingCursor(value)).toThrow('The request is invalid.')
-  })
-
-  it.each(['2026-02-30T13:00:00.123456Z', '0000-01-01T00:00:00.000000Z', '2026-09-22T24:00:00.123456Z', '2026-09-22T13:00:00.123Z'])('rejects an invalid timestamp: %s', (markedAt) => {
-    const encoded = encodeViewingCursor({
-      ...cursor,
-      markedAt
-    })
-
-    expect(() => decodeViewingCursor(encoded)).toThrow('The request is invalid.')
-  })
-
-  it('pages mark identities before translations and keeps different episodes of the same series', () => {
-    const rows: CatalogViewingHistoryRow[] = []
-
-    for (let index = 21; index > 0; index -= 1) {
-      const suffix = String(index).padStart(12, '0')
-
-      const row: CatalogViewingHistoryRow = {
-        catalogItemId: '10000000-0000-7000-8000-000000000001',
-        entryId: `30000000-0000-7000-8000-${suffix}`,
-        episodeNumber: index,
-        isOriginal: true,
-        kind: 'episode',
-        locale: 'en',
-        markedAt: cursor.markedAt,
-        posterPath: null,
-        releaseYear: 2026,
-        seasonNumber: 1,
-        sourceTitle: null,
-        title: 'Original title',
-        type: 'series'
-      }
-
-      rows.push(row, {
-        ...row,
-        isOriginal: false,
-        locale: 'ru',
-        title: 'Перевод'
-      })
+  it('rejects padded and noncanonical encodings', () => {
+    const canonicalScope = {
+      ...scope,
+      titleLocale: 'es-419'
     }
 
-    const page = createViewingHistoryResponse(rows, 'ru')
-
-    expect(page.items).toHaveLength(20)
-    expect(page.items.map(item => item.episodeNumber)).toStrictEqual(Array.from({ length: 20 }, (_value, index) => 21 - index))
-    expect(page.items.every(item => item.title === 'Перевод')).toBe(true)
-    expect(page.nextCursor).not.toBeNull()
-    expect(decodeViewingCursor(page.nextCursor)?.entryId).toBe('30000000-0000-7000-8000-000000000002')
-
-    expect(createViewingHistoryResponse([], 'en')).toStrictEqual({
-      items: [],
-      nextCursor: null
+    const encoded = encodeViewingCursor({
+      ...cursor,
+      titleLocale: 'es-419'
     })
+
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+    const lastIndex = alphabet.indexOf(encoded.slice(-1))
+    const prefix = encoded.slice(0, -1)
+    const noncanonical = `${prefix}${alphabet[lastIndex + 1]}`
+
+    expect(atob(noncanonical)).toBe(atob(encoded))
+    expect(() => decodeViewingCursor(`${encoded}=`, canonicalScope)).toThrow('The request is invalid.')
+    expect(() => decodeViewingCursor(noncanonical, canonicalScope)).toThrow('The request is invalid.')
+  })
+
+  it('supports only the two delivered status filters', () => {
+    expect(parseViewingStatus(null)).toBeNull()
+    expect(parseViewingStatus('watching')).toBe('watching')
+    expect(parseViewingStatus('completed')).toBe('completed')
+    expect(() => parseViewingStatus('paused')).toThrow('The request is invalid.')
   })
 })

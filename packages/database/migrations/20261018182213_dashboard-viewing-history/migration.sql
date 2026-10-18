@@ -1,0 +1,1 @@
+CREATE INDEX "catalog_viewings_owner_calendar_index" ON "catalog_viewings" ("user_id",coalesce("completed_on", "started_on") DESC,"id" DESC NULLS LAST);

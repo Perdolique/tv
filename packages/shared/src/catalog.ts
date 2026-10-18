@@ -80,13 +80,14 @@ interface CatalogWatchlistResponse {
   items: CatalogWatchlistItem[];
 }
 
+type CatalogViewingStatus = 'watching' | 'completed'
+
 interface CatalogViewingHistoryItem extends CatalogWatchlistItem {
-  kind: 'movie' | 'episode';
-  entryId: string;
-  markedAt: string;
-  episodeNumber: number | null;
-  seasonNumber: number | null;
-  sourceTitle: string | null;
+  viewingId: string;
+  status: CatalogViewingStatus;
+  startedOn: string | null;
+  completedOn: string | null;
+  score: number | null;
 }
 
 interface CatalogViewingHistoryResponse {
@@ -95,13 +96,18 @@ interface CatalogViewingHistoryResponse {
 }
 
 interface CatalogViewingSeries extends CatalogWatchlistItem {
+  type: 'series';
+  viewingId: string;
+  startedOn: string;
   watchedEpisodeCount: number;
 }
 
 interface CatalogViewingSummaryResponse {
   watchedMovieCount: number;
   watchedEpisodeCount: number;
-  series: CatalogViewingSeries[];
+  completedSeriesCount: number;
+  watchingSeriesCount: number;
+  activeSeries: CatalogViewingSeries[];
 }
 
 interface CatalogReleaseItem extends CatalogWatchlistItem {
@@ -163,6 +169,7 @@ export type {
   CatalogViewingHistoryItem,
   CatalogViewingHistoryResponse,
   CatalogViewingSeries,
+  CatalogViewingStatus,
   CatalogViewingSummaryResponse,
   CatalogWatchlistItem,
   CatalogWatchlistResponse

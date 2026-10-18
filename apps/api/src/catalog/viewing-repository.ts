@@ -1,75 +1,89 @@
 import type { Database } from '@tv/database'
-import type { CatalogViewingSummaryResponse } from '@tv/shared/catalog'
+import type { CatalogViewingHistoryResponse, CatalogViewingSummaryResponse } from '@tv/shared/catalog'
 import { sql } from 'drizzle-orm'
+import { CatalogHttpError } from './errors.ts'
 
 import {
+  createViewingHistoryResponse,
+  decodeViewingCursor,
   VIEWING_HISTORY_QUERY_LIMIT,
-  type CatalogViewingCursor,
-  type CatalogViewingHistoryRow
+  type CatalogViewingHistoryRow,
+  type CatalogViewingScope
 } from './viewing-history.ts'
 
 import { createCatalogWatchlistItems } from './watchlist.ts'
 import type { CatalogWatchlistRow } from './types.ts'
 
+interface ViewingHistoryPage {
+  historyVersion: string;
+  rows: CatalogViewingHistoryRow[];
+}
+
 interface ViewingSeriesRow extends CatalogWatchlistRow {
+  viewingId: string;
+  startedOn: string;
   watchedEpisodeCount: number;
 }
 
 interface ViewingSummaryRow {
   watchedMovieCount: number;
   watchedEpisodeCount: number;
+  completedSeriesCount: number;
+  watchingSeriesCount: number;
   seriesRows: ViewingSeriesRow[];
 }
 
-async function findViewingHistoryRows(
+async function findViewingHistory(
   database: Database,
-  userId: string,
-  cursor: CatalogViewingCursor | null
-): Promise<CatalogViewingHistoryRow[]> {
-  const cursorKindRank = cursor?.kind === 'episode' ? 1 : 0
+  scope: CatalogViewingScope,
+  cursorValue: string | null
+): Promise<CatalogViewingHistoryResponse> {
+  const cursor = decodeViewingCursor(cursorValue, scope)
+  const status = scope.status === null ? sql`true` : sql`status = ${scope.status}`
 
-  const moviePosition = cursor === null ? sql`true` : sql`
-    (completed_on, 0, id) < ((${cursor.markedAt}::timestamptz AT TIME ZONE 'UTC')::date, ${cursorKindRank}::integer, ${cursor.entryId}::uuid)
+  const position = cursor === null ? sql`true` : sql`
+    (coalesce(completed_on, started_on), id) < (${cursor.calendarDate}::date, ${cursor.viewingId}::uuid)
   `
 
-  const episodePosition = cursor === null ? sql`true` : sql`
-    (marked_at, 1, id) < (${cursor.markedAt}::timestamptz, ${cursorKindRank}::integer, ${cursor.entryId}::uuid)
-  `
-
-  // Limit identities before joining translations; preserve timestamp microseconds as text.
-  const result = await database.execute<CatalogViewingHistoryRow & Record<string, unknown>>(sql`
-    WITH movies AS (
-      SELECT id AS entry_id, catalog_item_id, NULL::uuid AS catalog_episode_id, completed_on::timestamp AT TIME ZONE 'UTC' AS marked_at, 0 AS kind_rank
+  // The version and bounded identities share a snapshot. Only the page joins translations and ratings.
+  const result = await database.execute<ViewingHistoryPage & Record<string, unknown>>(sql`
+    WITH history_version AS (
+      SELECT md5(coalesce(string_agg(id::text || ':' || revision::text, ',' ORDER BY id), '')) AS version
+      FROM catalog_viewings WHERE user_id = ${scope.userId}::uuid AND ${status}
+    ), page AS MATERIALIZED (
+      SELECT id, user_id, catalog_item_id, status, started_on, completed_on,
+        coalesce(completed_on, started_on) AS calendar_date
       FROM catalog_viewings
-      WHERE user_id = ${userId}::uuid AND catalog_item_id IN (SELECT id FROM catalog_items WHERE type = 'movie') AND ${moviePosition}
-      ORDER BY completed_on DESC NULLS LAST, id DESC NULLS LAST
-      LIMIT ${VIEWING_HISTORY_QUERY_LIMIT}
-    ), episodes AS (
-      SELECT id AS entry_id, catalog_item_id, catalog_episode_id, marked_at, 1 AS kind_rank
-      FROM catalog_viewing_episode_watches
-      WHERE user_id = ${userId}::uuid AND ${episodePosition}
-      ORDER BY marked_at DESC NULLS LAST, id DESC NULLS LAST
-      LIMIT ${VIEWING_HISTORY_QUERY_LIMIT}
-    ), positions AS (
-      SELECT * FROM movies UNION ALL SELECT * FROM episodes
-      ORDER BY marked_at DESC, kind_rank DESC, entry_id DESC
+      WHERE user_id = ${scope.userId}::uuid AND ${status} AND ${position}
+      ORDER BY coalesce(completed_on, started_on) DESC, id DESC NULLS LAST
       LIMIT ${VIEWING_HISTORY_QUERY_LIMIT}
     )
-    SELECT item.id AS "catalogItemId", item.type, item.release_year AS "releaseYear",
-      item.poster_path AS "posterPath", title.title, title.locale, title.is_original AS "isOriginal",
-      positions.entry_id AS "entryId",
-      CASE positions.kind_rank WHEN 0 THEN 'movie' ELSE 'episode' END AS kind,
-      to_char(positions.marked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "markedAt",
-      episode.season_number AS "seasonNumber", episode.episode_number AS "episodeNumber",
-      episode.source_title AS "sourceTitle"
-    FROM positions
-    LEFT JOIN catalog_episodes episode ON positions.kind_rank = 1 AND episode.id = positions.catalog_episode_id
-    INNER JOIN catalog_items item ON item.id = positions.catalog_item_id
-    INNER JOIN catalog_item_titles title ON title.catalog_item_id = item.id
-    ORDER BY positions.marked_at DESC, positions.kind_rank DESC, positions.entry_id DESC, title.locale
+    SELECT (SELECT version FROM history_version) AS "historyVersion",
+      coalesce((SELECT json_agg(localized) FROM (
+        SELECT item.id AS "catalogItemId", item.type, item.release_year AS "releaseYear",
+          item.poster_path AS "posterPath", title.title, title.locale, title.is_original AS "isOriginal",
+          page.id AS "viewingId", page.status, page.started_on::text AS "startedOn",
+          page.completed_on::text AS "completedOn", rating.score
+        FROM page
+        INNER JOIN catalog_items item ON item.id = page.catalog_item_id
+        INNER JOIN catalog_item_titles title ON title.catalog_item_id = item.id
+        LEFT JOIN catalog_item_ratings rating ON rating.viewing_id = page.id AND rating.user_id = page.user_id
+          AND rating.catalog_item_id = page.catalog_item_id AND rating.season_number IS NULL AND rating.catalog_episode_id IS NULL
+        ORDER BY page.calendar_date DESC, page.id DESC, title.locale
+      ) localized), '[]'::json) AS rows
   `)
 
-  return result.rows
+  const [page] = result.rows
+
+  if (page === undefined) { throw new Error('Viewing history page is missing') }
+
+  if (cursor !== null && cursor.historyVersion !== page.historyVersion) {
+    throw new CatalogHttpError('INVALID_REQUEST', 400, {
+      fields: { cursor: 'Your viewings changed. Refresh history.' }
+    })
+  }
+
+  return createViewingHistoryResponse(page.rows, scope, page.historyVersion)
 }
 
 async function findViewingSummary(
@@ -77,42 +91,52 @@ async function findViewingSummary(
   userId: string,
   requestedLocale: string
 ): Promise<CatalogViewingSummaryResponse> {
-  // Keep counts and series in one PostgreSQL snapshot, including concurrent mark changes.
+  // All-time counts and the bounded active list share one PostgreSQL snapshot.
   const result = await database.execute<ViewingSummaryRow & Record<string, unknown>>(sql`
-    WITH watched_series AS (
-      SELECT episode.catalog_item_id, count(*)::integer AS watched_count, max(watch.marked_at) AS latest_mark
-      FROM catalog_viewing_episode_watches watch
-      INNER JOIN catalog_episodes episode ON episode.id = watch.catalog_episode_id
-      WHERE watch.user_id = ${userId}::uuid
-      GROUP BY episode.catalog_item_id
+    WITH viewings AS MATERIALIZED (
+      SELECT viewing.id, viewing.catalog_item_id, viewing.status, viewing.started_on, item.type
+      FROM catalog_viewings viewing INNER JOIN catalog_items item ON item.id = viewing.catalog_item_id
+      WHERE viewing.user_id = ${userId}::uuid
+    ), active AS (
+      SELECT * FROM viewings WHERE type = 'series' AND status = 'watching'
+      ORDER BY started_on DESC, id DESC LIMIT 5
     )
     SELECT
-      (SELECT count(*)::integer FROM catalog_viewings WHERE user_id = ${userId}::uuid AND catalog_item_id IN (SELECT id FROM catalog_items WHERE type = 'movie')) AS "watchedMovieCount",
+      (SELECT count(*)::integer FROM viewings WHERE type = 'movie') AS "watchedMovieCount",
+      (SELECT count(*)::integer FROM viewings WHERE type = 'series' AND status = 'completed') AS "completedSeriesCount",
+      (SELECT count(*)::integer FROM viewings WHERE type = 'series' AND status = 'watching') AS "watchingSeriesCount",
       (SELECT count(*)::integer FROM catalog_viewing_episode_watches WHERE user_id = ${userId}::uuid) AS "watchedEpisodeCount",
-      COALESCE((
-        SELECT json_agg(series_titles) FROM (
-          SELECT item.id AS "catalogItemId", item.type, item.release_year AS "releaseYear",
-            item.poster_path AS "posterPath", title.title, title.locale, title.is_original AS "isOriginal",
-            watched_series.watched_count AS "watchedEpisodeCount"
-          FROM watched_series
-          INNER JOIN catalog_items item ON item.id = watched_series.catalog_item_id
-          INNER JOIN catalog_item_titles title ON title.catalog_item_id = item.id
-          ORDER BY watched_series.latest_mark DESC, item.id DESC, title.locale
-        ) series_titles
-      ), '[]'::json) AS "seriesRows"
+      coalesce((SELECT json_agg(localized) FROM (
+        SELECT item.id AS "catalogItemId", item.type, item.release_year AS "releaseYear",
+          item.poster_path AS "posterPath", title.title, title.locale, title.is_original AS "isOriginal",
+          active.id AS "viewingId", active.started_on::text AS "startedOn",
+          (SELECT count(*)::integer FROM catalog_viewing_episode_watches watch WHERE watch.viewing_id = active.id) AS "watchedEpisodeCount"
+        FROM active
+        INNER JOIN catalog_items item ON item.id = active.catalog_item_id
+        INNER JOIN catalog_item_titles title ON title.catalog_item_id = item.id
+        ORDER BY active.started_on DESC, active.id DESC, title.locale
+      ) localized), '[]'::json) AS "seriesRows"
   `)
 
   const [summary] = result.rows
-  const seriesRows = summary?.seriesRows ?? []
-  const localized = createCatalogWatchlistItems(seriesRows, requestedLocale)
-  const countEntries = seriesRows.map(row => [row.catalogItemId, row.watchedEpisodeCount] as const)
-  const countsById = new Map(countEntries)
+
+  if (summary === undefined) { throw new Error('Viewing summary is missing') }
+
+  const localized = createCatalogWatchlistItems(summary.seriesRows, requestedLocale)
+  const viewingEntries = summary.seriesRows.map(row => [row.catalogItemId, row] as const)
+  const viewingsById = new Map(viewingEntries)
 
   return {
-    watchedMovieCount: summary?.watchedMovieCount ?? 0,
-    watchedEpisodeCount: summary?.watchedEpisodeCount ?? 0,
+    watchedMovieCount: summary.watchedMovieCount,
+    watchedEpisodeCount: summary.watchedEpisodeCount,
+    completedSeriesCount: summary.completedSeriesCount,
+    watchingSeriesCount: summary.watchingSeriesCount,
 
-    series: localized.map(item => {
+    activeSeries: localized.map(item => {
+      const viewing = viewingsById.get(item.id)
+
+      if (viewing === undefined) { throw new Error('Active viewing is missing') }
+
       return {
         id: item.id,
         originalTitle: item.originalTitle,
@@ -121,11 +145,13 @@ async function findViewingSummary(
         releaseYear: item.releaseYear,
         title: item.title,
         titleLocale: item.titleLocale,
-        type: item.type,
-        watchedEpisodeCount: countsById.get(item.id) ?? 0
+        type: 'series',
+        viewingId: viewing.viewingId,
+        startedOn: viewing.startedOn,
+        watchedEpisodeCount: viewing.watchedEpisodeCount
       }
     })
   }
 }
 
-export { findViewingHistoryRows, findViewingSummary }
+export { findViewingHistory, findViewingSummary }
