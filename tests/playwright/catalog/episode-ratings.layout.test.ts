@@ -1,11 +1,16 @@
 /* oxlint-disable vitest/prefer-each -- Playwright names each theme and viewport explicitly. */
+import { strict as assert } from 'node:assert'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { appBaseUrl } from '../constants.ts'
-import { expectNoHorizontalOverflow } from '../helpers.ts'
+import { expectNoHorizontalOverflow, setCatalogTime } from '../helpers.ts'
 import { episodeEdgeSeries, manyEpisodeSeries } from './details.fixtures.ts'
 import { openEpisodes } from './helpers.ts'
 
 const titlePath = `/titles/${episodeEdgeSeries.id}`
+
+test.beforeEach(async ({ context, page }) => {
+  await setCatalogTime(context, page, '2099-03-01T12:00:00Z')
+})
 
 for (const colorScheme of ['light', 'dark'] as const) {
   for (const width of [390, 768, 1440]) {
@@ -131,27 +136,36 @@ test('keeps episode controls usable at 320px with double-sized text', async ({ c
     exact: true
   })
 
-  const boxes = await editor.getByRole('button').evaluateAll(buttons => {
-    const rectangles = buttons.map(button => {
-      const box = button.getBoundingClientRect()
+  const dialogBox = await editor.boundingBox()
 
-      return {
-        left: box.left,
-        right: box.right,
-        top: box.top,
-        bottom: box.bottom
-      }
-    })
+  assert.ok(dialogBox, 'The rating dialog is missing.')
+  expect(dialogBox.x).toBeGreaterThanOrEqual(0)
+  expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(320)
+  expect(dialogBox.y).toBeGreaterThanOrEqual(0)
+  expect(dialogBox.y + dialogBox.height).toBeLessThanOrEqual(844)
 
-    return rectangles
-  })
+  const controls = await editor.getByRole('button').all()
 
-  for (const box of boxes) {
-    expect(box.left).toBeGreaterThanOrEqual(0)
-    expect(box.right).toBeLessThanOrEqual(320)
-    expect(box.top).toBeGreaterThanOrEqual(0)
-    expect(box.bottom).toBeLessThanOrEqual(844)
+  expect(controls).toHaveLength(11)
+
+  /* oxlint-disable eslint/no-await-in-loop -- Each focused control changes the same dialog scroll position. */
+  for (const control of controls) {
+    await control.scrollIntoViewIfNeeded()
+    await control.focus()
+    await expect(control).toBeFocused()
+    await expect(control).toBeInViewport()
+
+    const box = await control.boundingBox()
+
+    assert.ok(box, 'A rating control is missing.')
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(320)
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height).toBeLessThanOrEqual(844)
+    expect(box.width).toBeGreaterThanOrEqual(44)
+    expect(box.height).toBeGreaterThanOrEqual(44)
   }
+  /* oxlint-enable eslint/no-await-in-loop */
 
   await editor.getByRole('button', {
     name: '10 out of 10',
@@ -185,7 +199,7 @@ for (const width of [639, 640, 1023, 1024]) {
       exact: true
     })
 
-    await expect(episode.getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
+    await expect(episode.getByRole('button', { name: /^Rate episode,/u })).toBeDisabled()
     await episode.scrollIntoViewIfNeeded()
     await expectNoHorizontalOverflow(page)
 

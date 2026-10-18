@@ -61,11 +61,11 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   await page.goto(`/titles/${dune.id}`)
 
   const movieButton = page.getByRole('button', {
-    name: /^(?:Mark as watched|Watched again)$/u
+    name: /^Mark as watched$/u
   })
 
   await movieButton.click()
-  await expect(movieButton).toHaveAccessibleName('Watched again')
+  await expect(movieButton).toHaveAccessibleName('Mark as watched')
   await expect(movieButton).toBeEnabled()
   await page.goto(`/titles/${chernobyl.id}`)
   await openEpisodes(page)
@@ -96,7 +96,7 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   await expect(episodeEntry).toContainText('Please Remain Calm')
   await expect(page.getByRole('list', { name: 'Watched episodes by series' })).toContainText('1 episode watched')
   await expect(movieEntry).toContainText('Movie · 2021')
-  await expect(movieEntry).toContainText('Recorded')
+  await expect(movieEntry).toContainText('Watched')
 
   const response = await page.reload()
 
@@ -322,6 +322,7 @@ failedSessionTest('retries a failed session check without treating it as an empt
   await addCookie(context, 'tv_session', 'e2e-session')
   await addCookie(context, 'fail_session', '1')
   await page.goto('/dashboard')
+  await waitForHydration(page)
   await expect(page.getByRole('heading', { name: 'We couldn’t verify your session.' })).toBeVisible()
   await expect(page.locator('dd')).toHaveCount(0)
   await page.getByRole('button', { name: 'Try again' }).click()

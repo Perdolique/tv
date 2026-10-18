@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest'
-
-import {
-  encodeTimelineCursor,
-  readTimelineEpisodesCursor,
-  readTimelineGroupCursor,
-  readTimelinePageCursor,
-  type TimelineGroupCursor
-} from '../../timeline-cursors.ts'
+import { Buffer } from 'node:buffer'
+import { encodeTimelineCursor, readTimelinePageCursor, type TimelinePageCursor } from '../../timeline-cursors.ts'
 
 const scope = {
   userId: '93000000-0000-4000-8000-000000000001',
@@ -14,65 +8,38 @@ const scope = {
   timeZone: 'Europe/Tallinn'
 }
 
-const upper = {
-  id: '93000000-0000-7000-8000-000000000004',
-  occurredAt: '2026-10-25T01:30:00.123456Z'
-}
+const cursor: TimelinePageCursor = {
+  userId: scope.userId,
+  catalogItemId: scope.catalogItemId,
+  timeZone: scope.timeZone,
+  kind: 'timeline',
+  version: 4,
+  calendarVersion: 'b20b46e4cbf34d76bfb4ae036cd45d31',
 
-const after = {
-  id: '93000000-0000-7000-8000-000000000003',
-  occurredAt: '2026-10-25T01:30:00.123455Z'
-}
+  upper: {
+    id: '93000000-0000-7000-8000-000000000004',
+    occurredAt: '2026-10-25T01:30:00.123456Z'
+  },
 
-const group: TimelineGroupCursor = {
-  ...scope,
-  viewingId: '93000000-0000-7000-8000-000000000005',
-  localDate: '2026-10-25',
-  kind: 'group',
-  upper,
-  version: 1
+  after: {
+    id: 'episode_group:93000000-0000-7000-8000-000000000003:2026-10-25',
+    occurredAt: '2026-10-25T00:00:00.000000Z',
+    localDate: '2026-10-25'
+  }
 }
 
 describe('timeline cursor contracts', () => {
-  it('keeps microseconds and independent timeline, group and episode positions', () => {
+  it('preserves the source microseconds, stable group identity and calendar version in a bounded cursor', () => {
     // Arrange
-    const timeline = {
-      ...scope,
-      kind: 'timeline',
-      version: 1,
-      upper,
-      after,
-      boundaryDate: '2026-10-25',
-
-      oldestSeenViewing: {
-        id: group.viewingId,
-        recordedAt: '2026-10-24T01:30:00.123456Z'
-      }
-    } as const
-
-    const episodes = {
-      ...group,
-      kind: 'episodes',
-      after
-    } as const
-
-    const timelineValue = encodeTimelineCursor(timeline)
-    const groupValue = encodeTimelineCursor(group)
-    const episodesValue = encodeTimelineCursor(episodes)
+    const value = encodeTimelineCursor(cursor)
 
     // Act
-    const page = readTimelinePageCursor(timelineValue, scope)
-    const snapshot = readTimelineGroupCursor(groupValue, group)
-    const detail = readTimelineEpisodesCursor(episodesValue, snapshot)
+    const result = readTimelinePageCursor(value, scope)
 
     // Assert
-    expect(page).toStrictEqual(timeline)
-    expect(snapshot).toStrictEqual(group)
-    expect(detail).toStrictEqual(episodes)
+    expect(result).toStrictEqual(cursor)
+    expect(value.length).toBeLessThan(1024)
     expect(readTimelinePageCursor(null, scope)).toBeNull()
-    expect(readTimelineEpisodesCursor(null, group)).toBeNull()
-    expect(() => readTimelinePageCursor(groupValue, scope)).toThrow('The request is invalid.')
-    expect(() => readTimelineGroupCursor(timelineValue, group)).toThrow('The request is invalid.')
   })
 
   it.each([
@@ -81,15 +48,7 @@ describe('timeline cursor contracts', () => {
     { timeZone: 'UTC' }
   ])('rejects a page cursor reused under another scope: %j', difference => {
     // Arrange
-    const value = encodeTimelineCursor({
-      ...scope,
-      kind: 'timeline',
-      version: 1,
-      upper,
-      after,
-      boundaryDate: '2026-10-25',
-      oldestSeenViewing: null
-    })
+    const value = encodeTimelineCursor(cursor)
 
     const anotherScope = {
       ...scope,
@@ -101,46 +60,34 @@ describe('timeline cursor contracts', () => {
   })
 
   it.each([
-    { viewingId: '93000000-0000-7000-8000-000000000009' },
-    { localDate: '2026-10-26' },
-    { timeZone: 'UTC' }
-  ])('binds group details to their viewing, day and time zone: %j', difference => {
+    { version: 3 },
+    { calendarVersion: 'bad-version' },
+    { kind: 'episodes' },
+    { after: {
+      ...cursor.after,
+      localDate: '2026-02-30'
+    } },
+    { after: {
+      ...cursor.after,
+      id: 'not-an-identity'
+    } }
+  ])('rejects former contracts and malformed calendar positions: %j', difference => {
     // Arrange
-    const value = encodeTimelineCursor(group)
-
-    const anotherGroup = {
-      ...group,
+    const payload = JSON.stringify({
+      ...cursor,
       ...difference
-    }
-
-    // Act and assert
-    expect(() => readTimelineGroupCursor(value, anotherGroup)).toThrow('The request is invalid.')
-  })
-
-  it('rejects an episode cursor from a different upper bound', () => {
-    // Arrange
-    const value = encodeTimelineCursor({
-      ...group,
-      kind: 'episodes',
-      after
     })
 
-    const anotherSnapshot = {
-      ...group,
-
-      upper: {
-        ...upper,
-        occurredAt: '2026-10-25T01:30:00.123457Z'
-      }
-    }
+    const bytes = Buffer.from(payload)
+    const value = bytes.toString('base64url')
 
     // Act and assert
-    expect(() => readTimelineEpisodesCursor(value, anotherSnapshot)).toThrow('The request is invalid.')
+    expect(() => readTimelinePageCursor(value, scope)).toThrow('The request is invalid.')
   })
 
   const oversizedCursor = 'a'.repeat(4097)
 
-  it.each(['', 'invalid', 'e30', oversizedCursor])('rejects a malformed cursor %s', value => {
+  it.each(['', 'invalid', 'e30', oversizedCursor])('rejects malformed cursor input %s', value => {
     expect(() => readTimelinePageCursor(value, scope)).toThrow('The request is invalid.')
   })
 
@@ -148,20 +95,14 @@ describe('timeline cursor contracts', () => {
     '2026-02-30T01:30:00.123456Z',
     '0000-10-25T01:30:00.123456Z',
     '2026-10-25T24:30:00.123456Z',
-    '2026-10-25T01:30:00.123Z',
-    '2026-10-25T01:30:00.123457Z'
-  ])('rejects invalid or out of bound positions %s', occurredAt => {
+    '2026-10-25T01:30:00.123Z'
+  ])('rejects an invalid precise timestamp %s', occurredAt => {
     // Arrange
     const value = encodeTimelineCursor({
-      ...scope,
-      kind: 'timeline',
-      version: 1,
-      upper,
-      boundaryDate: '2026-10-25',
-      oldestSeenViewing: null,
+      ...cursor,
 
-      after: {
-        ...after,
+      upper: {
+        ...cursor.upper,
         occurredAt
       }
     })

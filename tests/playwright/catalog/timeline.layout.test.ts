@@ -8,22 +8,25 @@ import { firstEpisodeId, mockHistory, seriesResponse, titlePath, viewingId, watc
 
 async function expectPlacement(page: Page, mode: string): Promise<void> {
   const timeline = page.getByRole('region', { name: 'Your timeline' })
-  const timelineBox = await timeline.boundingBox()
-  const ratingsBox = await page.getByRole('complementary', { name: 'Title ratings' }).boundingBox()
-  const seriesBox = await page.getByRole('region', { name: 'Series details' }).boundingBox()
 
-  expect(timelineBox).not.toBeNull()
-  expect(ratingsBox).not.toBeNull()
-  expect(seriesBox).not.toBeNull()
+  await expect(async () => {
+    const timelineBox = await timeline.boundingBox()
+    const ratingsBox = await page.getByRole('complementary', { name: 'Title ratings' }).boundingBox()
+    const seriesBox = await page.getByRole('region', { name: 'Series details' }).boundingBox()
 
-  if (timelineBox === null || ratingsBox === null || seriesBox === null) { throw new Error('Title layout is missing') }
+    expect(timelineBox).not.toBeNull()
+    expect(ratingsBox).not.toBeNull()
+    expect(seriesBox).not.toBeNull()
 
-  if (mode === 'desktop') {
-    expect(timelineBox.x).toBeGreaterThan(seriesBox.x + seriesBox.width)
-    expect(timelineBox.y).toBeGreaterThan(ratingsBox.y + ratingsBox.height)
-  } else {
-    expect(timelineBox.y).toBeGreaterThan(seriesBox.y + seriesBox.height)
-  }
+    if (timelineBox === null || ratingsBox === null || seriesBox === null) { throw new Error('Title layout is missing') }
+
+    if (mode === 'desktop') {
+      expect(timelineBox.x).toBeGreaterThan(seriesBox.x + seriesBox.width)
+      expect(timelineBox.y).toBeGreaterThan(ratingsBox.y + ratingsBox.height)
+    } else {
+      expect(timelineBox.y).toBeGreaterThan(seriesBox.y + seriesBox.height)
+    }
+  }).toPass({ timeout: 5000 })
 }
 
 async function expectConnectorEndpoints(page: Page): Promise<void> {
@@ -72,9 +75,9 @@ async function expectConnectorEndpoints(page: Page): Promise<void> {
   }
 }
 
-async function expectTitleActions(page: Page, mode: string): Promise<void> {
+async function expectTitleActions(page: Page): Promise<void> {
   const rate = page.getByRole('button', {
-    name: 'Rate',
+    name: 'Rate, your rating: 9 out of 10',
     exact: true
   })
 
@@ -104,13 +107,19 @@ async function expectTitleActions(page: Page, mode: string): Promise<void> {
 
     expect(heightDifference).toBeLessThanOrEqual(1)
     expect(box.height).toBeGreaterThanOrEqual(44)
-
-    if (mode === 'desktop') {
-      const widthDifference = Math.abs(box.width - ratingBox.width)
-
-      expect(widthDifference).toBeLessThanOrEqual(1)
-    }
+    expect(box.width).toBeGreaterThanOrEqual(44)
   }
+
+  const geometryRequests = [rate, follow, rewatch].map(async control => control.evaluate(element => {
+    return {
+      content: element.scrollWidth,
+      available: element.clientWidth
+    }
+  }))
+
+  const geometries = await Promise.all(geometryRequests)
+
+  for (const geometry of geometries) { expect(geometry.content).toBeLessThanOrEqual(geometry.available) }
 
   await expect(rate.locator('svg path')).toBeVisible()
   await expect(rewatch.locator('svg path').first()).toBeVisible()
@@ -135,17 +144,23 @@ const viewports = [{
 const viewingStates = {
   mobile: {
     status: 'watching',
-    label: 'Watching'
+    label: 'Rewatching',
+    completedOn: null,
+    completedCount: 1
   },
 
   tablet: {
-    status: 'paused',
-    label: 'Paused'
+    status: 'watching',
+    label: 'Rewatching',
+    completedOn: null,
+    completedCount: 1
   },
 
   desktop: {
     status: 'completed',
-    label: 'Completed'
+    label: 'Completed',
+    completedOn: '2026-10-06',
+    completedCount: 2
   }
 } as const
 
@@ -155,14 +170,25 @@ for (const colorScheme of ['dark', 'light'] as const) {
       await addCookie(context, 'tv_session', 'e2e-session')
       await page.setViewportSize(viewport)
       await page.emulateMedia({ colorScheme })
-      await mockHistory(page)
 
       const viewingState = viewingStates[viewport.name]
       const state = seriesResponse([firstEpisodeId], viewingId, 1)
 
-      assert.ok(state.currentViewing, 'Current viewing fixture is missing')
+      assert.ok(state.viewing, 'Current viewing fixture is missing')
 
-      state.currentViewing.status = viewingState.status
+      state.viewing.status = viewingState.status
+      state.viewing.completedOn = viewingState.completedOn
+      state.viewing.isRewatch = true
+      state.viewing.startedOn = '2026-10-05'
+      state.viewing.recordedAt = '2026-10-05T12:00:00.000000Z'
+      state.viewing.score = 9
+      state.summary.completedCount = viewingState.completedCount
+      state.summary.currentViewingScore = 9
+      state.summary.currentVoteScore = 9
+
+      for (const watch of state.watches) { watch.markedAt = '2026-10-06T12:00:00.000000Z' }
+
+      await mockHistory(page, viewingState.status)
 
       const watchedRoute = `**${watchedPath}`
 
@@ -176,7 +202,7 @@ for (const colorScheme of ['dark', 'light'] as const) {
       await expectNoHorizontalOverflow(page)
       await expectPlacement(page, viewport.name)
       await expectConnectorEndpoints(page)
-      await expectTitleActions(page, viewport.name)
+      await expectTitleActions(page)
 
       const title = page.getByRole('heading', {
         name: 'Chernobyl',

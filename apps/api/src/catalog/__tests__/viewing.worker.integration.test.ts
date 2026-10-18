@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 import { insertSeriesEpisodeWatches } from '../../testing/series-watch-fixtures.ts'
-import { encodeViewingCursor } from '../viewing-history.ts'
 
 const userId = '52000000-0000-7000-8000-000000000010'
 const token = 'h'.repeat(43)
@@ -66,8 +65,8 @@ describe('viewing Worker routes', () => {
     })
 
     await withClient(async (client) => {
-      await client.query(`INSERT INTO catalog_viewings (user_id, catalog_item_id)
-        SELECT $1, id FROM catalog_items WHERE type = 'movie' ORDER BY id LIMIT 2`, [userId])
+      await client.query(`INSERT INTO catalog_viewings (user_id, catalog_item_id, completed_on)
+        SELECT $1, id, '2026-09-22'::date FROM catalog_items WHERE type = 'movie' ORDER BY id LIMIT 2`, [userId])
 
       const episodes = await client.query<{ id: string }>('SELECT id FROM catalog_episodes ORDER BY id LIMIT 23')
       const episodeIds = episodes.rows.map(episode => episode.id)
@@ -117,12 +116,15 @@ describe('viewing Worker routes', () => {
   })
 
   it('rejects the old dashboard cursor version so the client can reload the first page', async () => {
-    const legacyCursor = encodeViewingCursor({
+    const legacyPayload = JSON.stringify({
       kind: 'episode',
       entryId: '30000000-0000-7000-8000-000000000001',
-      markedAt: '2026-09-22T13:00:00.123456Z'
+      markedAt: '2026-09-22T13:00:00.123456Z',
+      version: 4
     })
 
+    const legacyBase64 = btoa(legacyPayload)
+    const legacyCursor = legacyBase64.replace(/=+$/u, '')
     const legacyPath = `${historyPath}?cursor=${legacyCursor}`
     const response = await request(legacyPath)
 

@@ -1,6 +1,4 @@
 /* oxlint-disable eslint/max-lines -- The central schema keeps related catalog and account table exports in one place. */
-import type { CatalogViewingCreateInput } from '@tv/shared/catalog-viewings'
-import type { CatalogSeriesViewing } from '@tv/shared/catalog-series'
 import { sql } from 'drizzle-orm'
 
 import {
@@ -13,7 +11,6 @@ import {
   jsonb,
   pgEnum,
   pgTable,
-  pgView,
   primaryKey,
   text,
   timestamp,
@@ -200,29 +197,6 @@ const catalogItemFollows = pgTable('catalog_item_follows', {
     .on(table.userId, table.followedAt.desc())
 ])
 
-// Ratings are current opinions, not viewing records. Their IDs stay stable on updates.
-// Adding future viewing links must leave existing ratings unlinked.
-const catalogItemRatings = pgTable('catalog_item_ratings', {
-  id: uuid().default(sql`uuidv7()`).primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
-  seasonNumber: integer('season_number'),
-  catalogEpisodeId: uuid('catalog_episode_id'),
-  score: integer().notNull()
-}, (table) => [
-  check('catalog_item_ratings_single_target', sql`${table.catalogEpisodeId} IS NULL OR ${table.seasonNumber} IS NULL`),
-  foreignKey({
-    columns: [table.catalogEpisodeId, table.catalogItemId],
-    foreignColumns: [catalogEpisodes.id, catalogEpisodes.catalogItemId],
-    name: 'catalog_item_ratings_episode_item_fk'
-  }).onDelete('cascade'),
-  check('catalog_item_ratings_season_number_positive', sql`${table.seasonNumber} > 0`),
-  check('catalog_item_ratings_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
-  unique('catalog_item_ratings_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber, table.catalogEpisodeId).nullsNotDistinct(),
-  index('catalog_item_ratings_episode_index').on(table.catalogEpisodeId),
-  index('catalog_item_ratings_target_index').on(table.catalogItemId, table.seasonNumber)
-])
-
 const catalogViewings = pgTable('catalog_viewings', {
   id: uuid().default(sql`uuidv7()`).primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -239,14 +213,44 @@ const catalogViewings = pgTable('catalog_viewings', {
   revision: integer().notNull().default(1)
 }, (table) => [
   unique('catalog_viewings_owner_item_id_unique').on(table.userId, table.catalogItemId, table.id),
-  check('catalog_viewings_status', sql`${table.status} IN ('watching', 'paused', 'completed')`),
+  check('catalog_viewings_status', sql`${table.status} IN ('watching', 'completed')`),
   uniqueIndex('catalog_viewings_one_watching_unique').on(table.userId, table.catalogItemId).where(sql`${table.status} = 'watching'`),
   check('catalog_viewings_revision_positive', sql`${table.revision} > 0`),
   check('catalog_viewings_date_order', sql`${table.startedOn} <= ${table.completedOn}`),
   check('catalog_viewings_date_range', sql`(${table.startedOn} IS NULL OR ${table.startedOn} BETWEEN '0001-01-01'::date AND '9999-12-31'::date) AND (${table.completedOn} IS NULL OR ${table.completedOn} BETWEEN '0001-01-01'::date AND '9999-12-31'::date)`),
   index('catalog_viewings_owner_item_recorded_index').on(table.userId, table.catalogItemId, table.recordedAt.desc(), table.id.desc()),
   index('catalog_viewings_owner_recorded_index').on(table.userId, table.recordedAt.desc(), table.id.desc()),
+  index('catalog_viewings_owner_item_watched_index').on(table.userId, table.catalogItemId, table.completedOn.desc(), table.id.desc()),
+  index('catalog_viewings_owner_watched_index').on(table.userId, table.completedOn.desc(), table.id.desc()),
   index('catalog_viewings_item_index').on(table.catalogItemId)
+])
+
+const catalogItemRatings = pgTable('catalog_item_ratings', {
+  id: uuid().default(sql`uuidv7()`).primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  seasonNumber: integer('season_number'),
+  catalogEpisodeId: uuid('catalog_episode_id'),
+  viewingId: uuid('viewing_id').notNull(),
+  score: integer().notNull()
+}, (table) => [
+  check('catalog_item_ratings_single_target', sql`${table.catalogEpisodeId} IS NULL OR ${table.seasonNumber} IS NULL`),
+  foreignKey({
+    columns: [table.catalogEpisodeId, table.catalogItemId],
+    foreignColumns: [catalogEpisodes.id, catalogEpisodes.catalogItemId],
+    name: 'catalog_item_ratings_episode_item_fk'
+  }).onDelete('cascade'),
+  check('catalog_item_ratings_season_number_positive', sql`${table.seasonNumber} > 0`),
+  check('catalog_item_ratings_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
+  foreignKey({
+    name: 'catalog_item_ratings_viewing_owner_item_fk',
+    columns: [table.userId, table.catalogItemId, table.viewingId],
+    foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
+  }).onDelete('cascade'),
+  unique('catalog_item_ratings_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber, table.catalogEpisodeId, table.viewingId).nullsNotDistinct(),
+  index('catalog_item_ratings_viewing_index').on(table.viewingId),
+  index('catalog_item_ratings_episode_index').on(table.catalogEpisodeId),
+  index('catalog_item_ratings_target_index').on(table.catalogItemId, table.seasonNumber)
 ])
 
 const catalogViewingContexts = pgTable('catalog_viewing_contexts', {
@@ -265,26 +269,6 @@ const catalogViewingContexts = pgTable('catalog_viewing_contexts', {
     foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
   }).onDelete('set null'),
   index('catalog_viewing_contexts_current_index').on(table.currentViewingId)
-])
-
-// Creation keys survive viewing deletion so a late retry cannot restore a deleted record.
-const catalogViewingCreations = pgTable('catalog_viewing_creations', {
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  requestId: uuid('request_id').notNull(),
-  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
-  input: jsonb().$type<CatalogViewingCreateInput>().notNull(),
-  viewingId: uuid('viewing_id')
-}, (table) => [
-  primaryKey({ columns: [table.userId, table.requestId] }),
-
-  // The migration limits SET NULL to the viewing ID; Drizzle cannot express its column list.
-  foreignKey({
-    name: 'catalog_viewing_creations_owner_item_fk',
-    columns: [table.userId, table.catalogItemId, table.viewingId],
-    foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
-  }).onDelete('set null'),
-  index('catalog_viewing_creations_viewing_index').on(table.viewingId),
-  index('catalog_viewing_creations_item_index').on(table.catalogItemId)
 ])
 
 const catalogViewingEpisodeWatches = pgTable('catalog_viewing_episode_watches', {
@@ -330,12 +314,9 @@ const catalogTimelineEvents = pgTable('catalog_timeline_events', {
   watchId: uuid('watch_id'),
   catalogEpisodeId: uuid('catalog_episode_id'),
   seasonNumber: integer('season_number'),
-  previousScore: integer('previous_score'),
-  score: integer(),
   episodeIds: jsonb('episode_ids').$type<string[]>()
 }, table => [
-  check('catalog_timeline_events_kind', sql`${table.kind} IN ('movie_viewing', 'episode_watched', 'series_started', 'rewatch_started', 'series_paused', 'series_completed', 'season_completed', 'available_completed', 'rating_changed')`),
-  check('catalog_timeline_events_score', sql`(${table.previousScore} IS NULL OR ${table.previousScore} BETWEEN 1 AND 10) AND (${table.score} IS NULL OR ${table.score} BETWEEN 1 AND 10)`),
+  check('catalog_timeline_events_kind', sql`${table.kind} IN ('movie_viewing', 'episode_watched', 'series_started', 'rewatch_started', 'series_completed', 'season_completed', 'available_completed')`),
   foreignKey({
     name: 'catalog_timeline_events_viewing_fk',
     columns: [table.userId, table.catalogItemId, table.viewingId],
@@ -366,53 +347,64 @@ const catalogTimelineEventWatches = pgTable('catalog_timeline_event_watches', {
   index('catalog_timeline_event_watches_watch_index').on(table.watchId)
 ])
 
-interface CatalogSeriesRequestMetadata {
-  previousStatus?: CatalogSeriesViewing['status'];
+interface CatalogViewingRequestResult {
+  previousViewingId?: string;
+  previousStatus?: 'watching' | 'completed';
+  previousCompletedOn?: string | null;
+  completionEventId?: string | null;
+  completedByStartOn?: string;
 }
 
-// Tombstones keep late retries from restoring marks removed by a correction.
-const catalogSeriesRequests = pgTable('catalog_series_requests', {
+// Tombstones survive deletion so retries cannot recreate corrected diary data.
+const catalogViewingRequests = pgTable('catalog_viewing_requests', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   requestId: uuid('request_id').notNull(),
   catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
   action: text().notNull(),
   input: jsonb().notNull(),
-  result: jsonb().$type<CatalogSeriesRequestMetadata>().notNull(),
+  result: jsonb().$type<CatalogViewingRequestResult>().notNull(),
   viewingId: uuid('viewing_id'),
   watchIds: jsonb('watch_ids').$type<string[]>().notNull(),
   tombstoned: boolean().notNull().default(false)
 }, table => [
   primaryKey({ columns: [table.userId, table.requestId] }),
 
-  // The migration limits SET NULL to the viewing ID; Drizzle cannot express its column list.
+  // The migration limits SET NULL to viewing_id; Drizzle cannot express its column list.
   foreignKey({
-    name: 'catalog_series_requests_viewing_fk',
+    name: 'catalog_viewing_requests_viewing_fk',
     columns: [table.userId, table.catalogItemId, table.viewingId],
     foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
   }).onDelete('set null'),
-  index('catalog_series_requests_viewing_index').on(table.viewingId)
+  index('catalog_viewing_requests_viewing_index').on(table.viewingId)
 ])
 
-// Read-only projections for the API version running between migration and deployment.
-const catalogMovieWatches = pgView('catalog_movie_watches', {
-  userId: uuid('user_id'),
-  catalogItemId: uuid('catalog_item_id'),
-
-  markedAt: timestamp('marked_at', {
-    mode: 'date',
-    withTimezone: true
-  })
-}).as(sql`SELECT viewings.user_id, viewings.catalog_item_id, max(viewings.recorded_at) AS marked_at FROM catalog_viewings viewings JOIN catalog_items items ON items.id = viewings.catalog_item_id WHERE items.type = 'movie' AND viewings.status = 'completed' GROUP BY viewings.user_id, viewings.catalog_item_id`)
-
-const catalogEpisodeWatches = pgView('catalog_episode_watches', {
-  userId: uuid('user_id'),
+const catalogRatingVotes = pgTable('catalog_rating_votes', {
+  id: uuid().default(sql`uuidv7()`).primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  seasonNumber: integer('season_number'),
   catalogEpisodeId: uuid('catalog_episode_id'),
-
-  markedAt: timestamp('marked_at', {
-    mode: 'date',
-    withTimezone: true
-  })
-}).as(sql`SELECT watches.user_id, watches.catalog_episode_id, watches.marked_at FROM catalog_viewing_episode_watches watches JOIN catalog_viewing_contexts contexts ON contexts.user_id = watches.user_id AND contexts.catalog_item_id = watches.catalog_item_id AND contexts.current_viewing_id = watches.viewing_id`)
+  sourceViewingId: uuid('source_viewing_id').notNull(),
+  score: integer().notNull()
+}, table => [
+  check('catalog_rating_votes_single_target', sql`${table.catalogEpisodeId} IS NULL OR ${table.seasonNumber} IS NULL`),
+  check('catalog_rating_votes_season_positive', sql`${table.seasonNumber} > 0`),
+  check('catalog_rating_votes_score_bounds', sql`${table.score} BETWEEN 1 AND 10`),
+  foreignKey({
+    name: 'catalog_rating_votes_episode_item_fk',
+    columns: [table.catalogEpisodeId, table.catalogItemId],
+    foreignColumns: [catalogEpisodes.id, catalogEpisodes.catalogItemId]
+  }).onDelete('cascade'),
+  foreignKey({
+    name: 'catalog_rating_votes_source_owner_item_fk',
+    columns: [table.userId, table.catalogItemId, table.sourceViewingId],
+    foreignColumns: [catalogViewings.userId, catalogViewings.catalogItemId, catalogViewings.id]
+  }).onDelete('cascade'),
+  unique('catalog_rating_votes_user_target_unique').on(table.userId, table.catalogItemId, table.seasonNumber, table.catalogEpisodeId).nullsNotDistinct(),
+  index('catalog_rating_votes_source_index').on(table.sourceViewingId),
+  index('catalog_rating_votes_target_index').on(table.catalogItemId, table.seasonNumber),
+  index('catalog_rating_votes_episode_index').on(table.catalogEpisodeId)
+])
 
 const passwordCredentials = pgTable('password_credentials', {
   userId:
@@ -510,21 +502,19 @@ const sessions = pgTable('sessions', {
 
 export {
   catalogEpisodes,
-  catalogEpisodeWatches,
   catalogExternalLinks,
   catalogImportFields,
   catalogImportPreviews,
   catalogItemFollows,
   catalogItemRatings,
   catalogItemDescriptions,
-  catalogMovieWatches,
   catalogViewings,
   catalogViewingEpisodeWatches,
   catalogTimelineEvents,
   catalogTimelineEventWatches,
-  catalogSeriesRequests,
+  catalogRatingVotes,
+  catalogViewingRequests,
   catalogViewingContexts,
-  catalogViewingCreations,
   catalogItemTitles,
   catalogItems,
   catalogItemType,

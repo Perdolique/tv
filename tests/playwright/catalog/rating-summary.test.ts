@@ -104,7 +104,7 @@ test.describe('viewer rating updates', () => {
 
         await readStarted.promise
 
-        await expect(personal.getByRole('status').filter({ hasText: 'Rating saved.' })).toHaveText('Rating saved.')
+        await expect(personal.getByRole('status').filter({ hasText: 'Viewing and rating saved.' })).toHaveText('Viewing and rating saved.')
         await expect(personal.getByRole('dialog')).toHaveCount(0)
         await expect(viewer.getByText('Not rated', { exact: true })).toBeVisible()
         release.resolve(true)
@@ -285,7 +285,7 @@ test.describe('unconfirmed rating writes', () => {
       exact: true
     }).click()
 
-    await expect(personal.getByRole('alert')).toHaveText('We couldn’t save your rating. Try again.')
+    await expect(personal.getByRole('alert')).toHaveText('We couldn’t confirm whether this change was saved. Retry to check the same change.')
     await expect(personal.getByRole('dialog')).toBeVisible()
     await expect(page.getByRole('region', { name: 'TV viewer rating' }).getByText('7 out of 10', { exact: true })).toBeVisible()
     expect(reads).toStrictEqual([])

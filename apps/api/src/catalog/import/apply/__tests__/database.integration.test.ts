@@ -233,11 +233,15 @@ describe('saved catalog import application', () => {
     const watchedEpisodeId = watchedEpisode.id
 
     await firstClient.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
-    await insertSeriesEpisodeWatches(firstClient, session.user.id, { episodeIds: [watchedEpisodeId] })
+
+    const currentWatches = await insertSeriesEpisodeWatches(firstClient, session.user.id, { episodeIds: [watchedEpisodeId] })
+    const currentViewingId = currentWatches[0]?.viewing_id
+
+    assert(currentViewingId !== undefined, 'The current series viewing fixture is missing')
 
     await insertSeriesEpisodeWatches(firstClient, session.user.id, {
       episodeIds: [watchedEpisodeId],
-      status: 'paused',
+      status: 'completed',
       markedAt: '2020-01-02T12:34:56.123456Z'
     })
 
@@ -262,8 +266,11 @@ describe('saved catalog import application', () => {
     expect(savedTimeline.rows.map(event => event.occurred_at_exact)).toContain('2020-01-02T12:34:56.123456Z')
     await firstClient.query('INSERT INTO catalog_releases (catalog_item_id, release_date, season_number, episode_number) VALUES ($1, $2, 1, 1)', [itemId, '2099-01-01'])
 
-    const savedRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, season_number, score) VALUES ($1, $2, 1, 8) RETURNING id, score', [session.user.id, itemId])
-    const savedEpisodeRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, catalog_episode_id, score) VALUES ($1, $2, $3, 9) RETURNING id, score', [session.user.id, itemId, watchedEpisodeId])
+    const savedRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, viewing_id, season_number, score) VALUES ($1, $2, $3, 1, 8) RETURNING id, score', [session.user.id, itemId, currentViewingId])
+    const savedEpisodeRating = await firstClient.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, viewing_id, catalog_episode_id, score) VALUES ($1, $2, $3, $4, 9) RETURNING id, score', [session.user.id, itemId, currentViewingId, watchedEpisodeId])
+
+    await firstClient.query('INSERT INTO catalog_rating_votes (user_id, catalog_item_id, source_viewing_id, season_number, score) VALUES ($1, $2, $3, 1, 8)', [session.user.id, itemId, currentViewingId])
+
     const changedShow = structuredClone(show)
 
     // oxlint-disable-next-line eslint/no-underscore-dangle -- TVMaze names this response field _embedded.
@@ -461,7 +468,7 @@ describe('saved catalog import application', () => {
     const itemId = applied.result.catalogItemId
 
     await firstClient.query('INSERT INTO catalog_item_follows (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
-    await firstClient.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2)', [session.user.id, itemId])
+    await firstClient.query('INSERT INTO catalog_viewings (user_id, catalog_item_id, completed_on) VALUES ($1, $2, \'2026-10-17\')', [session.user.id, itemId])
     await firstClient.query('INSERT INTO catalog_releases (catalog_item_id, release_date) VALUES ($1, $2)', [itemId, '2099-01-01'])
 
     const fresh = movieResponse()

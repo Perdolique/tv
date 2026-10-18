@@ -1,310 +1,244 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { computed, effectScope, ref } from 'vue'
+import { describe, expect, it } from 'vitest'
+import { computed, ref } from 'vue'
+import { empty, emptySummary, harness, id, setup, summary, viewing } from '../../testing/catalog-viewings-harness.ts'
 
-interface RequestOptions {
-  method?: string;
-  body?: unknown;
-  retry: number;
-  signal: AbortSignal;
+const requestIdPattern: unknown = expect.any(String)
+const { useCatalogRating } = await import('../use-catalog-rating.ts')
+
+const page = {
+  items: [viewing],
+  summary,
+  nextCursor: null
 }
 
-const harness = vi.hoisted(() => { return { fetch: vi.fn<(url: string, options: RequestOptions) => Promise<unknown>>() } })
+function response(score: number | null) {
+  return {
+    score,
 
-// oxlint-disable-next-line vitest/prefer-import-in-mock -- Nuxt's virtual alias has no runtime module in this Node test.
-vi.mock('#app', () => { return { useRequestFetch: () => harness.fetch } })
+    viewing: {
+      ...viewing,
+      score
+    },
 
-const { useCatalogRating } = await import('../use-catalog-rating.ts')
-const scopes: ReturnType<typeof effectScope>[] = []
-
-function setup(accountId: string | null = 'account-one') {
-  const scope = effectScope()
-  const item = ref<string | null>('title-one')
-  const account = ref<string | null>(accountId)
+    summary: {
+      ...summary,
+      currentViewingScore: score,
+      currentVoteScore: score
+    }
+  }
+}
+function setupRating() {
+  const current = setup()
   const season = ref<number | null>(null)
 
-  const target = computed(() => item.value === null ? null : {
-    catalogItemId: item.value,
-    seasonNumber: season.value
+  const target = computed(() => {
+    const selection = {
+      catalogItemId: id,
+      seasonNumber: season.value
+    }
+
+    return selection
   })
 
-  const rating = scope.run(() => useCatalogRating(target, account))
+  const rating = current.scope.run(() => useCatalogRating(target, current.account, current.state))
 
-  scopes.push(scope)
-
-  if (rating === undefined) { throw new Error('The rating scope did not start') }
+  if (rating === undefined) { throw new Error('Rating scope did not start') }
 
   return {
-    account,
+    ...current,
     season,
-    item,
-    rating,
-    scope
+    rating
   }
 }
 
-describe('catalog rating lifecycle', () => {
-  beforeEach(() => { harness.fetch.mockReset() })
+describe('viewing-aware catalog ratings', () => {
+  it('confirms the first season rating when its response creates the current viewing', async () => {
+    harness.fetch.mockResolvedValueOnce(empty).mockResolvedValueOnce({
+      score: null,
+      viewing: null,
+      summary: emptySummary
+    }).mockResolvedValueOnce(response(8)).mockResolvedValueOnce(page)
 
-  afterEach(() => {
-    const completedScopes = scopes.splice(0)
+    const { state, rating, season } = setupRating()
 
-    for (const scope of completedScopes) { scope.stop() }
+    await state.load()
 
-    vi.unstubAllEnvs()
-    vi.restoreAllMocks()
-  })
-
-  it('loads only for an account and sends confirmed score changes through PUT and DELETE', async () => {
-    const { account, rating } = setup(null)
+    season.value = 1
 
     await rating.load()
-    expect(harness.fetch).not.toHaveBeenCalled()
-
-    account.value = 'account-one'
-
-    harness.fetch.mockResolvedValueOnce({ score: null }).mockResolvedValueOnce({ score: 8 }).mockResolvedValueOnce({ score: null })
-    await rating.load()
-    expect(rating.status.value).toBe('loaded')
-    await expect(rating.save(8)).resolves.toBe(true)
+    await expect(rating.save(8, '2026-10-17')).resolves.toBe(true)
+    expect(state.summary.value.currentViewingId).toBe(viewing.id)
     expect(rating.score.value).toBe(8)
-
-    expect(harness.fetch).toHaveBeenNthCalledWith(2, '/api/catalog/items/title-one/rating', expect.objectContaining({
-      method: 'PUT',
-      body: { score: 8 },
-      retry: 0
-    }))
-
-    await expect(rating.save(null)).resolves.toBe(true)
-    expect(rating.score.value).toBeNull()
-
-    expect(harness.fetch).toHaveBeenNthCalledWith(3, '/api/catalog/items/title-one/rating', expect.objectContaining({
-      method: 'DELETE',
-      body: undefined,
-      retry: 0
-    }))
+    expect(rating.status.value).toBe('loaded')
   })
 
-  it('keeps the confirmed score while saving and blocks overlapping saves and loads', async () => {
-    const pending = Promise.withResolvers<unknown>()
-    const { rating } = setup()
+  it('reads the selected viewing and writes its revision without changing the current context', async () => {
+    const past = {
+      ...viewing,
+      id: '01991a00-0000-7000-8000-000000000099',
+      revision: 4
+    }
 
-    harness.fetch.mockResolvedValueOnce({ score: 4 }).mockReturnValueOnce(pending.promise)
+    harness.fetch.mockResolvedValueOnce(page)
+
+    const { state, rating, season } = setupRating()
+
+    await state.load()
+    state.select(past)
+
+    season.value = 2
+
+    harness.fetch.mockResolvedValueOnce({
+      score: 5,
+      viewing: past,
+      summary
+    }).mockResolvedValueOnce({
+      score: 8,
+
+      viewing: {
+        ...past,
+        revision: 5
+      },
+
+      summary
+    })
+
+    await rating.load()
+    await expect(rating.save(8)).resolves.toBe(true)
+    expect(harness.fetch.mock.calls[1]?.[1]).toMatchObject({ query: { viewingId: past.id } })
+    expect(harness.fetch.mock.calls[2]?.[0]).toBe(`/api/catalog/items/${id}/viewings/${past.id}/seasons/2/rating`)
+
+    expect(harness.fetch.mock.calls[2]?.[1].body).toMatchObject({
+      requestId: requestIdPattern,
+      revision: 4,
+      score: 8,
+      timeZone: 'Europe/Tallinn'
+    })
+
+    expect(rating.score.value).toBe(8)
+    expect(state.summary.value.currentViewingId).toBe(viewing.id)
+  })
+
+  it('preserves the confirmed score while saving and serializes nested writes', async () => {
+    const pending = Promise.withResolvers<unknown>()
+
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(response(4)).mockReturnValueOnce(pending.promise)
+
+    const { state, rating } = setupRating()
+
+    await state.load()
     await rating.load()
 
     const saved = rating.save(9)
 
-    expect(rating.isSaving.value).toBe(true)
     expect(rating.score.value).toBe(4)
+    expect(rating.isSaving.value).toBe(true)
+    await expect(state.remove(viewing)).resolves.toBe(false)
     await expect(rating.save(null)).resolves.toBe(false)
-    await rating.load()
-    expect(harness.fetch).toHaveBeenCalledTimes(2)
-    pending.resolve({ score: 9 })
+    pending.resolve(response(9))
     await expect(saved).resolves.toBe(true)
     expect(rating.score.value).toBe(9)
-    expect(rating.isSaving.value).toBe(false)
   })
 
-  it('keeps the confirmed score on failure, logs the cause and allows retry', async () => {
-    const error = new Error('private network detail')
+  it('keeps failures safe and retries the original rating request', async () => {
+    const error = new Error('private transport detail')
 
-    const log = vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {
-      // Capture the expected request failure.
-    })
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(response(6)).mockRejectedValueOnce(error)
 
-    const { rating } = setup()
+    const { state, rating } = setupRating()
 
-    harness.fetch.mockResolvedValueOnce({ score: 6 }).mockRejectedValueOnce(error).mockResolvedValueOnce({ score: 8 })
+    await state.load()
     await rating.load()
     await expect(rating.save(8)).resolves.toBe(false)
+
+    const original = harness.fetch.mock.calls[2]?.[1].body
+
     expect(rating.score.value).toBe(6)
-    expect(rating.saveError.value).not.toContain('private network detail')
-    expect(rating.saveError.value).toContain('Try again')
+    expect(rating.hasUnconfirmedMutation.value).toBe(true)
+    expect(rating.isBlocked.value).toBe(false)
+    expect(rating.saveError.value).not.toContain('private transport detail')
 
-    expect(log).toHaveBeenCalledWith({
+    expect(globalThis.console.warn).toHaveBeenCalledWith({
       error,
-      message: 'Catalog rating update request failed.'
+      message: 'Viewing update request failed.'
     })
 
+    harness.fetch.mockResolvedValueOnce(response(8))
     await expect(rating.save(8)).resolves.toBe(true)
+    expect(harness.fetch.mock.calls[3]?.[1].body).toStrictEqual(original)
     expect(rating.score.value).toBe(8)
-    expect(rating.saveError.value).toBe('')
   })
 
-  it('distinguishes a read failure from an unrated title and recovers', async () => {
-    vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {
-      // Capture the expected request failure.
-    })
+  it('distinguishes failed and unauthorized reads from an unrated viewing', async () => {
+    harness.fetch.mockResolvedValueOnce(empty).mockRejectedValueOnce(new Error('Unavailable')).mockRejectedValueOnce({ statusCode: 401 })
 
-    const { rating } = setup()
-    const error = new Error('unavailable')
+    const { state, rating } = setupRating()
 
-    harness.fetch.mockRejectedValueOnce(error).mockResolvedValueOnce({ score: null })
+    await state.load()
     await rating.load()
     expect(rating.status.value).toBe('error')
-    await expect(rating.save(7)).resolves.toBe(false)
-    await rating.load()
-    expect(rating.status.value).toBe('loaded')
-    expect(rating.score.value).toBeNull()
-  })
-
-  it('rejects malformed and mismatched responses without false saved state', async () => {
-    const log = vi.spyOn(globalThis.console, 'error').mockImplementation(() => {
-      // Capture the expected request failure.
-    })
-
-    const { rating } = setup()
-
-    harness.fetch.mockResolvedValueOnce({ score: 0 }).mockResolvedValueOnce({ score: 7 }).mockResolvedValueOnce({ score: 8 }).mockResolvedValueOnce({ score: 11 })
-    await rating.load()
-    expect(rating.status.value).toBe('error')
-    await rating.load()
-    await expect(rating.save(9)).resolves.toBe(false)
-    expect(rating.score.value).toBe(7)
-    await expect(rating.save(9)).resolves.toBe(false)
-    expect(rating.score.value).toBe(7)
-    expect(log).toHaveBeenCalledTimes(3)
-  })
-
-  it('reports an expired read session to the owner', async () => {
-    const { account, rating } = setup()
-
-    harness.fetch.mockRejectedValueOnce({ statusCode: 401 })
+    await expect(rating.save(7, '2026-10-17')).resolves.toBe(false)
     await rating.load()
     expect(rating.unauthorized.value).toBe('load')
-
-    account.value = null
-
-    expect(rating.score.value).toBeNull()
-    expect(rating.status.value).toBe('idle')
-  })
-
-  it('reports an expired write session without showing the draft as saved', async () => {
-    const { account, rating } = setup()
-
-    harness.fetch.mockResolvedValueOnce({ score: 7 }).mockRejectedValueOnce({ statusCode: 401 })
-    await rating.load()
-    await expect(rating.save(9)).resolves.toBe(false)
-    expect(rating.unauthorized.value).toBe('mutation')
-    expect(rating.score.value).toBe(7)
-
-    account.value = null
-
     expect(rating.score.value).toBeNull()
   })
 
-  it.each(['account', 'item'] as const)('ignores an old save after the %s changes, including its finally handler', async changed => {
-    const oldSave = Promise.withResolvers<unknown>()
-    const newSave = Promise.withResolvers<unknown>()
-    const state = setup()
-
-    harness.fetch.mockResolvedValueOnce({ score: 7 }).mockReturnValueOnce(oldSave.promise).mockResolvedValueOnce({ score: 3 }).mockReturnValueOnce(newSave.promise)
-    await state.rating.load()
-
-    const first = state.rating.save(9)
-    const signal = harness.fetch.mock.calls[1]?.[1].signal
-
-    state[changed].value = 'another'
-
-    expect(signal?.aborted).toBe(true)
-    await state.rating.load()
-
-    const second = state.rating.save(5)
-
-    oldSave.resolve({ score: 9 })
-    await expect(first).resolves.toBe(false)
-    expect(state.rating.score.value).toBe(3)
-    expect(state.rating.isSaving.value).toBe(true)
-    newSave.resolve({ score: 5 })
-    await expect(second).resolves.toBe(true)
-    expect(state.rating.score.value).toBe(5)
-  })
-
-  it.each(['account', 'item'] as const)('automatically reloads for a new %s and ignores the cancelled read', async changed => {
+  it('aborts a selected-viewing read and ignores its late result after selection changes', async () => {
     const old = Promise.withResolvers<unknown>()
 
-    harness.fetch.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ score: 4 })
-    vi.stubEnv('SSR', false)
+    harness.fetch.mockResolvedValueOnce(page).mockReturnValueOnce(old.promise)
 
-    const state = setup('account-one')
-    const { rating } = state
-    const signal = harness.fetch.mock.calls[0]?.[1].signal
+    const { state, rating } = setupRating()
 
-    state[changed].value = 'another'
+    await state.load()
 
-    await vi.waitFor(() => { expect(rating.score.value).toBe(4) })
-    old.resolve({ score: 10 })
-
-    await old.promise
-
-    expect(signal?.aborted).toBe(true)
-    expect(rating.score.value).toBe(4)
-  })
-
-  it.each(['load', 'save'] as const)('cancels a season %s and rejects its late response after selecting another season', async operation => {
-    const pending = Promise.withResolvers<unknown>()
-    const state = setup()
-
-    state.season.value = 1
-
-    harness.fetch.mockResolvedValueOnce({ score: 6 })
-    await state.rating.load()
-    harness.fetch.mockReturnValueOnce(pending.promise)
-
-    const oldRequest = state.rating[operation](9)
+    const loading = rating.load()
     const signal = harness.fetch.mock.calls[1]?.[1].signal
 
-    state.season.value = 2
+    const past = {
+      ...viewing,
+      id: '01991a00-0000-7000-8000-000000000099'
+    }
 
-    expect(state.rating.score.value).toBeNull()
+    state.select(past)
+    old.resolve(response(9))
+
+    await loading
+
     expect(signal?.aborted).toBe(true)
-    harness.fetch.mockResolvedValueOnce({ score: 3 })
-    await state.rating.load()
-    pending.resolve({ score: 9 })
-
-    await oldRequest
-
-    expect(state.rating.score.value).toBe(3)
-    expect(state.rating.isSaving.value).toBe(false)
-    expect(state.rating.saveError.value).toBe('')
-    expect(harness.fetch.mock.calls[0]?.[0]).toBe('/api/catalog/items/title-one/seasons/1/rating')
-    expect(harness.fetch.mock.calls[2]?.[0]).toBe('/api/catalog/items/title-one/seasons/2/rating')
-  })
-
-  it('does not start automatic requests during SSR', () => {
-    vi.stubEnv('SSR', true)
-
-    const { account, item, rating } = setup()
-
-    account.value = 'account-two'
-    item.value = 'title-two'
-
-    expect(harness.fetch).not.toHaveBeenCalled()
+    expect(rating.score.value).toBeNull()
     expect(rating.status.value).toBe('idle')
   })
 
-  it('ignores failures after disposal without reporting an error for another screen', async () => {
-    const pending = Promise.withResolvers<unknown>()
+  it('keeps a write for an old account out of the new account state', async () => {
+    const old = Promise.withResolvers<unknown>()
 
-    const log = vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {
-      // Capture the expected request failure.
-    })
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce(response(7)).mockReturnValueOnce(old.promise)
 
-    const { rating, scope } = setup()
+    const { state, account, rating } = setupRating()
 
-    harness.fetch.mockResolvedValueOnce({ score: 7 }).mockReturnValueOnce(pending.promise)
+    await state.load()
     await rating.load()
 
-    const saving = rating.save(8)
-    const signal = harness.fetch.mock.calls[1]?.[1].signal
+    const saved = rating.save(9)
 
-    scope.stop()
+    account.value = 'another-account'
 
-    const error = new Error('obsolete failure')
+    old.resolve(response(9))
+    await expect(saved).resolves.toBe(false)
+    expect(rating.score.value).toBeNull()
+    expect(rating.saveError.value).toBe('')
+    expect(state.items.value).toStrictEqual([])
+  })
 
-    pending.reject(error)
-    await expect(saving).resolves.toBe(false)
-    expect(signal?.aborted).toBe(true)
-    expect(log).not.toHaveBeenCalled()
-    expect(rating.score.value).toBe(7)
+  it('rejects malformed rating context without reporting a saved score', async () => {
+    harness.fetch.mockResolvedValueOnce(page).mockResolvedValueOnce({ score: 0 })
+
+    const { state, rating } = setupRating()
+
+    await state.load()
+    await rating.load()
+    expect(rating.status.value).toBe('error')
+    expect(rating.score.value).toBeNull()
   })
 })

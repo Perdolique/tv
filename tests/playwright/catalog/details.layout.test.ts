@@ -33,7 +33,7 @@ interface ActionPresentation {
 
 function watchedButton(page: Page): Locator {
   return page.getByRole('button', {
-    name: /^(?:Mark as watched|Watched again|Saving viewing…)$/u
+    name: /^(?:Mark as watched|Saving viewing…)$/u
   })
 }
 
@@ -226,7 +226,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.reload()
       await expect(follow).toBeVisible()
       await expect(follow).toHaveAttribute('aria-pressed', 'true')
-      await expect(watchedButton(page)).toHaveAccessibleName('Watched again')
+      await expect(watchedButton(page)).toHaveAccessibleName('Mark as watched')
       await expectInsideViewport(page, follow)
       await expectInsideViewport(page, watchedButton(page))
       await expectNoOverlap(follow, watchedButton(page))
@@ -240,20 +240,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
       ])
 
       expect(selectedGeometry).toEqual(unselectedGeometry)
-
-      expect({
-        backgroundColor: selectedFollowPresentation.backgroundColor,
-        borderColor: selectedFollowPresentation.borderColor,
-        iconColor: selectedFollowPresentation.iconColor
-      }).toEqual({
-        backgroundColor: selectedWatchedPresentation.backgroundColor,
-        borderColor: selectedWatchedPresentation.borderColor,
-        iconColor: selectedWatchedPresentation.iconColor
-      })
-
-      expect(selectedWatchedPresentation.backgroundColor).not.toBe(unselectedWatchedPresentation.backgroundColor)
-      expect(selectedWatchedPresentation.borderColor).not.toBe(unselectedWatchedPresentation.borderColor)
-      expect(selectedWatchedPresentation.iconMarkup).not.toBe(unselectedWatchedPresentation.iconMarkup)
+      expect(selectedWatchedPresentation).toStrictEqual(unselectedWatchedPresentation)
+      expect(selectedFollowPresentation.backgroundColor).not.toBe(selectedWatchedPresentation.backgroundColor)
+      expect(selectedFollowPresentation.borderColor).not.toBe(selectedWatchedPresentation.borderColor)
       expect(selectedFollowPresentation.iconMarkup).not.toBe(selectedWatchedPresentation.iconMarkup)
     })
   }

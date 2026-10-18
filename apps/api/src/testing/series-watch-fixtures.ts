@@ -3,7 +3,7 @@ import type { Client } from 'pg'
 interface SeriesWatchFixture {
   episodeIds: string[];
   markedAt?: string;
-  status?: 'watching' | 'paused' | 'completed';
+  status?: 'watching' | 'completed';
 }
 
 interface SeriesWatchFixtureRow {
@@ -42,8 +42,11 @@ async function insertSeriesEpisodeWatches(
 
     if (viewingId === undefined) {
       const created = await client.query<{ id: string }>(`
-        INSERT INTO catalog_viewings (user_id, catalog_item_id, status, recorded_at)
-        VALUES ($1, $2, $3, coalesce($4::timestamptz, now())) RETURNING id
+        INSERT INTO catalog_viewings (user_id, catalog_item_id, status, recorded_at, started_on, completed_on)
+        VALUES ($1, $2, $3, coalesce($4::timestamptz, now()),
+          (coalesce($4::timestamptz, now()) AT TIME ZONE 'UTC')::date,
+          CASE WHEN $3 = 'completed' THEN (coalesce($4::timestamptz, now()) AT TIME ZONE 'UTC')::date END)
+        RETURNING id
       `, [userId, catalogItemId, status, fixture.markedAt ?? null])
 
       viewingId = created.rows[0]?.id

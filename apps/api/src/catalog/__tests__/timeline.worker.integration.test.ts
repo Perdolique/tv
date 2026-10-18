@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers'
 import assert from 'node:assert/strict'
-import type { CatalogTimelineEpisodesResponse, CatalogTimelineResponse } from '@tv/shared/catalog-timeline'
+import type { CatalogTimelineResponse } from '@tv/shared/catalog-timeline'
 import { Client } from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
@@ -85,9 +85,9 @@ describe('private timeline Worker contract', () => {
     })
   })
 
-  it.each(['', '/episodes'])('authenticates %s before validating IDs and queries', async suffix => {
+  it('authenticates before validating IDs and queries', async () => {
     // Act
-    const path = `/api/catalog/items/invalid/timeline${suffix}?timeZone=invalid&cursor=bad`
+    const path = `/api/catalog/items/invalid/timeline?timeZone=invalid&cursor=bad`
     const response = await request(path, null)
 
     // Assert
@@ -125,12 +125,12 @@ describe('private timeline Worker contract', () => {
     expect(duplicate.status).toBe(400)
   })
 
-  it('returns one full group and bounds independent detail pages to it', async () => {
+  it('returns one complete episode group without an expandable detail contract', async () => {
     // Arrange
     const viewingId = await withClient(async client => {
       await client.query('INSERT INTO catalog_episodes (catalog_item_id, season_number, episode_number) SELECT $1, 1, number FROM generate_series(1, 25) number', [SERIES_ID])
 
-      const viewings = await client.query<{ id: string }>('INSERT INTO catalog_viewings (user_id, catalog_item_id, status) VALUES ($1, $2, \'watching\') RETURNING id', [USER_ID, SERIES_ID])
+      const viewings = await client.query<{ id: string }>('INSERT INTO catalog_viewings (user_id, catalog_item_id, status, started_on) VALUES ($1, $2, \'watching\', \'2026-10-01\') RETURNING id', [USER_ID, SERIES_ID])
       const id = viewings.rows[0]?.id
 
       assert.ok(id !== undefined, 'Viewing fixture is missing')
@@ -157,45 +157,12 @@ describe('private timeline Worker contract', () => {
     expect(group?.kind).toBe('episode_group')
     assert.ok(group?.kind === 'episode_group', 'Episode group is missing')
 
-    const parameters = {
-      timeZone: 'Europe/Tallinn',
-      viewingId,
-      localDate: group.localDate,
-      groupCursor: group.episodesCursor
-    }
-
-    const detailsPath = timelineUrl(parameters, '/episodes')
-    const detailsResponse = await request(detailsPath)
-    const details = await detailsResponse.json<CatalogTimelineEpisodesResponse>()
-
-    assert.ok(details.nextCursor !== null, 'Episode detail cursor is missing')
-
-    const nextParameters = {
-      ...parameters,
-      cursor: details.nextCursor
-    }
-
-    const nextPath = timelineUrl(nextParameters, '/episodes')
-    const nextResponse = await request(nextPath)
-    const next = await nextResponse.json<CatalogTimelineEpisodesResponse>()
-
-    const wrongDayParameters = {
-      ...parameters,
-      localDate: '2026-10-26'
-    }
-
-    const wrongDayPath = timelineUrl(wrongDayParameters, '/episodes')
-    const wrongDay = await request(wrongDayPath)
-
     // Assert
     expect(timeline.items).toHaveLength(1)
     expect(group.totalCount).toBe(25)
-    expect(details.items).toHaveLength(20)
-    expect(next.items).toHaveLength(5)
-    expect(next.nextCursor).toBeNull()
-    expect(detailsResponse.headers.get('cache-control')).toBe('no-store')
-    expect(nextResponse.headers.get('cache-control')).toBe('no-store')
-    expect(wrongDay.status).toBe(400)
+    expect(group.id).toBe(`episode_group:${viewingId}:2026-10-25`)
+    expect(group).not.toHaveProperty('episodesCursor')
+    expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
   it('shows safe infrastructure errors and logs their raw cause', async () => {

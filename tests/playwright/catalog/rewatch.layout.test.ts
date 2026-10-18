@@ -6,15 +6,7 @@ import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie, expectNoHorizontalOverflow } from '../helpers.ts'
 import { chernobyl } from './details.fixtures.ts'
 import { openEpisodes, waitForHydration } from './helpers.ts'
-
-import {
-  firstEpisodeId,
-  nextViewingId,
-  seriesResponse,
-  titlePath,
-  viewingId,
-  watchedPath
-} from './timeline.fixtures.ts'
+import { firstEpisodeId, titlePath } from './timeline.fixtures.ts'
 
 test.use({ expectedHttpErrors: { values: [{
   pathname: titlePath,
@@ -89,19 +81,10 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
       await page.emulateMedia({ colorScheme })
       await addCookie(context, 'tv_session', 'e2e-session')
-
-      let state = seriesResponse([firstEpisodeId], viewingId, 1)
+      await addCookie(context, 'tv_watched_episode', firstEpisodeId)
 
       await page.route(url => url.pathname === `/api/catalog/items/${chernobyl.id}`, async route => {
         await route.fulfill({ json: { item: seriesDetails } })
-      })
-
-      await page.route(`**${watchedPath}`, async route => { await route.fulfill({ json: state }) })
-
-      await page.route(`**/api/catalog/items/${chernobyl.id}/rewatch`, async route => {
-        state = seriesResponse([], nextViewingId, 2)
-
-        await route.fulfill({ json: state })
       })
 
       await addCookie(context, 'fail_details', '1')
@@ -154,8 +137,12 @@ for (const colorScheme of ['light', 'dark'] as const) {
         exact: true
       })
 
+      await expectNoHorizontalOverflow(page)
+      await expect(dialog.getByLabel('Complete current viewing on', { exact: true })).toBeVisible()
+      await expect(dialog.getByLabel('Start rewatch on', { exact: true })).toBeVisible()
+
       await dialog.getByRole('button', {
-        name: 'Start rewatch',
+        name: 'Complete current viewing and start rewatch',
         exact: true
       }).click()
 
@@ -165,6 +152,12 @@ for (const colorScheme of ['light', 'dark'] as const) {
       })
 
       await expect(cancel).toBeEnabled()
+
+      await expect(page.getByRole('list', {
+        name: 'Series viewings',
+        exact: true
+      }).getByRole('listitem')).toHaveCount(2)
+
       await expectSingleLine(cancel)
       await expectNoHorizontalOverflow(page)
     })

@@ -17,7 +17,7 @@
     <p v-else-if="!hasError" :class="$style.placeholder" :aria-busy="isLoading">{{ placeholderLabel }}</p>
     <div v-if="hasError" :class="$style.error">
       <AppMessage role="alert" tone="danger">{{ errorLabel }}</AppMessage>
-      <AppButton ref="retryButton" :disabled="isLoading" aria-label="Retry viewer rating" variant="secondary" @click="retry">Retry</AppButton>
+      <AppButton size="small" ref="retryButton" :disabled="isLoading" aria-label="Retry viewer rating" variant="secondary" @click="retry">Retry</AppButton>
     </div>
   </section>
 </template>

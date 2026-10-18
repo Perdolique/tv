@@ -1,6 +1,8 @@
 import { env, exports } from 'cloudflare:workers'
 import { Client } from 'pg'
-import type { CatalogSeriesWatchesResponse } from '@tv/shared/catalog-series'
+import { catalogSeriesWatchesResponseSchema } from '@tv/shared/catalog-series'
+import { catalogRatingMutationResponseSchema, catalogViewingMutationResponseSchema } from '@tv/shared/catalog-viewings'
+import * as v from 'valibot'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { hashSessionToken } from '../../auth/session.ts'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
@@ -69,7 +71,8 @@ function initialInput() {
     requestId,
     currentViewingId: null,
     contextVersion: 0,
-    timeZone: 'Europe/Tallinn'
+    timeZone: 'Europe/Tallinn',
+    viewingDate: '2000-01-01'
   }
 }
 
@@ -100,249 +103,224 @@ describe('series viewing Worker transport', () => {
     })
   })
 
-  it('authenticates every private endpoint before parsing target IDs and request bodies', async () => {
-    const targets: [string, string][] = [
-      ['GET', '/api/catalog/items/invalid/episodes/watched'],
+  it('authenticates all series mutations and selected reads before IDs or bodies', async () => {
+    const targets = [
+      ['GET', '/api/catalog/items/invalid/episodes/watched?viewingId=invalid'],
       ['PUT', '/api/catalog/episodes/invalid/watched'],
       ['DELETE', '/api/catalog/episodes/invalid/watched'],
       ['POST', '/api/catalog/items/invalid/seasons/invalid/watched'],
       ['POST', '/api/catalog/items/invalid/episodes/watched'],
-      ['POST', '/api/catalog/items/invalid/rewatch'],
+      ['POST', '/api/catalog/items/invalid/viewings'],
       ['DELETE', '/api/catalog/items/invalid/rewatch']
-    ]
+    ] as const
 
-    const protectedRequests = targets.map(async ([method, path]) => {
+    for (const [method, path] of targets) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each independent route must reject before parsing its input.
       const response = await request(path, {
         method,
-        body: { invalid: true },
+        body: {},
         authenticated: false
       })
 
       expect(response.status).toBe(401)
-    })
-
-    await Promise.all(protectedRequests)
+    }
   })
 
-  it('rejects old clients without creating any viewing and validates time zones and obsolete close choices', async () => {
-    const episodeWatchedPath = `/api/catalog/episodes/${firstEpisodeId}/watched`
-    const listingPath = `/api/catalog/items/${catalogItemId}/episodes/watched`
-    const rewatchPath = `/api/catalog/items/${catalogItemId}/rewatch`
-    const oldMark = await request(episodeWatchedPath, { method: 'PUT' })
+  it('validates operation context, dates, timezone and owner without creating diary data', async () => {
+    const path = `/api/catalog/episodes/${firstEpisodeId}/watched`
+    const input = initialInput()
 
-    expect(oldMark.status).toBe(409)
+    const invalidInputs = [{}, {
+      ...input,
+      requestId: undefined
+    }, {
+      ...input,
+      contextVersion: -1
+    }, {
+      ...input,
+      timeZone: 'invalid/zone'
+    }, {
+      ...input,
+      userId
+    }, {
+      ...input,
+      viewingDate: '2023-02-29'
+    }]
 
-    const emptyRead = await request(listingPath)
-    const emptyReadBody = emptyRead.json<unknown>()
+    for (const body of invalidInputs) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each invalid transport contract has the same observable rejection.
+      const response = await request(path, {
+        method: 'PUT',
+        body
+      })
 
-    await expect(emptyReadBody).resolves.toStrictEqual({
-      watches: [],
-      watchedEpisodeIds: [],
-      currentViewing: null,
-      contextVersion: 0
-    })
-
-    const initialZoneInput = initialInput()
-
-    const invalidZoneInput = {
-      ...initialZoneInput,
-      timeZone: 'Not/AZone'
+      expect(response.status).toBe(400)
     }
 
-    const invalidZone = await request(episodeWatchedPath, {
+    const unavailable = await request(`/api/catalog/episodes/${futureEpisodeId}/watched`, {
       method: 'PUT',
-      body: invalidZoneInput
-    })
-
-    expect(invalidZone.status).toBe(400)
-
-    const firstMarkInput = initialInput()
-
-    const firstMark = await request(episodeWatchedPath, {
-      method: 'PUT',
-      body: firstMarkInput
-    })
-
-    expect(firstMark.status).toBe(200)
-
-    const first = await firstMark.json<CatalogSeriesWatchesResponse>()
-    const closeRequestId = crypto.randomUUID()
-
-    const incompleteCloseInput = {
-      requestId: closeRequestId,
-      currentViewingId: first.currentViewing?.id,
-      contextVersion: first.contextVersion,
-      timeZone: 'UTC'
-    }
-
-    const incompleteClose = await request(rewatchPath, {
-      method: 'POST',
-
-      body: {
-        ...incompleteCloseInput,
-        closeStatus: 'paused'
-      }
-    })
-
-    expect(incompleteClose.status).toBe(400)
-
-    const incompleteCloseBody = incompleteClose.json<unknown>()
-
-    await expect(incompleteCloseBody).resolves.toHaveProperty('error')
-  })
-
-  it('cancels only an owned empty rewatch and restores the earlier marks through HTTP', async () => {
-    const episodePath = `/api/catalog/episodes/${firstEpisodeId}/watched`
-    const rewatchPath = `/api/catalog/items/${catalogItemId}/rewatch`
-
-    const firstMark = await request(episodePath, {
-      method: 'PUT',
-      body: initialInput()
-    })
-
-    const first = await firstMark.json<CatalogSeriesWatchesResponse>()
-
-    const input = {
-      requestId: crypto.randomUUID(),
-      currentViewingId: first.currentViewing?.id,
-      contextVersion: first.contextVersion,
-      timeZone: 'UTC'
-    }
-
-    const start = await request(rewatchPath, {
-      method: 'POST',
       body: input
     })
 
-    const next = await start.json<CatalogSeriesWatchesResponse>()
+    const response = await request(`/api/catalog/items/${catalogItemId}/episodes/watched`)
+    const stateRaw: unknown = await response.json()
+    const state = v.parse(catalogSeriesWatchesResponseSchema, stateRaw)
 
-    expect(start.status).toBe(200)
-    expect(next.currentViewing?.isRewatch).toBe(true)
-
-    const cancellation = {
-      currentViewingId: next.currentViewing?.id,
-      contextVersion: next.contextVersion
-    }
-
-    const otherCancellation = await request(rewatchPath, {
-      method: 'DELETE',
-      body: cancellation,
-      cookie: `__Host-tv_session=${otherSessionToken}`
-    })
-
-    expect(otherCancellation.status).toBe(200)
-
-    await expect(otherCancellation.json<unknown>()).resolves.toStrictEqual({
-      watches: [],
-      watchedEpisodeIds: [],
-      currentViewing: null,
-      contextVersion: 0
-    })
-
-    const stillCurrent = await request(`/api/catalog/items/${catalogItemId}/episodes/watched`)
-
-    await expect(stillCurrent.json<unknown>()).resolves.toStrictEqual(next)
-
-    const canceled = await request(rewatchPath, {
-      method: 'DELETE',
-      body: cancellation
-    })
-
-    const restored = await canceled.json<CatalogSeriesWatchesResponse>()
-
-    expect(canceled.status).toBe(200)
-    expect(restored.watches).toStrictEqual(first.watches)
-    expect(restored.currentViewing?.id).toBe(first.currentViewing?.id)
-    expect(restored.contextVersion).toBe(3)
-
-    const retry = await request(rewatchPath, {
-      method: 'DELETE',
-      body: cancellation
-    })
-
-    await expect(retry.json<unknown>()).resolves.toStrictEqual(restored)
+    expect(unavailable.status).toBe(400)
+    expect(state.viewing).toBeNull()
+    expect(state.watches).toHaveLength(0)
   })
 
-  it('bulk marks only released episodes, starts an empty rewatch, and returns current state on late retry', async () => {
-    const bulkInput = initialInput()
-    const bulkPath = `/api/catalog/items/${catalogItemId}/seasons/1/watched`
-    const rewatchPath = `/api/catalog/items/${catalogItemId}/rewatch`
-    const firstEpisodeWatchedPath = `/api/catalog/episodes/${firstEpisodeId}/watched`
-    const futureEpisodeWatchedPath = `/api/catalog/episodes/${futureEpisodeId}/watched`
+  it('keeps historical marks scoped and cancels a combined rewatch through the confirmed context', async () => {
+    const firstInput = initialInput()
 
-    const bulk = await request(bulkPath, {
-      method: 'POST',
-      body: bulkInput
-    })
-
-    expect(bulk.status).toBe(200)
-
-    const first = await bulk.json<CatalogSeriesWatchesResponse>()
-
-    expect(first.watchedEpisodeIds).toStrictEqual([firstEpisodeId])
-
-    const rewatchRequestId = crypto.randomUUID()
-
-    const rewatchInput = {
-      requestId: rewatchRequestId,
-      currentViewingId: first.currentViewing?.id,
-      contextVersion: first.contextVersion,
-      timeZone: 'UTC'
-    }
-
-    const rewatch = await request(rewatchPath, {
-      method: 'POST',
-      body: rewatchInput
-    })
-
-    expect(rewatch.status).toBe(200)
-
-    const second = await rewatch.json<CatalogSeriesWatchesResponse>()
-
-    expect(second.watches).toStrictEqual([])
-    expect(second.contextVersion).toBe(2)
-    expect(second.currentViewing?.id).not.toBe(first.currentViewing?.id)
-
-    const bulkReplay = await request(bulkPath, {
-      method: 'POST',
-      body: bulkInput
-    })
-
-    const bulkReplayBody = bulkReplay.json<unknown>()
-
-    await expect(bulkReplayBody).resolves.toStrictEqual(second)
-
-    const lateDeleteInput = {
-      currentViewingId: first.currentViewing?.id,
-      contextVersion: first.contextVersion,
-      watchId: first.watches[0]?.id
-    }
-
-    const lateDelete = await request(firstEpisodeWatchedPath, {
-      method: 'DELETE',
-      body: lateDeleteInput
-    })
-
-    expect(lateDelete.status).toBe(409)
-
-    const futureMarkRequestId = crypto.randomUUID()
-
-    const futureMarkInput = {
-      requestId: futureMarkRequestId,
-      currentViewingId: second.currentViewing?.id,
-      contextVersion: second.contextVersion,
-      timeZone: 'UTC'
-    }
-
-    const markFuture = await request(futureEpisodeWatchedPath, {
+    const firstResponse = await request(`/api/catalog/episodes/${firstEpisodeId}/watched`, {
       method: 'PUT',
-      body: futureMarkInput
+      body: firstInput
     })
 
-    expect(markFuture.status).toBe(200)
+    const firstRaw: unknown = await firstResponse.json()
+    const first = v.parse(catalogSeriesWatchesResponseSchema, firstRaw)
 
-    const marked = await markFuture.json<CatalogSeriesWatchesResponse>()
+    expect(firstResponse.status).toBe(200)
+    expect(first.viewing?.startedOn).toBe('2000-01-01')
 
-    expect(marked.watchedEpisodeIds).toStrictEqual([futureEpisodeId])
+    const creationRequestId = crypto.randomUUID()
+
+    const createInput = {
+      requestId: creationRequestId,
+      mode: 'current',
+      currentViewingId: first.viewing?.id,
+      contextVersion: first.summary.contextVersion,
+      status: 'watching',
+      startedOn: '2000-01-03',
+      completedOn: null,
+      completeCurrentOn: '2000-01-02'
+    }
+
+    const nextResponse = await request(`/api/catalog/items/${catalogItemId}/viewings`, {
+      method: 'POST',
+      body: createInput
+    })
+
+    const nextRaw: unknown = await nextResponse.json()
+    const next = v.parse(catalogViewingMutationResponseSchema, nextRaw)
+
+    expect(nextResponse.status).toBe(200)
+
+    expect(next.viewing).toMatchObject({
+      score: null,
+      isRewatch: true,
+      canCancelRewatch: true
+    })
+
+    const selectedResponse = await request(`/api/catalog/items/${catalogItemId}/episodes/watched?viewingId=${first.viewing?.id}`)
+    const selectedRaw: unknown = await selectedResponse.json()
+    const selected = v.parse(catalogSeriesWatchesResponseSchema, selectedRaw)
+
+    expect(selected.viewing?.id).toBe(first.viewing?.id)
+    expect(selected.summary.currentViewingId).toBe(next.viewing.id)
+
+    const selectedEpisodeIds = selected.watches.map(mark => mark.catalogEpisodeId)
+
+    expect(selectedEpisodeIds).toStrictEqual([firstEpisodeId])
+
+    const other = await request(`/api/catalog/items/${catalogItemId}/episodes/watched?viewingId=${first.viewing?.id}`, { cookie: `__Host-tv_session=${otherSessionToken}` })
+
+    expect(other.status).toBe(404)
+
+    const cancellationRequestId = crypto.randomUUID()
+
+    const canceled = await request(`/api/catalog/items/${catalogItemId}/rewatch`, {
+      method: 'DELETE',
+
+      body: {
+        requestId: cancellationRequestId,
+        currentViewingId: next.viewing.id,
+        contextVersion: next.summary.contextVersion
+      }
+    })
+
+    expect(canceled.status).toBe(200)
+
+    const restoredResponse = await request(`/api/catalog/items/${catalogItemId}/episodes/watched`)
+    const restoredRaw: unknown = await restoredResponse.json()
+    const restored = v.parse(catalogSeriesWatchesResponseSchema, restoredRaw)
+
+    expect(restored.viewing).toMatchObject({
+      id: first.viewing?.id,
+      status: 'watching',
+      completedOn: null
+    })
+
+    expect(restored.watches).toStrictEqual(first.watches)
+
+    const late = await request(`/api/catalog/items/${catalogItemId}/viewings`, {
+      method: 'POST',
+      body: createInput
+    })
+
+    expect(late.status).toBe(409)
+  })
+
+  it('requires rated-unwatch confirmation and returns the atomically corrected marks and vote', async () => {
+    const response = await request(`/api/catalog/episodes/${firstEpisodeId}/rating`, {
+      method: 'PUT',
+
+      body: {
+        ...initialInput(),
+        score: 8
+      }
+    })
+
+    const ratedRaw: unknown = await response.json()
+    const rated = v.parse(catalogRatingMutationResponseSchema, ratedRaw)
+    const watch = rated.watches?.[0]
+
+    expect(response.status).toBe(200)
+    expect(watch).toBeDefined()
+
+    const unwatchRequestId = crypto.randomUUID()
+
+    const input = {
+      requestId: unwatchRequestId,
+      currentViewingId: rated.viewing?.id,
+      contextVersion: rated.summary.contextVersion,
+      watchId: watch?.id
+    }
+
+    const refused = await request(`/api/catalog/episodes/${firstEpisodeId}/watched`, {
+      method: 'DELETE',
+      body: input
+    })
+
+    expect(refused.status).toBe(409)
+
+    const confirmed = await request(`/api/catalog/episodes/${firstEpisodeId}/watched`, {
+      method: 'DELETE',
+
+      body: {
+        ...input,
+        confirmRatingRemoval: true
+      }
+    })
+
+    const removedRaw: unknown = await confirmed.json()
+    const removed = v.parse(catalogSeriesWatchesResponseSchema, removedRaw)
+
+    expect(confirmed.status).toBe(200)
+    expect(removed.watches).toHaveLength(0)
+
+    const rating = await request(`/api/catalog/episodes/${firstEpisodeId}/rating`)
+    const currentRaw: unknown = await rating.json()
+    const current = v.parse(catalogRatingMutationResponseSchema, currentRaw)
+
+    expect(current.score).toBeNull()
+
+    await withClient(async client => {
+      const votes = await client.query('SELECT id FROM catalog_rating_votes WHERE user_id=$1 AND catalog_episode_id=$2', [userId, firstEpisodeId])
+
+      expect(votes.rows).toHaveLength(0)
+    })
   })
 })

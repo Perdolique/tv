@@ -5,7 +5,7 @@
     <p v-else-if="isEmpty" :class="$style.supporting">Your activity for this title will appear here.</p>
     <div v-if="readError">
       <AppMessage role="alert" tone="danger">{{ readError }}</AppMessage>
-      <AppButton ref="historyRetry" variant="secondary" :disabled="isLoadingMore" @click="retry">Retry history</AppButton>
+      <AppButton size="small" ref="historyRetry" variant="secondary" :disabled="isLoadingMore" @click="retry">Retry history</AppButton>
     </div>
     <div v-for="day in days" :key="day.date" :class="$style.day">
       <h3 :class="$style.date"><time :datetime="day.date">{{ day.label }}</time></h3>
@@ -15,9 +15,8 @@
           <span :class="[$style.icon, { 'is-accent': row.isRating }]" aria-hidden="true"><Icon mode="svg" :name="row.icon" /></span>
           <div :class="$style.copy">
             <div :class="$style.rowHeader">
-              <NuxtLink v-if="row.movieLocation" :class="$style.movieLink" :to="row.movieLocation">{{ row.label }}</NuxtLink>
-              <p v-else>{{ row.label }}</p>
-              <p v-if="row.rating" :class="$style.rating">{{ row.rating.previous }}<span v-if="row.rating.hasPrevious"> → </span><span :class="[$style.newScore, { 'is-changed': row.rating.hasPrevious }]">{{ row.rating.current }}</span><span v-if="row.rating.showScale"> / 10</span></p>
+              <p>{{ row.label }}</p>
+              <p v-if="row.rating" :class="$style.rating">{{ row.rating }} / 10</p>
             </div>
             <p v-if="row.detail" :class="$style.supporting">{{ row.detail }}</p>
           </div>
@@ -46,12 +45,11 @@
   }
 
   interface Props {
-    catalogItemId: string;
     state: TitleTimelineState;
     timeZone: string | null;
   }
 
-  const { catalogItemId, state, timeZone } = defineProps<Props>()
+  const { state, timeZone } = defineProps<Props>()
   const { failedPage, isLoadingMore, items, nextCursor, readError, status } = state
   const headingId = useId()
   const heading = useTemplateRef('heading')
@@ -79,7 +77,13 @@
 
     for (const item of visibleItems.value) {
       const occurredAt = new Date(item.occurredAt)
-      const date = item.kind === 'episode_group' ? item.localDate : formatter.format(occurredAt)
+      let date = formatter.format(occurredAt)
+
+      if (item.kind === 'movie_viewing') { date = item.completedOn }
+      else if (item.kind === 'episode_group') { date = item.localDate }
+      else if (item.kind === 'series_started' || item.kind === 'rewatch_started') { date = item.startedOn }
+      else if (item.kind === 'series_completed') { date = item.completedOn }
+
       let day = result.at(-1)
 
       if (day?.date !== date) {
@@ -105,27 +109,9 @@
 
   function eventCopy(item: CatalogTimelineItem) {
     if (item.kind === 'movie_viewing') {
-      const dates: string[] = []
-
-      if (item.startedOn !== null) {
-        const startedOn = formatCalendarDateForDisplay(item.startedOn, { dateStyle: 'medium' })
-        const label = `Started ${startedOn}`
-
-        dates.push(label)
-      }
-
-      if (item.completedOn !== null) {
-        const completedOn = formatCalendarDateForDisplay(item.completedOn, { dateStyle: 'medium' })
-        const label = `Finished ${completedOn}`
-
-        dates.push(label)
-      }
-
-      const detail = dates.join(' · ')
-
       return {
         label: 'Watched movie',
-        detail,
+        detail: '',
         icon: 'hugeicons:play-circle'
       }
     }
@@ -138,21 +124,6 @@
         label,
         detail: '',
         icon: 'hugeicons:play-circle'
-      }
-    }
-
-    if (item.kind === 'rating_changed') {
-      let label = 'Updated rating'
-      let detail = ''
-
-      if (item.score === null) { label = 'Removed rating' } else if (item.previousScore === null) { label = 'Rated' }
-
-      if (item.target === 'season') { detail = `Season ${item.seasonNumber}` } else if (item.target === 'episode') { detail = `S${item.seasonNumber} E${item.episodeNumber}` }
-
-      return {
-        label,
-        detail,
-        icon: 'hugeicons:star'
       }
     }
 
@@ -190,14 +161,6 @@
       }
     }
 
-    if (item.kind === 'series_paused') {
-      return {
-        label: 'Paused watching',
-        detail: '',
-        icon: 'hugeicons:pause-circle'
-      }
-    }
-
     return {
       label: 'Completed viewing',
       detail: '',
@@ -205,35 +168,18 @@
     }
   }
 
-  function ratingCopy(item: Extract<CatalogTimelineItem, { kind: 'rating_changed' }>) {
-    const previous = item.previousScore === null ? '' : String(item.previousScore)
-    const current = item.score === null ? 'Removed' : String(item.score)
-    const showScale = item.previousScore === null && item.score !== null
+  function ratingCopy(item: CatalogTimelineItem) {
+    const hasScore = item.kind === 'movie_viewing' || item.kind === 'series_started' || item.kind === 'rewatch_started'
 
-    return {
-      previous,
-      hasPrevious: item.previousScore !== null,
-      current,
-      showScale
-    }
-  }
+    if (!hasScore || item.score === null) { return null }
 
-  function viewingLocation(item: Extract<CatalogTimelineItem, { kind: 'movie_viewing' }>) {
-    const path = `/titles/${catalogItemId}`
-    const hash = `#viewing-${item.viewingId}`
-
-    return {
-      path,
-      query: { viewingId: item.viewingId },
-      hash
-    }
+    return String(item.score)
   }
 
   function prepareRow(item: CatalogTimelineItem) {
     const key = timelineItemKey(item)
     const copy = eventCopy(item)
-    const rating = item.kind === 'rating_changed' ? ratingCopy(item) : null
-    const movieLocation = item.kind === 'movie_viewing' ? viewingLocation(item) : null
+    const rating = ratingCopy(item)
 
     return {
       key,
@@ -241,8 +187,7 @@
       detail: copy.detail,
       icon: copy.icon,
       rating,
-      movieLocation,
-      isRating: item.kind === 'rating_changed'
+      isRating: rating !== null
     }
   }
 
@@ -258,7 +203,7 @@
     const loaded = await state.load(true)
 
     if (loaded) {
-      announcement.value = `${items.value.length - count} more history entries loaded.`
+      announcement.value = state.didRecoverCursor.value ? 'Timeline refreshed.' : `${items.value.length - count} more history entries loaded.`
     }
 
     await nextTick()
@@ -308,8 +253,6 @@
     .entry + .entry::after { position: absolute; inset-block-start: 0; inset-inline-start: calc(var(--space-4) + 1.5rem + var(--space-3)); inset-inline-end: 0; border-block-start: 1px solid var(--color-border); content: ''; }
     .rowHeader { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
     .rating { font-variant-numeric: tabular-nums; }
-    .newScore { &:global(.is-changed) { color: var(--color-accent); } }
-    .movieLink { color: var(--color-text-primary); text-underline-offset: 0.2em; }
     .footer { justify-content: space-between; inline-size: 100%; border-block-start: 1px solid var(--color-border); text-align: start; }
     .accessible { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   }

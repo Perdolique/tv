@@ -5,12 +5,10 @@ import { join } from 'node:path'
 import { env } from 'node:process'
 import { fileURLToPath, URL } from 'node:url'
 import { createDatabase } from '@tv/database'
-import type { CatalogViewingCreateInput } from '@tv/shared/catalog-viewings'
 import { isLoopbackHostname } from '@tv/shared/network'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { Client } from 'pg'
-import { assert, describe, expect, it } from 'vitest'
-import { createMovieViewing } from '../../catalog/movie-viewings-repository.ts'
+import { describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../testing/test-database.ts'
 
 const migrationsUrl = new URL('../../../../../packages/database/migrations', import.meta.url)
@@ -77,6 +75,18 @@ describe('movie timeline reconciliation migration', () => {
 
       await Promise.all(copies)
 
+      const afterFolder = join(directory, 'after')
+      const applicableFolders = folders.filter(folder => folder <= migrationName)
+
+      const finalCopies = applicableFolders.map(async folder => {
+        const source = join(migrationsFolder, folder)
+        const target = join(afterFolder, folder)
+
+        await cp(source, target, { recursive: true })
+      })
+
+      await Promise.all(finalCopies)
+
       const database = createDatabase(client)
 
       await migrate(database, { migrationsFolder: beforeFolder })
@@ -84,32 +94,29 @@ describe('movie timeline reconciliation migration', () => {
       const userId = randomUUID()
       const catalogItemId = randomUUID()
 
-      const owner = {
-        userId,
-        catalogItemId
-      }
-
       await client.query('INSERT INTO users (id, email) VALUES ($1, \'movie-timeline-migration@example.com\')', [userId])
       await client.query('INSERT INTO catalog_items (id, type) VALUES ($1, \'movie\')', [catalogItemId])
       await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original) VALUES ($1, \'en\', \'Movie timeline migration fixture\', true)', [catalogItemId])
 
-      const existingInput: CatalogViewingCreateInput = {
-        requestId: randomUUID(),
-        mode: 'history',
-        startedOn: null,
-        completedOn: null
-      }
+      const existingViewingId = randomUUID()
 
-      await createMovieViewing(database, owner, existingInput)
+      // Seed the historical writer's rows without calling code that requires later migrations.
+      await client.query('BEGIN')
+      await client.query('INSERT INTO catalog_viewings (id, user_id, catalog_item_id, recorded_at) VALUES ($1, $2, $3, \'2023-02-03 04:05:06.654321+00\')', [existingViewingId, userId, catalogItemId])
+      await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, viewing_id, occurred_at) VALUES ($1, $2, \'movie_viewing\', $3, \'2023-02-03 04:05:06.654321+00\')', [userId, catalogItemId, existingViewingId])
+      await client.query('COMMIT')
 
       const existingEvents = await movieEvents(client, userId)
+
+      expect(existingEvents).toHaveLength(1)
+
       const gapViewingId = randomUUID()
 
-      const gapInput: CatalogViewingCreateInput = {
+      const gapInput = {
         requestId: randomUUID(),
         mode: 'history',
         startedOn: null,
-        completedOn: null
+        completedOn: '2026-10-17'
       }
 
       const gapInputJson = JSON.stringify(gapInput)
@@ -123,7 +130,7 @@ describe('movie timeline reconciliation migration', () => {
       const eventsDuringGap = await movieEvents(client, userId)
 
       expect(eventsDuringGap).toStrictEqual(existingEvents)
-      await migrate(database, { migrationsFolder })
+      await migrate(database, { migrationsFolder: afterFolder })
 
       const reconciled = await movieEvents(client, userId)
       const gapEvent = reconciled.find(event => event.viewingId === gapViewingId)
@@ -135,15 +142,6 @@ describe('movie timeline reconciliation migration', () => {
 
       expect(reconciled).toHaveLength(2)
       expect(reconciled).toContainEqual(existingEvents[0])
-
-      const replay = await createMovieViewing(database, owner, gapInput)
-
-      expect(replay.viewing.id).toBe(gapViewingId)
-      expect(replay.viewing.recordedAt).toBe('2024-03-04T05:06:07.123456Z')
-
-      const eventsAfterReplay = await movieEvents(client, userId)
-
-      expect(eventsAfterReplay).toStrictEqual(reconciled)
 
       const oldWriterViewingId = randomUUID()
 
@@ -159,25 +157,24 @@ describe('movie timeline reconciliation migration', () => {
 
       expect(afterOldWriter).toHaveLength(3)
 
-      const newInput: CatalogViewingCreateInput = {
-        requestId: randomUUID(),
-        mode: 'history',
-        startedOn: null,
-        completedOn: null
-      }
+      const newWriterViewingId = randomUUID()
 
-      const current = await createMovieViewing(database, owner, newInput)
+      // Reproduce the historical writer that inserts its event before the deferred trigger runs.
+      await client.query('BEGIN')
+      await client.query('INSERT INTO catalog_viewings (id, user_id, catalog_item_id, recorded_at) VALUES ($1, $2, $3, \'2026-04-05 06:07:08.654321+00\')', [newWriterViewingId, userId, catalogItemId])
+      await client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, kind, viewing_id, occurred_at) VALUES ($1, $2, \'movie_viewing\', $3, \'2026-04-05 06:07:08.654321+00\')', [userId, catalogItemId, newWriterViewingId])
+      await client.query('COMMIT')
+
       const afterNewWriter = await movieEvents(client, userId)
-      const currentEvent = afterNewWriter.find(event => event.viewingId === current.viewing.id)
+      const currentEvent = afterNewWriter.find(event => event.viewingId === newWriterViewingId)
 
-      assert(currentEvent !== undefined)
-      expect(currentEvent.occurredAt).toBe(current.viewing.recordedAt)
+      expect(currentEvent).toMatchObject({
+        viewingId: newWriterViewingId,
+        occurredAt: '2026-04-05T06:07:08.654321Z'
+      })
+
       expect(afterNewWriter).toHaveLength(4)
-
-      const newWriterReplay = await createMovieViewing(database, owner, newInput)
-
-      expect(newWriterReplay).toStrictEqual(current)
-      await migrate(database, { migrationsFolder })
+      await migrate(database, { migrationsFolder: afterFolder })
 
       const eventsAfterRepeatMigration = await movieEvents(client, userId)
 

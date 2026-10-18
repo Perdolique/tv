@@ -5,13 +5,15 @@ import {
   catalogItemRatings,
   catalogItems,
   catalogItemTitles,
-  catalogTimelineEvents
+  catalogRatingVotes,
+  catalogViewingContexts
 } from '@tv/database/schema'
 
 import type { CatalogEpisodeRating, CatalogEpisodeRatingSummary } from '@tv/shared/catalog'
 import { and, avg, count, eq, sql } from 'drizzle-orm'
-import { hasCatalogSeason } from './ratings-repository.ts'
-import { lockPersonalCatalogContext } from './personal-context.ts'
+import { hasCatalogSeason, requireRatingViewing } from './ratings-repository.ts'
+import { readRatingResponse } from './rating-mutations.ts'
+import { CatalogHttpError } from './errors.ts'
 
 type EpisodeRatingScope = { episodeId: string } | { catalogItemId: string; seasonNumber: number }
 
@@ -26,10 +28,12 @@ function episodeScopeFilter(scope: EpisodeRatingScope) {
   )
 }
 
+// oxlint-disable-next-line eslint/max-params -- Keep the authenticated owner, episode scope and optional viewing selection separate.
 async function findCatalogEpisodeRatings(
-  database: Database,
+  database: Pick<Database, 'select' | 'execute'>,
   userId: string,
-  scope: EpisodeRatingScope
+  scope: EpisodeRatingScope,
+  viewingId?: string
 ): Promise<CatalogEpisodeRating[] | null> {
   if (!('episodeId' in scope)) {
     const exists = await hasCatalogSeason(database, scope.catalogItemId, scope.seasonNumber)
@@ -40,6 +44,17 @@ async function findCatalogEpisodeRatings(
   }
 
   const scopeFilter = episodeScopeFilter(scope)
+
+  if (viewingId !== undefined) {
+    const episodes = await database.select({ catalogItemId: catalogEpisodes.catalogItemId }).from(catalogEpisodes).where(scopeFilter).limit(1)
+    const [episode] = episodes
+
+    if (episode === undefined) { return null }
+
+    await requireRatingViewing(database, userId, episode.catalogItemId, viewingId)
+  }
+
+  const viewingFilter = viewingId === undefined ? eq(catalogItemRatings.viewingId, catalogViewingContexts.currentViewingId) : eq(catalogItemRatings.viewingId, viewingId)
 
   const rows = await database
     .select({
@@ -62,10 +77,15 @@ async function findCatalogEpisodeRatings(
       )
     )
     .leftJoin(
+      catalogViewingContexts,
+      and(eq(catalogViewingContexts.userId, userId), eq(catalogViewingContexts.catalogItemId, catalogItems.id))
+    )
+    .leftJoin(
       catalogItemRatings,
       and(
         eq(catalogItemRatings.catalogEpisodeId, catalogEpisodes.id),
-        eq(catalogItemRatings.userId, userId)
+        eq(catalogItemRatings.userId, userId),
+        viewingFilter
       )
     )
     .where(scopeFilter)
@@ -75,7 +95,7 @@ async function findCatalogEpisodeRatings(
 }
 
 async function findCatalogEpisodeRatingSummaries(
-  database: Database,
+  database: Pick<Database, 'select' | 'execute'>,
   scope: EpisodeRatingScope
 ): Promise<CatalogEpisodeRatingSummary[] | null> {
   if (!('episodeId' in scope)) {
@@ -91,8 +111,8 @@ async function findCatalogEpisodeRatingSummaries(
   const rows = await database
     .select({
       episodeId: catalogEpisodes.id,
-      averageScore: avg(catalogItemRatings.score),
-      ratingCount: count(catalogItemRatings.id)
+      averageScore: avg(catalogRatingVotes.score),
+      ratingCount: count(catalogRatingVotes.id)
     })
     .from(catalogEpisodes)
     .innerJoin(
@@ -109,7 +129,7 @@ async function findCatalogEpisodeRatingSummaries(
         eq(catalogItemTitles.isOriginal, true)
       )
     )
-    .leftJoin(catalogItemRatings, eq(catalogItemRatings.catalogEpisodeId, catalogEpisodes.id))
+    .leftJoin(catalogRatingVotes, and(eq(catalogRatingVotes.catalogEpisodeId, catalogEpisodes.id)))
     .where(scopeFilter)
     .groupBy(catalogEpisodes.id)
     .orderBy(catalogEpisodes.episodeNumber, catalogEpisodes.id)
@@ -129,105 +149,35 @@ async function findCatalogEpisodeRatingSummaries(
   })
 }
 
-interface CatalogEpisodeRatingChange {
-  episodeId: string;
-  score: number | null;
-}
-
-async function setCatalogEpisodeRating(database: Database, userId: string, { episodeId, score }: CatalogEpisodeRatingChange): Promise<boolean> {
+// oxlint-disable-next-line eslint/max-params -- Keep the authenticated owner, episode scope and optional viewing selection separate.
+async function readEpisodeRatingSnapshot(database: Database, userId: string, scope: EpisodeRatingScope, viewingId?: string) {
   return database.transaction(async transaction => {
-    const episodes = await transaction
-      .select({ catalogItemId: catalogEpisodes.catalogItemId })
-      .from(catalogEpisodes)
-      .innerJoin(
-        catalogItems,
-        and(
-          eq(catalogItems.id, catalogEpisodes.catalogItemId),
-          eq(catalogItems.type, 'series')
-        )
-      )
-      .innerJoin(
-        catalogItemTitles,
-        and(
-          eq(catalogItemTitles.catalogItemId, catalogItems.id),
-          eq(catalogItemTitles.isOriginal, true)
-        )
-      )
-      .where(
-        eq(catalogEpisodes.id, episodeId)
-      )
-      .limit(1)
+    await transaction.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`)
 
+    const items = await findCatalogEpisodeRatings(transaction, userId, scope, viewingId)
+
+    if (items === null) { throw new CatalogHttpError('NOT_FOUND', 404) }
+
+    const scopeFilter = episodeScopeFilter(scope)
+    const episodes = await transaction.select({ catalogItemId: catalogEpisodes.catalogItemId }).from(catalogEpisodes).where(scopeFilter).limit(1)
     const [episode] = episodes
 
-    if (episode === undefined) {
-      return false
-    }
+    if (episode === undefined) { throw new CatalogHttpError('NOT_FOUND', 404) }
 
-    const item = await lockPersonalCatalogContext(transaction, userId, episode.catalogItemId)
-
-    if (item?.type !== 'series') {
-      return false
-    }
-
-    const targets = await transaction.select({ id: catalogEpisodes.id }).from(catalogEpisodes)
-      .where(
-        and(eq(catalogEpisodes.id, episodeId), eq(catalogEpisodes.catalogItemId, episode.catalogItemId))
-      )
-      .for('key share')
-
-    if (targets[0] === undefined) {
-      return false
-    }
-
-    const previousRows = await transaction.select({ score: catalogItemRatings.score }).from(catalogItemRatings)
-      .where(
-        and(eq(catalogItemRatings.userId, userId), eq(catalogItemRatings.catalogEpisodeId, episodeId))
-      )
-      .for('update')
-
-    const previousScore = previousRows[0]?.score ?? null
-
-    if (previousScore === score) {
-      return true
-    }
-
-    if (score === null) {
-      await transaction
-        .delete(catalogItemRatings)
-        .where(
-          and(
-            eq(catalogItemRatings.userId, userId),
-            eq(catalogItemRatings.catalogEpisodeId, episodeId)
-          )
-        )
-    } else {
-      await transaction
-        .insert(catalogItemRatings)
-        .values({
-          userId,
-          catalogItemId: episode.catalogItemId,
-          catalogEpisodeId: episodeId,
-          score
-        })
-        .onConflictDoUpdate({
-          target: [catalogItemRatings.userId, catalogItemRatings.catalogItemId, catalogItemRatings.seasonNumber, catalogItemRatings.catalogEpisodeId],
-          set: { score }
-        })
-    }
-
-    await transaction.insert(catalogTimelineEvents).values({
+    const rating = await readRatingResponse(transaction, {
       userId,
-      catalogItemId: episode.catalogItemId,
-      kind: 'rating_changed',
-      occurredAt: sql`clock_timestamp()`,
-      catalogEpisodeId: episodeId,
-      previousScore,
-      score
-    })
+      catalogItemId: episode.catalogItemId
+    }, {
+      seasonNumber: null,
+      catalogEpisodeId: null
+    }, viewingId)
 
-    return true
+    return {
+      items,
+      viewing: rating.viewing,
+      summary: rating.summary
+    }
   })
 }
 
-export { findCatalogEpisodeRatings, findCatalogEpisodeRatingSummaries, setCatalogEpisodeRating }
+export { readEpisodeRatingSnapshot, findCatalogEpisodeRatings, findCatalogEpisodeRatingSummaries }

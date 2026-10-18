@@ -34,10 +34,6 @@ interface CatalogFollowResponse {
   followed: boolean;
 }
 
-interface CatalogWatchedResponse {
-  watched: boolean;
-}
-
 interface CatalogRatingTarget {
   catalogItemId: string;
   seasonNumber: number | null;
@@ -58,10 +54,6 @@ interface CatalogEpisodeRating extends CatalogRatingResponse {
 
 interface CatalogEpisodeRatingSummary extends CatalogRatingSummaryResponse {
   episodeId: string;
-}
-
-interface CatalogEpisodeRatingsResponse {
-  items: CatalogEpisodeRating[];
 }
 
 interface CatalogEpisodeRatingSummariesResponse {
@@ -152,7 +144,6 @@ export type {
   CatalogDetailsResponse,
   CatalogEpisode,
   CatalogEpisodeRating,
-  CatalogEpisodeRatingsResponse,
   CatalogEpisodeRatingSummary,
   CatalogEpisodeRatingSummariesResponse,
   CatalogEpisodesResponse,
@@ -173,7 +164,6 @@ export type {
   CatalogViewingHistoryResponse,
   CatalogViewingSeries,
   CatalogViewingSummaryResponse,
-  CatalogWatchedResponse,
   CatalogWatchlistItem,
   CatalogWatchlistResponse
 }

@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { env } from 'node:process'
+import assert from 'node:assert/strict'
 import { createDatabase } from '@tv/database'
+import type { CatalogRatingMutationResponse } from '@tv/shared/catalog-viewings'
 import { Client } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
-import { setCatalogEpisodeRating } from '../../episode-ratings-repository.ts'
-import { createMovieViewing, deleteMovieViewing, updateMovieViewing } from '../../movie-viewings-repository.ts'
-import { setCatalogItemRating } from '../../ratings-repository.ts'
+import { setCurrentCatalogRating, type CurrentRatingChange } from '../../rating-mutations.ts'
+import { deleteViewing, updateViewing } from '../../viewings-repository.ts'
 
 const client = new Client({ connectionString: env.TEST_DATABASE_URL })
 const database = createDatabase(client)
@@ -15,53 +16,69 @@ const movieId = randomUUID()
 const seriesId = randomUUID()
 const episodeId = randomUUID()
 
-async function changeRating(target: 'title' | 'season' | 'episode', score: number | null): Promise<boolean> {
-  if (target === 'episode') {
-    const savedRating = setCatalogEpisodeRating(database, userId, {
-      episodeId,
-      score
-    })
+type RatingTarget = 'movie' | 'series' | 'season' | 'episode'
 
-    return savedRating
+function ratingTarget(target: RatingTarget) {
+  return {
+    seasonNumber: target === 'season' ? 1 : null,
+    catalogEpisodeId: target === 'episode' ? episodeId : null
   }
-
-  const catalogItemId = target === 'title' ? movieId : seriesId
-  const seasonNumber = target === 'season' ? 1 : null
-
-  const savedRating = setCatalogItemRating(database, userId, {
-    catalogItemId,
-    seasonNumber,
-    score
-  })
-
-  return savedRating
 }
 
-async function ratingEvents() {
-  const result = await client.query<{
-    catalog_item_id: string;
-    catalog_episode_id: string | null;
-    season_number: number | null;
-    previous_score: number | null;
-    score: number | null;
-  }>(`SELECT catalog_item_id, catalog_episode_id, season_number, previous_score, score
-    FROM catalog_timeline_events WHERE user_id = $1 AND kind = 'rating_changed' ORDER BY occurred_at, id`, [userId])
+async function ratingInput(catalogItemId: string, score: number | null): Promise<CurrentRatingChange> {
+  const result = await client.query<{ current_viewing_id: string | null; context_version: number }>(`
+    SELECT current_viewing_id, context_version FROM catalog_viewing_contexts WHERE user_id = $1 AND catalog_item_id = $2
+  `, [userId, catalogItemId])
+
+  const [context] = result.rows
+  const requestId = randomUUID()
+
+  return {
+    requestId,
+    currentViewingId: context?.current_viewing_id ?? null,
+    contextVersion: context?.context_version ?? 0,
+    timeZone: 'UTC',
+    viewingDate: '2026-10-17',
+    score
+  }
+}
+
+async function changeRating(target: RatingTarget, score: number | null): Promise<CatalogRatingMutationResponse> {
+  const catalogItemId = target === 'movie' ? movieId : seriesId
+
+  const owner = {
+    userId,
+    catalogItemId
+  }
+
+  const input = await ratingInput(catalogItemId, score)
+  const selectedTarget = ratingTarget(target)
+
+  return setCurrentCatalogRating(database, owner, selectedTarget, input)
+}
+
+async function personalEvents() {
+  const result = await client.query<{ id: string; kind: string; occurred_at: string }>(`
+    SELECT id, kind, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at
+    FROM catalog_timeline_events WHERE user_id = $1 ORDER BY occurred_at, id
+  `, [userId])
 
   return result.rows
 }
 
-async function saveConcurrentRating(score: number): Promise<void> {
+async function saveConcurrentRating(input: CurrentRatingChange): Promise<CatalogRatingMutationResponse> {
   const connection = new Client({ connectionString: env.TEST_DATABASE_URL })
 
   try {
     await connection.connect()
 
     const concurrentDatabase = createDatabase(connection)
+    const target = ratingTarget('series')
 
-    await setCatalogItemRating(concurrentDatabase, userId, {
-      catalogItemId: movieId,
-      score
-    })
+    return await setCurrentCatalogRating(concurrentDatabase, {
+      userId,
+      catalogItemId: seriesId
+    }, target, input)
   } finally {
     await connection.end()
   }
@@ -77,14 +94,13 @@ describe('atomic personal events', () => {
     await client.query('INSERT INTO users (id, email) VALUES ($1, $2)', [userId, email])
     await client.query('INSERT INTO catalog_items (id, type) VALUES ($1, \'movie\'), ($2, \'series\')', [movieId, seriesId])
     await client.query('INSERT INTO catalog_item_titles (catalog_item_id, locale, title, is_original) VALUES ($1, \'en\', \'Event movie\', true), ($2, \'en\', \'Event series\', true)', [movieId, seriesId])
-    await client.query('INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number) VALUES ($1, $2, 1, 1)', [episodeId, seriesId])
+    await client.query('INSERT INTO catalog_episodes (id, catalog_item_id, season_number, episode_number, air_date) VALUES ($1, $2, 1, 1, \'2020-01-01\')', [episodeId, seriesId])
   })
 
   beforeEach(async () => {
-    await client.query('DELETE FROM catalog_timeline_events WHERE user_id = $1', [userId])
-    await client.query('DELETE FROM catalog_item_ratings WHERE user_id = $1', [userId])
     await client.query('DELETE FROM catalog_viewings WHERE user_id = $1', [userId])
     await client.query('DELETE FROM catalog_viewing_contexts WHERE user_id = $1', [userId])
+    await client.query('DELETE FROM catalog_viewing_requests WHERE user_id = $1', [userId])
   })
 
   afterAll(async () => {
@@ -93,135 +109,189 @@ describe('atomic personal events', () => {
     await client.end()
   })
 
-  it.each([
+  const targets = [
     {
-      target: 'title',
-      itemId: movieId,
-      targetEpisodeId: null,
-      seasonNumber: null
+      target: 'movie',
+      catalogItemId: movieId,
+      expectedKind: 'movie_viewing',
+      markCount: 0
+    },
+    {
+      target: 'series',
+      catalogItemId: seriesId,
+      expectedKind: 'series_started',
+      markCount: 0
     },
     {
       target: 'season',
-      itemId: seriesId,
-      targetEpisodeId: null,
-      seasonNumber: 1
+      catalogItemId: seriesId,
+      expectedKind: 'series_started',
+      markCount: 0
     },
     {
       target: 'episode',
-      itemId: seriesId,
-      targetEpisodeId: episodeId,
-      seasonNumber: null
+      catalogItemId: seriesId,
+      expectedKind: 'series_started',
+      markCount: 1
     }
-  ] as const)('records real $target rating changes and ignores retries', async ({ target, itemId, targetEpisodeId, seasonNumber }) => {
-    await changeRating(target, null)
-    await changeRating(target, 6)
+  ] as const
 
-    const first = await client.query<{ id: string }>('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [userId])
-
-    await changeRating(target, 8)
-    await changeRating(target, 8)
-
-    const corrected = await client.query<{ id: string }>('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [userId])
-
-    expect(corrected.rows).toStrictEqual(first.rows)
-    await changeRating(target, null)
-    await changeRating(target, null)
-
-    const events = await ratingEvents()
-    const expectedScores = [[null, 6], [6, 8], [8, null]]
-
-    const expected = expectedScores.map(([previous_score, score]) => {
-      return {
-      catalog_item_id: itemId,
-      catalog_episode_id: targetEpisodeId,
-      season_number: seasonNumber,
-      previous_score,
-      score
-      }
-    })
-
-    expect(events).toStrictEqual(expected)
-  })
-
-  it('uses a pre-existing score as the previous value without inventing older history', async () => {
-    await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 7)', [userId, movieId])
-    await expect(ratingEvents()).resolves.toStrictEqual([])
-    await changeRating('title', 9)
-
-    const events = await ratingEvents()
-
-    expect(events).toHaveLength(1)
-    expect(events[0]?.previous_score).toBe(7)
-    expect(events[0]?.score).toBe(9)
-  })
-
-  it('serializes concurrent rating changes into one chronological score chain', async () => {
-    await changeRating('title', 6)
-
-    const firstChange = saveConcurrentRating(3)
-    const secondChange = saveConcurrentRating(9)
-
-    await Promise.all([firstChange, secondChange])
-
-    const events = await ratingEvents()
-    const ratings = await client.query<{ score: number }>('SELECT score FROM catalog_item_ratings WHERE user_id = $1', [userId])
-
-    expect(events).toHaveLength(3)
-    expect(events[0]?.previous_score).toBeNull()
-    expect(events[0]?.score).toBe(6)
-    expect(events[1]?.previous_score).toBe(6)
-    expect(events[2]?.previous_score).toBe(events[1]?.score)
-    expect(ratings.rows).toStrictEqual([{ score: events[2]?.score }])
-  })
-
-  it('keeps movie recording time, adds no date-edit event, and removes only the deleted viewing event', async () => {
+  it.each(targets)('creates diary events once for the first $target score and leaves them unchanged on edits, deletion and retry', async ({ target, catalogItemId, expectedKind, markCount }) => {
+    // Arrange
     const owner = {
       userId,
-      catalogItemId: movieId
+      catalogItemId
     }
 
-    const requestId = randomUUID()
+    const input = await ratingInput(catalogItemId, 6)
+    const selectedTarget = ratingTarget(target)
+    const created = await setCurrentCatalogRating(database, owner, selectedTarget, input)
 
-    const input = {
-      requestId,
-      mode: 'current',
-      contextVersion: 0,
-      startedOn: null,
-      completedOn: null
-    } as const
+    assert.ok(created.viewing !== null, 'First score must create a viewing')
 
-    const created = await createMovieViewing(database, owner, input)
-    const replayed = await createMovieViewing(database, owner, input)
+    const initialEvents = await personalEvents()
 
-    expect(replayed.viewing.id).toBe(created.viewing.id)
-    await changeRating('title', 8)
+    // Act
+    const replayed = await setCurrentCatalogRating(database, owner, selectedTarget, input)
+    const edited = await changeRating(target, 8)
+    const cleared = await changeRating(target, null)
+    const finalEvents = await personalEvents()
+    const ratings = await client.query('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [userId])
+    const marks = await client.query('SELECT id FROM catalog_viewing_episode_watches WHERE user_id = $1', [userId])
 
-    const target = {
+    // Assert
+    const initialEvent = initialEvents.find(event => event.kind === expectedKind)
+
+    expect(initialEvent).toMatchObject({
+      kind: expectedKind,
+      occurred_at: created.viewing.recordedAt
+    })
+
+    expect(replayed.viewing?.id).toBe(created.viewing.id)
+    expect(edited.viewing?.id).toBe(created.viewing.id)
+
+    expect(cleared.viewing).toMatchObject({
+      id: created.viewing.id,
+      startedOn: created.viewing.startedOn,
+      completedOn: created.viewing.completedOn,
+      recordedAt: created.viewing.recordedAt
+    })
+
+    expect(finalEvents).toStrictEqual(initialEvents)
+    expect(ratings.rows).toStrictEqual([])
+    expect(marks.rows).toHaveLength(markCount)
+  })
+
+  it('accepts one concurrent current score revision and keeps the diary event identity', async () => {
+    // Arrange
+    await changeRating('series', 6)
+
+    const before = await personalEvents()
+    const firstInput = await ratingInput(seriesId, 3)
+    const secondInput = await ratingInput(seriesId, 9)
+
+    // Act
+    const results = await Promise.allSettled([saveConcurrentRating(firstInput), saveConcurrentRating(secondInput)])
+    const successful = results.filter(result => result.status === 'fulfilled')
+    const rejected = results.filter(result => result.status === 'rejected')
+    const ratings = await client.query<{ score: number }>('SELECT score FROM catalog_item_ratings WHERE user_id = $1', [userId])
+    const events = await personalEvents()
+    const savedScore = successful[0]?.value.score
+
+    // Assert
+    expect(successful).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+
+    expect(rejected[0]?.reason).toMatchObject({
+      code: 'CONFLICT',
+      status: 409
+    })
+
+    expect(ratings.rows).toStrictEqual([{ score: savedScore }])
+    expect(events).toStrictEqual(before)
+  })
+
+  it('keeps movie recording time on date edits and deletes its scores, votes and diary event with the viewing', async () => {
+    // Arrange
+    const created = await changeRating('movie', 8)
+
+    assert.ok(created.viewing !== null, 'Movie viewing is missing')
+
+    const owner = {
       userId,
       catalogItemId: movieId,
       viewingId: created.viewing.id
     }
 
-    const updated = await updateMovieViewing(database, target, {
-      revision: 1,
+    const initialEvents = await personalEvents()
+
+    // Act
+    const dateRequestId = randomUUID()
+
+    const updated = await updateViewing(database, owner, {
+      requestId: dateRequestId,
+      revision: created.viewing.revision,
+      status: 'completed',
       startedOn: null,
       completedOn: '2020-02-29'
     })
 
-    const events = await client.query<{ time: string }>(`SELECT to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS time
-      FROM catalog_timeline_events WHERE user_id = $1 AND kind = 'movie_viewing'`, [userId])
+    const events = await personalEvents()
+    const deletionRequestId = randomUUID()
 
-    expect(events.rows).toStrictEqual([{ time: created.viewing.recordedAt }])
-    await deleteMovieViewing(database, target, updated.viewing.revision)
+    await deleteViewing(database, owner, {
+      requestId: deletionRequestId,
+      revision: updated.viewing.revision
+    })
 
-    const remaining = await client.query<{ kind: string }>('SELECT kind FROM catalog_timeline_events WHERE user_id = $1', [userId])
+    const remaining = await personalEvents()
+    const ratings = await client.query('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [userId])
+    const votes = await client.query('SELECT id FROM catalog_rating_votes WHERE user_id = $1', [userId])
 
-    expect(remaining.rows).toStrictEqual([{ kind: 'rating_changed' }])
+    // Assert
+    expect(events).toStrictEqual(initialEvents)
+    expect(events[0]?.occurred_at).toBe(created.viewing.recordedAt)
+    expect(remaining).toStrictEqual([])
+    expect(ratings.rows).toStrictEqual([])
+    expect(votes.rows).toStrictEqual([])
   })
 
-  it('rolls back a rating change when its event cannot be saved', async () => {
-    await changeRating('title', 6)
+  it('deletes an episode-rated viewing with all dependent watch events and request tombstones intact', async () => {
+    // Arrange
+    const created = await changeRating('episode', 8)
 
+    assert.ok(created.viewing !== null, 'Episode viewing is missing')
+
+    const owner = {
+      userId,
+      catalogItemId: seriesId,
+      viewingId: created.viewing.id
+    }
+
+    // Act
+    const deletionRequestId = randomUUID()
+
+    await deleteViewing(database, owner, {
+      requestId: deletionRequestId,
+      revision: created.viewing.revision
+    })
+
+    const events = await personalEvents()
+    const marks = await client.query('SELECT id FROM catalog_viewing_episode_watches WHERE user_id = $1', [userId])
+    const requests = await client.query<{ tombstoned: boolean; viewing_id: string | null }>('SELECT tombstoned, viewing_id FROM catalog_viewing_requests WHERE user_id = $1 AND action LIKE \'rating:%\'', [userId])
+
+    // Assert
+    expect(events).toStrictEqual([])
+    expect(marks.rows).toStrictEqual([])
+
+    expect(requests.rows).toStrictEqual([{
+      tombstoned: true,
+      viewing_id: null
+    }])
+  })
+
+  it('rolls back the first rating, viewing, vote and request when its diary event cannot be saved', async () => {
+    // Arrange
     const rejectEventFunction = `CREATE FUNCTION test_reject_personal_event() RETURNS trigger AS $$
       BEGIN IF NEW.user_id = '${userId}'::uuid THEN RAISE EXCEPTION 'Rejected event'; END IF; RETURN NEW; END;
       $$ LANGUAGE plpgsql`
@@ -230,16 +300,23 @@ describe('atomic personal events', () => {
     await client.query('CREATE TRIGGER test_reject_personal_event BEFORE INSERT ON catalog_timeline_events FOR EACH ROW EXECUTE FUNCTION test_reject_personal_event()')
 
     try {
-      await expect(changeRating('title', 9)).rejects.toMatchObject({ cause: { message: 'Rejected event' } })
+      // Act and assert
+      await expect(changeRating('series', 9)).rejects.toMatchObject({ cause: { message: 'Rejected event' } })
 
-      const ratings = await client.query<{ score: number }>('SELECT score FROM catalog_item_ratings WHERE user_id = $1', [userId])
+      const effects = await client.query(`SELECT
+        (SELECT count(*)::integer FROM catalog_viewings WHERE user_id = $1) AS viewings,
+        (SELECT count(*)::integer FROM catalog_item_ratings WHERE user_id = $1) AS ratings,
+        (SELECT count(*)::integer FROM catalog_rating_votes WHERE user_id = $1) AS votes,
+        (SELECT count(*)::integer FROM catalog_viewing_requests WHERE user_id = $1) AS requests,
+        (SELECT count(*)::integer FROM catalog_timeline_events WHERE user_id = $1) AS events`, [userId])
 
-      expect(ratings.rows).toStrictEqual([{ score: 6 }])
-
-      const events = await ratingEvents()
-
-      expect(events).toHaveLength(1)
-      expect(events[0]?.score).toBe(6)
+      expect(effects.rows).toStrictEqual([{
+        viewings: 0,
+        ratings: 0,
+        votes: 0,
+        requests: 0,
+        events: 0
+      }])
     } finally {
       await client.query('DROP TRIGGER test_reject_personal_event ON catalog_timeline_events')
       await client.query('DROP FUNCTION test_reject_personal_event()')

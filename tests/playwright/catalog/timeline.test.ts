@@ -8,7 +8,6 @@ import { openEpisodes, waitForHydration } from './helpers.ts'
 import {
   mockHistory,
   mockHistoryWithNextPageFailure,
-  mockRatingTimeline,
   movieViewports,
   timelinePath,
   titlePath
@@ -26,8 +25,8 @@ test('shows six rows, expands all history and pages older activity', async ({ co
   const activityRows = timeline.locator(':scope > div > ol > li')
 
   await expect(activityRows).toHaveCount(6)
-  await expect(timeline.getByText('Updated rating', { exact: true })).toBeVisible()
-  await expect(timeline.getByText('8 → 9', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('Completed viewing', { exact: true })).toHaveCount(2)
+  await expect(timeline.getByText('9 / 10', { exact: true })).toBeVisible()
   await expect(timeline.getByText('Watched 25 episodes', { exact: true })).toBeVisible()
   await expect(timeline.getByText('Started watching', { exact: true })).toHaveCount(0)
   await timeline.getByRole('button', { name: 'Show full history' }).click()
@@ -62,7 +61,7 @@ async function expectNarrowMovieTimelineAfterViewings(page: Page, viewportName: 
 }
 
 for (const viewport of movieViewports) {
-test(`links a movie timeline to the exact viewing at ${viewport.name}`, async ({ context, page }) => {
+test(`shows one watched date without viewing links at ${viewport.name}`, async ({ context, page }) => {
   const movieTimelinePath = `/api/catalog/items/${dune.id}/timeline`
   const movieViewingId = '40000000-0000-7000-8000-000000000010'
 
@@ -79,7 +78,8 @@ test(`links a movie timeline to the exact viewing at ${viewport.name}`, async ({
         occurredAt: '2026-10-06T12:00:00.000000Z',
         viewingId: movieViewingId,
         startedOn: '2020-02-01',
-        completedOn: '2020-02-02'
+        completedOn: '2020-02-02',
+        score: 8
       }],
 
       nextCursor: null
@@ -91,10 +91,17 @@ test(`links a movie timeline to the exact viewing at ${viewport.name}`, async ({
   await page.goto(movieTitlePath)
 
   const timeline = page.getByRole('region', { name: 'Your timeline' })
-  const link = timeline.getByRole('link', { name: 'Watched movie' })
 
-  await expect(link).toHaveAttribute('href', `/titles/${dune.id}?viewingId=${movieViewingId}#viewing-${movieViewingId}`)
-  await expect(page.getByText('Started Feb 1, 2020 · Finished Feb 2, 2020', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('Watched movie', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('8 / 10', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('Updated rating', { exact: true })).toHaveCount(0)
+  await expect(timeline.getByRole('link')).toHaveCount(0)
+
+  await expect(timeline.getByRole('heading', {
+    name: 'Feb 2, 2020',
+    exact: true
+  })).toBeVisible()
+
   await expectNarrowMovieTimelineAfterViewings(page, viewport.name)
 })
 }
@@ -171,7 +178,6 @@ test.describe('timeline next-page recovery', () => {
 
 test('refreshes the timeline after title, season, and episode ratings', async ({ context, page }) => {
   await addCookie(context, 'tv_session', 'e2e-session')
-  await mockRatingTimeline(page)
   await page.goto(titlePath)
   await waitForHydration(page)
 
@@ -187,7 +193,8 @@ test('refreshes the timeline after title, season, and episode ratings', async ({
     exact: true
   }).click()
 
-  await expect(timeline.getByText('Rated', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('Started watching', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('8 / 10', { exact: true })).toBeVisible()
   await openEpisodes(page)
 
   await page.getByRole('region', {
@@ -203,7 +210,8 @@ test('refreshes the timeline after title, season, and episode ratings', async ({
     exact: true
   }).click()
 
-  await expect(timeline.getByText('Season 1', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('Started watching', { exact: true })).toHaveCount(1)
+  await expect(timeline.getByText('Rated', { exact: true })).toHaveCount(0)
 
   await page.getByRole('region', {
     name: 'Ratings for season 1, episode 1',
@@ -215,5 +223,6 @@ test('refreshes the timeline after title, season, and episode ratings', async ({
     exact: true
   }).click()
 
-  await expect(timeline.getByText('S1 E1', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('Watched 1 episode', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('Updated rating', { exact: true })).toHaveCount(0)
 })

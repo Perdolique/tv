@@ -29,7 +29,7 @@ async function findViewingHistoryRows(
   const cursorKindRank = cursor?.kind === 'episode' ? 1 : 0
 
   const moviePosition = cursor === null ? sql`true` : sql`
-    (recorded_at, 0, id) < (${cursor.markedAt}::timestamptz, ${cursorKindRank}::integer, ${cursor.entryId}::uuid)
+    (completed_on, 0, id) < ((${cursor.markedAt}::timestamptz AT TIME ZONE 'UTC')::date, ${cursorKindRank}::integer, ${cursor.entryId}::uuid)
   `
 
   const episodePosition = cursor === null ? sql`true` : sql`
@@ -39,10 +39,10 @@ async function findViewingHistoryRows(
   // Limit identities before joining translations; preserve timestamp microseconds as text.
   const result = await database.execute<CatalogViewingHistoryRow & Record<string, unknown>>(sql`
     WITH movies AS (
-      SELECT id AS entry_id, catalog_item_id, NULL::uuid AS catalog_episode_id, recorded_at AS marked_at, 0 AS kind_rank
+      SELECT id AS entry_id, catalog_item_id, NULL::uuid AS catalog_episode_id, completed_on::timestamp AT TIME ZONE 'UTC' AS marked_at, 0 AS kind_rank
       FROM catalog_viewings
       WHERE user_id = ${userId}::uuid AND catalog_item_id IN (SELECT id FROM catalog_items WHERE type = 'movie') AND ${moviePosition}
-      ORDER BY recorded_at DESC NULLS LAST, id DESC NULLS LAST
+      ORDER BY completed_on DESC NULLS LAST, id DESC NULLS LAST
       LIMIT ${VIEWING_HISTORY_QUERY_LIMIT}
     ), episodes AS (
       SELECT id AS entry_id, catalog_item_id, catalog_episode_id, marked_at, 1 AS kind_rank

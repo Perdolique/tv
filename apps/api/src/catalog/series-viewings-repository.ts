@@ -1,74 +1,58 @@
-/* oxlint-disable eslint/max-lines -- Series transactions keep context, marks, milestones and retry keys in one atomic boundary. */
+/* oxlint-disable eslint/max-lines -- Series marks, milestones and retries commit in one transaction. */
 import type { Database } from '@tv/database'
 
 import {
   catalogEpisodes,
-  catalogItems,
-  catalogItemTitles,
-  catalogSeriesRequests,
+  catalogItemRatings,
   catalogTimelineEvents,
   catalogTimelineEventWatches,
   catalogViewingContexts,
   catalogViewingEpisodeWatches,
+  catalogViewingRequests,
   catalogViewings
 } from '@tv/database/schema'
 
 import type {
   CatalogSeriesBulkWatchInput,
   CatalogSeriesCancelRewatchInput,
-  CatalogSeriesViewing,
-  CatalogSeriesRewatchInput,
+  CatalogSeriesEpisodeWatch,
   CatalogSeriesUnwatchInput,
   CatalogSeriesWatchInput,
   CatalogSeriesWatchesResponse
 } from '@tv/shared/catalog-series'
 
+import type { CatalogViewingSummary } from '@tv/shared/catalog-viewings'
 import { and, eq, sql } from 'drizzle-orm'
 import { CatalogHttpError } from './errors.ts'
 
-type SeriesReader = Pick<Database, 'select' | 'execute'>
-type SeriesTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
-
-interface SeriesOwner {
-  userId: string;
-  catalogItemId: string;
-}
-
-interface LockedSeriesContext {
-  currentViewingId: string | null;
-  contextVersion: number;
-}
+import {
+  assertCurrentContext,
+  bumpContextVersion,
+  bumpViewingRevision,
+  captureActionTime,
+  createViewingInTransaction,
+  findViewing,
+  lockViewingContext,
+  readViewingSummary,
+  recordViewingRequest,
+  replayViewingRequest,
+  requireCatalogItem,
+  type CatalogTransaction,
+  type ViewingContext,
+  type ViewingOwner,
+  type ViewingReader
+} from './viewings-repository.ts'
 
 interface SeriesEpisode {
   id: string;
   seasonNumber: number;
   airDate: string | null;
 }
-
-interface SeriesRequest {
-  action: string;
-  input: CatalogSeriesWatchInput;
-}
-
-interface SeriesRequestResult {
-  request: SeriesRequest;
-  viewingId: string | null;
-  watchIds: string[];
-  previousStatus?: CatalogSeriesViewing['status'];
-}
-
-interface SeriesViewingCreation {
-  context: LockedSeriesContext;
-  kind: 'series_started' | 'rewatch_started';
-  actionAt: string;
-}
-
 interface SeriesWatchInsertion {
   viewingId: string;
   episodeIds: string[];
   actionAt: string;
 }
-
 interface SeriesMilestone {
   response: CatalogSeriesWatchesResponse;
   episodes: SeriesEpisode[];
@@ -77,12 +61,10 @@ interface SeriesMilestone {
   newEpisodeIds: Set<string>;
   actionAt: string;
 }
-
 interface SeriesWatchDependency {
   eventId: string;
   watchId: string;
 }
-
 interface SeriesMilestoneCalculation {
   response: CatalogSeriesWatchesResponse;
   episodes: SeriesEpisode[];
@@ -90,197 +72,69 @@ interface SeriesMilestoneCalculation {
   today: string;
   actionAt: string;
 }
-
-function ownerCondition(owner: SeriesOwner) {
-  return and(eq(catalogViewingContexts.userId, owner.userId), eq(catalogViewingContexts.catalogItemId, owner.catalogItemId))
+interface SeriesViewingStart {
+  context: ViewingContext;
+  input: CatalogSeriesWatchInput;
+  actionAt: string;
+}
+interface EpisodeWatchInput {
+  viewingId: string;
+  episodeId: string;
+  timeZone: string;
+  actionAt?: string;
 }
 
-async function requireSeries(database: SeriesReader, owner: SeriesOwner, lock = false): Promise<void> {
-  const query = database.select({ type: catalogItems.type }).from(catalogItems)
-    .innerJoin(catalogItemTitles, and(eq(catalogItemTitles.catalogItemId, catalogItems.id), eq(catalogItemTitles.isOriginal, true)))
+async function requireSeries(reader: ViewingReader, owner: ViewingOwner): Promise<void> {
+  const item = await requireCatalogItem(reader, owner)
+
+  if (item.type !== 'series') { throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { id: 'Only series support episode viewing actions.' } }) }
+}
+
+async function readSeriesWatches(reader: ViewingReader, owner: ViewingOwner, selectedViewingId?: string): Promise<CatalogSeriesWatchesResponse> {
+  const summary = await readViewingSummary(reader, owner)
+  const selected = selectedViewingId ?? summary.currentViewingId
+  const viewing = selected === null ? null : await findViewing(reader, owner, selected)
+
+  const rows = selected === null ? [] : await reader.select({
+    id: catalogViewingEpisodeWatches.id,
+    catalogEpisodeId: catalogViewingEpisodeWatches.catalogEpisodeId,
+    viewingId: catalogViewingEpisodeWatches.viewingId,
+    markedAt: sql<string>`to_char(${catalogViewingEpisodeWatches.markedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+  }).from(catalogViewingEpisodeWatches)
+    .innerJoin(catalogEpisodes, eq(catalogEpisodes.id, catalogViewingEpisodeWatches.catalogEpisodeId))
     .where(
-      eq(catalogItems.id, owner.catalogItemId)
+      and(eq(catalogViewingEpisodeWatches.userId, owner.userId), eq(catalogViewingEpisodeWatches.catalogItemId, owner.catalogItemId), eq(catalogViewingEpisodeWatches.viewingId, selected))
     )
-    .limit(1)
+    .orderBy(catalogEpisodes.seasonNumber, catalogEpisodes.episodeNumber, catalogViewingEpisodeWatches.id)
 
-  const rows = lock ? await query.for('no key update', { of: [catalogItems, catalogItemTitles] }) : await query
-  const [item] = rows
-
-  if (item === undefined) {
-    throw new CatalogHttpError('NOT_FOUND', 404)
-  }
-
-  if (item.type !== 'series') {
-    throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { id: 'Only series support episode viewing actions.' } })
+  return {
+    viewing,
+    watches: rows,
+    summary
   }
 }
 
-async function readSeriesWatches(database: SeriesReader, owner: SeriesOwner): Promise<CatalogSeriesWatchesResponse> {
-  const result = await database.execute<CatalogSeriesWatchesResponse & Record<string, unknown>>(sql`
-    SELECT coalesce(context.context_version, 0) AS "contextVersion",
-      CASE WHEN viewing.id IS NULL THEN NULL ELSE json_build_object('id', viewing.id, 'catalogItemId', viewing.catalog_item_id,
-        'status', viewing.status, 'isRewatch', EXISTS (SELECT 1 FROM catalog_timeline_events WHERE viewing_id = viewing.id AND kind = 'rewatch_started'), 'recordedAt', to_char(viewing.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), 'revision', viewing.revision) END AS "currentViewing",
-      coalesce((SELECT json_agg(watches.catalog_episode_id ORDER BY episodes.season_number, episodes.episode_number, watches.id)
-        FROM catalog_viewing_episode_watches watches JOIN catalog_episodes episodes ON episodes.id = watches.catalog_episode_id
-        WHERE watches.user_id = ${owner.userId}::uuid AND watches.catalog_item_id = ${owner.catalogItemId}::uuid AND watches.viewing_id = context.current_viewing_id), '[]'::json) AS "watchedEpisodeIds",
-      coalesce((SELECT json_agg(json_build_object('id', watches.id, 'catalogEpisodeId', watches.catalog_episode_id, 'viewingId', watches.viewing_id,
-        'markedAt', to_char(watches.marked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) ORDER BY episodes.season_number, episodes.episode_number, watches.id)
-        FROM catalog_viewing_episode_watches watches JOIN catalog_episodes episodes ON episodes.id = watches.catalog_episode_id
-        WHERE watches.user_id = ${owner.userId}::uuid AND watches.catalog_item_id = ${owner.catalogItemId}::uuid AND watches.viewing_id = context.current_viewing_id), '[]'::json) AS watches
-    FROM (SELECT 1) anchor LEFT JOIN catalog_viewing_contexts context
-      ON context.user_id = ${owner.userId}::uuid AND context.catalog_item_id = ${owner.catalogItemId}::uuid
-    LEFT JOIN catalog_viewings viewing ON viewing.id = context.current_viewing_id
-  `)
+async function findSeriesWatches(database: Database, owner: ViewingOwner, viewingId?: string): Promise<CatalogSeriesWatchesResponse> {
+  return database.transaction(async transaction => {
+    await transaction.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`)
+    await requireSeries(transaction, owner)
 
-  const [response] = result.rows
-
-  if (response === undefined) {
-    throw new Error('Series watch context is missing')
-  }
-
-  return response
-}
-
-async function findSeriesWatches(database: Database, owner: SeriesOwner): Promise<CatalogSeriesWatchesResponse> {
-  await requireSeries(database, owner)
-
-  return readSeriesWatches(database, owner)
-}
-
-async function lockSeriesContext(transaction: SeriesTransaction, owner: SeriesOwner): Promise<LockedSeriesContext> {
-  await requireSeries(transaction, owner, true)
-  await transaction.insert(catalogViewingContexts).values(owner).onConflictDoNothing()
-
-  const condition = ownerCondition(owner)
-
-  const rows = await transaction.select({
-    currentViewingId: catalogViewingContexts.currentViewingId,
-    contextVersion: catalogViewingContexts.contextVersion
+    return readSeriesWatches(transaction, owner, viewingId)
   })
-    .from(catalogViewingContexts)
-    .where(condition)
-    .for('update')
-
-  const [context] = rows
-
-  if (context === undefined) {
-    throw new Error('Series viewing context is missing')
-  }
-
-  if (context.currentViewingId !== null) {
-    await transaction.select({ id: catalogViewings.id })
-      .from(catalogViewings)
-      .where(
-        eq(catalogViewings.id, context.currentViewingId)
-      )
-      .for('update')
-  }
-
-  return context
 }
 
-function assertCurrentContext(context: LockedSeriesContext, input: Pick<CatalogSeriesWatchInput, 'currentViewingId' | 'contextVersion'>): void {
-  if (context.currentViewingId !== input.currentViewingId || context.contextVersion !== input.contextVersion) {
-    throw new CatalogHttpError('CONFLICT', 409)
-  }
-}
-
-async function replaySeriesRequest(transaction: SeriesTransaction, owner: SeriesOwner, request: SeriesRequest): Promise<CatalogSeriesWatchesResponse | null> {
-  const inputJson = JSON.stringify(request.input)
-
-  const rows = await transaction.select({
-    catalogItemId: catalogSeriesRequests.catalogItemId,
-    action: catalogSeriesRequests.action,
-    matches: sql<boolean>`${catalogSeriesRequests.input} = ${inputJson}::jsonb`,
-    tombstoned: catalogSeriesRequests.tombstoned,
-    viewingId: catalogSeriesRequests.viewingId
-  })
-    .from(catalogSeriesRequests)
-    .where(
-    and(eq(catalogSeriesRequests.userId, owner.userId), eq(catalogSeriesRequests.requestId, request.input.requestId))
-    )
-    .limit(1)
-
-  const [previous] = rows
-
-  if (previous === undefined) {
-    return null
-  }
-
-  if (previous.catalogItemId !== owner.catalogItemId || previous.action !== request.action || !previous.matches || previous.tombstoned || previous.viewingId === null) {
-    throw new CatalogHttpError('CONFLICT', 409)
-  }
-
-  return readSeriesWatches(transaction, owner)
-}
-
-async function recordSeriesRequest(transaction: SeriesTransaction, owner: SeriesOwner, record: SeriesRequestResult): Promise<void> {
-  const { request, viewingId, watchIds, previousStatus } = record
-  const storedResult = previousStatus === undefined ? {} : { previousStatus }
-
-  const rows = await transaction.insert(catalogSeriesRequests).values({
-    userId: owner.userId,
-    requestId: request.input.requestId,
-    catalogItemId: owner.catalogItemId,
-    action: request.action,
-    input: request.input,
-    result: storedResult,
-    viewingId,
-    watchIds
-  }).onConflictDoNothing().returning({ requestId: catalogSeriesRequests.requestId })
-
-  if (rows.length === 0) {
-    throw new CatalogHttpError('CONFLICT', 409)
-  }
-}
-
-async function createSeriesViewing(transaction: SeriesTransaction, owner: SeriesOwner, creation: SeriesViewingCreation): Promise<string> {
-  const { context, kind, actionAt } = creation
-
-  const rows = await transaction.insert(catalogViewings).values({
-    userId: owner.userId,
-    catalogItemId: owner.catalogItemId,
-    status: 'watching',
-    recordedAt: sql`${actionAt}::timestamptz`
-  }).returning({ id: catalogViewings.id })
-
-  const id = rows[0]?.id
-
-  if (id === undefined) {
-    throw new Error('Created series viewing is missing')
-  }
-
-  const condition = ownerCondition(owner)
-
-  await transaction.update(catalogViewingContexts).set({
-    currentViewingId: id,
-    contextVersion: context.contextVersion + 1
-  }).where(condition)
-
-  await transaction.insert(catalogTimelineEvents).values({
-    userId: owner.userId,
-    catalogItemId: owner.catalogItemId,
-    kind,
-    viewingId: id,
-    occurredAt: sql`${actionAt}::timestamptz`
-  })
-
-  return id
-}
-
-async function findEpisodeOwner(database: SeriesReader, userId: string, catalogEpisodeId: string): Promise<SeriesOwner> {
-  const rows = await database.select({ catalogItemId: catalogEpisodes.catalogItemId })
+async function findEpisodeOwner(reader: ViewingReader, userId: string, episodeId: string): Promise<ViewingOwner> {
+  const rows = await reader
+    .select({ catalogItemId: catalogEpisodes.catalogItemId })
     .from(catalogEpisodes)
     .where(
-      eq(catalogEpisodes.id, catalogEpisodeId)
+      eq(catalogEpisodes.id, episodeId)
     )
     .limit(1)
 
   const [episode] = rows
 
-  if (episode === undefined) {
-    throw new CatalogHttpError('NOT_FOUND', 404)
-  }
+  if (episode === undefined) { throw new CatalogHttpError('NOT_FOUND', 404) }
 
   return {
     userId,
@@ -288,7 +142,7 @@ async function findEpisodeOwner(database: SeriesReader, userId: string, catalogE
   }
 }
 
-async function lockSeriesEpisodes(transaction: SeriesTransaction, owner: SeriesOwner): Promise<SeriesEpisode[]> {
+async function lockSeriesEpisodes(transaction: CatalogTransaction, owner: ViewingOwner): Promise<SeriesEpisode[]> {
   return transaction.select({
     id: catalogEpisodes.id,
     seasonNumber: catalogEpisodes.seasonNumber,
@@ -302,32 +156,17 @@ async function lockSeriesEpisodes(transaction: SeriesTransaction, owner: SeriesO
     .for('share')
 }
 
-async function captureSeriesActionTime(transaction: SeriesTransaction): Promise<string> {
-  const result = await transaction.execute<{ actionAt: string } & Record<string, unknown>>(sql`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "actionAt"`)
-  const actionAt = result.rows[0]?.actionAt
-
-  if (actionAt === undefined) {
-    throw new Error('Series action time is missing')
-  }
-
-  return actionAt
-}
-
-async function serverToday(transaction: SeriesTransaction, timeZone: string, actionAt: string): Promise<string> {
+async function serverToday(transaction: CatalogTransaction, timeZone: string, actionAt: string): Promise<string> {
   const formatter = new Intl.DateTimeFormat('en-US', { timeZone })
-  const timeZoneOptions = formatter.resolvedOptions()
-  const canonicalTimeZone = timeZoneOptions.timeZone
+  const canonicalTimeZone = formatter.resolvedOptions().timeZone
   const result = await transaction.execute<{ today: string } & Record<string, unknown>>(sql`SELECT (${actionAt}::timestamptz AT TIME ZONE ${canonicalTimeZone})::date::text AS today`)
   const today = result.rows[0]?.today
 
-  if (today === undefined) {
-    throw new Error('Server calendar date is missing')
-  }
+  if (today === undefined) { throw new Error('Server calendar date is missing') }
 
   return today
 }
-
-async function insertEpisodeWatches(transaction: SeriesTransaction, owner: SeriesOwner, insertion: SeriesWatchInsertion): Promise<string[]> {
+async function insertEpisodeWatches(transaction: CatalogTransaction, owner: ViewingOwner, insertion: SeriesWatchInsertion): Promise<string[]> {
   const { viewingId, episodeIds, actionAt } = insertion
 
   const values = episodeIds.map(catalogEpisodeId => {
@@ -377,9 +216,9 @@ async function insertEpisodeWatches(transaction: SeriesTransaction, owner: Serie
   return createdEpisodeIds
 }
 
-async function recordMilestone(transaction: SeriesTransaction, owner: SeriesOwner, milestone: SeriesMilestone): Promise<void> {
+async function recordMilestone(transaction: CatalogTransaction, owner: ViewingOwner, milestone: SeriesMilestone): Promise<void> {
   const { response, episodes, kind, seasonNumber, newEpisodeIds, actionAt } = milestone
-  const viewingId = response.currentViewing?.id
+  const viewingId = response.viewing?.id
 
   if (viewingId === undefined || episodes.length === 0) {
     return
@@ -443,7 +282,7 @@ async function recordMilestone(transaction: SeriesTransaction, owner: SeriesOwne
   await transaction.insert(catalogTimelineEventWatches).values(dependencies)
 }
 
-async function recordSeriesMilestones(transaction: SeriesTransaction, owner: SeriesOwner, calculation: SeriesMilestoneCalculation): Promise<void> {
+async function recordSeriesMilestones(transaction: CatalogTransaction, owner: ViewingOwner, calculation: SeriesMilestoneCalculation): Promise<void> {
   const { response, episodes, today, actionAt } = calculation
   const newEpisodeIds = new Set(calculation.newEpisodeIds)
   const seasons = new Map<number, SeriesEpisode[]>()
@@ -479,104 +318,167 @@ async function recordSeriesMilestones(transaction: SeriesTransaction, owner: Ser
   })
 }
 
-// oxlint-disable-next-line eslint/max-params -- The public mutation keeps the account, target and validated request separate.
-async function markSeriesEpisodeWatched(database: Database, userId: string, catalogEpisodeId: string, input: CatalogSeriesWatchInput): Promise<CatalogSeriesWatchesResponse> {
-  return database.transaction(async transaction => {
-    const owner = await findEpisodeOwner(transaction, userId, catalogEpisodeId)
-    const context = await lockSeriesContext(transaction, owner)
-    const action = `episode:${catalogEpisodeId}`
 
-    const request = {
-      action,
-      input
-    }
+// Ratings call this within their transaction, after acquiring the shared viewing context lock.
+async function ensureEpisodeWatch(transaction: CatalogTransaction, owner: ViewingOwner, input: EpisodeWatchInput): Promise<CatalogSeriesEpisodeWatch> {
+  await requireSeries(transaction, owner)
+  await findViewing(transaction, owner, input.viewingId)
 
-    const replay = await replaySeriesRequest(transaction, owner, request)
+  const episodes = await lockSeriesEpisodes(transaction, owner)
+  const episode = episodes.find(value => value.id === input.episodeId)
 
-    if (replay !== null) {
-      return replay
-    }
+  if (episode === undefined) { throw new CatalogHttpError('NOT_FOUND', 404) }
 
-    assertCurrentContext(context, input)
+  const existing = await transaction.select({
+    id: catalogViewingEpisodeWatches.id,
+    catalogEpisodeId: catalogViewingEpisodeWatches.catalogEpisodeId,
+    viewingId: catalogViewingEpisodeWatches.viewingId,
+    markedAt: sql<string>`to_char(${catalogViewingEpisodeWatches.markedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+  })
+    .from(catalogViewingEpisodeWatches)
+    .where(
+      and(eq(catalogViewingEpisodeWatches.viewingId, input.viewingId), eq(catalogViewingEpisodeWatches.catalogEpisodeId, input.episodeId))
+    )
+    .limit(1)
 
-    const episodes = await lockSeriesEpisodes(transaction, owner)
-    const hasEpisode = episodes.some(episode => episode.id === catalogEpisodeId)
+  const [previous] = existing
 
-    if (!hasEpisode) {
-      throw new CatalogHttpError('NOT_FOUND', 404)
-    }
+  if (previous !== undefined) { return previous }
 
-    const actionAt = await captureSeriesActionTime(transaction)
+  const actionAt = input.actionAt ?? await captureActionTime(transaction)
+  const today = await serverToday(transaction, input.timeZone, actionAt)
 
-    const viewingId = context.currentViewingId ?? await createSeriesViewing(transaction, owner, {
-      context,
-      kind: 'series_started',
-      actionAt
-    })
+  if (episode.airDate === null || episode.airDate > today) {
+    throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { episodes: 'This episode has no released air date in your local day.' } })
+  }
 
-    const created = await insertEpisodeWatches(transaction, owner, {
-      viewingId,
-      episodeIds: [catalogEpisodeId],
-      actionAt
-    })
+  const created = await insertEpisodeWatches(transaction, owner, {
+    viewingId: input.viewingId,
+    episodeIds: [input.episodeId],
+    actionAt
+  })
 
-    const response = await readSeriesWatches(transaction, owner)
-    const today = await serverToday(transaction, input.timeZone, actionAt)
+  const response = await readSeriesWatches(transaction, owner, input.viewingId)
 
-    if (created.length > 0) {
-      await recordSeriesMilestones(transaction, owner, {
-        response,
-        episodes,
-        newEpisodeIds: created,
-        today,
-        actionAt
-      })
-    }
+  await recordSeriesMilestones(transaction, owner, {
+    response,
+    episodes,
+    newEpisodeIds: created,
+    today,
+    actionAt
+  })
 
-    const episodeWatches = response.watches.filter(watch => watch.catalogEpisodeId === catalogEpisodeId)
-    const watchIds = episodeWatches.map(watch => watch.id)
+  const watch = response.watches.find(value => value.catalogEpisodeId === input.episodeId)
 
-    await recordSeriesRequest(transaction, owner, {
-      request,
-      viewingId: response.currentViewing?.id ?? null,
-      watchIds
-    })
+  if (watch === undefined) { throw new Error('Created episode watch is missing') }
 
-    return response
+  return watch
+}
+
+async function ensureCurrentSeriesViewing(transaction: CatalogTransaction, owner: ViewingOwner, start: SeriesViewingStart): Promise<string> {
+  const { context, input, actionAt } = start
+
+  if (context.type !== 'series') { throw new CatalogHttpError('INVALID_REQUEST', 400) }
+
+  if (context.currentViewingId !== null) { return context.currentViewingId }
+
+  if (input.viewingDate === undefined) { throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { viewingDate: 'Choose the start date for this viewing.' } }) }
+
+  return createViewingInTransaction(transaction, owner, {
+    status: 'watching',
+    startedOn: input.viewingDate,
+    completedOn: null,
+    kind: 'series_started',
+    actionAt,
+    makeCurrent: true,
+    context
   })
 }
 
-// oxlint-disable-next-line eslint/max-params -- The public mutation keeps the account, target and validated request separate.
-async function markSeriesEpisodesWatched(database: Database, owner: SeriesOwner, input: CatalogSeriesBulkWatchInput, seasonNumber: number | null): Promise<CatalogSeriesWatchesResponse> {
+// oxlint-disable-next-line eslint/max-params -- The mutation separates database, authenticated owner, target and validated input.
+async function markSeriesEpisodeWatched(database: Database, userId: string, episodeId: string, input: CatalogSeriesWatchInput): Promise<CatalogSeriesWatchesResponse> {
   return database.transaction(async transaction => {
-    const context = await lockSeriesContext(transaction, owner)
-    const action = seasonNumber === null ? 'all-available' : `season:${seasonNumber}`
+    const owner = await findEpisodeOwner(transaction, userId, episodeId)
+    const context = await lockViewingContext(transaction, owner)
 
     const request = {
-      action,
+      action: `episode:watch:${episodeId}`,
       input
     }
 
-    const replay = await replaySeriesRequest(transaction, owner, request)
+    const replay = await replayViewingRequest(transaction, owner, request)
 
-    if (replay !== null) {
-      return replay
-    }
+    if (replay !== null) { return readSeriesWatches(transaction, owner) }
 
     assertCurrentContext(context, input)
 
+    const actionAt = await captureActionTime(transaction)
+
+    const viewingId = await ensureCurrentSeriesViewing(transaction, owner, {
+      context,
+      input,
+      actionAt
+    })
+
+    const previous = await transaction
+      .select({ id: catalogViewingEpisodeWatches.id })
+      .from(catalogViewingEpisodeWatches)
+      .where(
+        and(eq(catalogViewingEpisodeWatches.viewingId, viewingId), eq(catalogViewingEpisodeWatches.catalogEpisodeId, episodeId))
+      )
+      .limit(1)
+
+    const watch = await ensureEpisodeWatch(transaction, owner, {
+      viewingId,
+      episodeId,
+      timeZone: input.timeZone,
+      actionAt
+    })
+
+    if (previous.length === 0 && context.currentViewingId !== null) {
+      await bumpViewingRevision(transaction, owner, viewingId)
+      await bumpContextVersion(transaction, owner)
+    }
+
+    await recordViewingRequest(transaction, owner, {
+      action: request.action,
+      input,
+      viewingId,
+      watchIds: [watch.id]
+    })
+
+    return readSeriesWatches(transaction, owner)
+  })
+}
+
+// oxlint-disable-next-line eslint/max-params -- The mutation separates database, authenticated owner, target and validated input.
+async function markSeriesEpisodesWatched(database: Database, owner: ViewingOwner, input: CatalogSeriesBulkWatchInput, seasonNumber: number | null): Promise<CatalogSeriesWatchesResponse> {
+  return database.transaction(async transaction => {
+    const context = await lockViewingContext(transaction, owner)
+
+    const request = {
+      action: seasonNumber === null ? 'episodes:watch:available' : `episodes:watch:season:${seasonNumber}`,
+      input
+    }
+
+    const replay = await replayViewingRequest(transaction, owner, request)
+
+    if (replay !== null) { return readSeriesWatches(transaction, owner) }
+
+    assertCurrentContext(context, input)
+
+    if (context.type !== 'series') { throw new CatalogHttpError('INVALID_REQUEST', 400) }
+
     const episodes = await lockSeriesEpisodes(transaction, owner)
-    const actionAt = await captureSeriesActionTime(transaction)
+    const actionAt = await captureActionTime(transaction)
     const today = await serverToday(transaction, input.timeZone, actionAt)
     const eligible = episodes.filter(episode => (seasonNumber === null || episode.seasonNumber === seasonNumber) && episode.airDate !== null && episode.airDate <= today)
 
-    if (eligible.length === 0) {
-      throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { episodes: 'There are no released episodes with a known air date to mark.' } })
-    }
+    if (eligible.length === 0) { throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { episodes: 'There are no released episodes with a known air date to mark.' } }) }
 
-    const viewingId = context.currentViewingId ?? await createSeriesViewing(transaction, owner, {
+    const viewingId = await ensureCurrentSeriesViewing(transaction, owner, {
       context,
-      kind: 'series_started',
+      input,
       actionAt
     })
 
@@ -590,188 +492,177 @@ async function markSeriesEpisodesWatched(database: Database, owner: SeriesOwner,
 
     const response = await readSeriesWatches(transaction, owner)
 
-    if (created.length > 0) {
-      await recordSeriesMilestones(transaction, owner, {
-        response,
-        episodes,
-        newEpisodeIds: created,
-        today,
-        actionAt
-      })
+    await recordSeriesMilestones(transaction, owner, {
+      response,
+      episodes,
+      newEpisodeIds: created,
+      today,
+      actionAt
+    })
+
+    if (created.length > 0 && context.currentViewingId !== null) {
+      await bumpViewingRevision(transaction, owner, viewingId)
+      await bumpContextVersion(transaction, owner)
     }
 
     const selected = new Set(episodeIds)
     const selectedWatches = response.watches.filter(watch => selected.has(watch.catalogEpisodeId))
     const watchIds = selectedWatches.map(watch => watch.id)
 
-    await recordSeriesRequest(transaction, owner, {
-      request,
-      viewingId: response.currentViewing?.id ?? null,
+    await recordViewingRequest(transaction, owner, {
+      action: request.action,
+      input,
+      viewingId,
       watchIds
     })
 
-    return response
-  })
-}
-
-// oxlint-disable-next-line eslint/max-params -- The public mutation keeps the account, target and validated request separate.
-async function unmarkSeriesEpisodeWatched(database: Database, userId: string, catalogEpisodeId: string, input: CatalogSeriesUnwatchInput): Promise<CatalogSeriesWatchesResponse> {
-  return database.transaction(async transaction => {
-    const owner = await findEpisodeOwner(transaction, userId, catalogEpisodeId)
-    const context = await lockSeriesContext(transaction, owner)
-
-    assertCurrentContext(context, input)
-
-    await transaction.delete(catalogViewingEpisodeWatches).where(
-      and(eq(catalogViewingEpisodeWatches.userId, userId), eq(catalogViewingEpisodeWatches.catalogItemId, owner.catalogItemId), eq(catalogViewingEpisodeWatches.viewingId, input.currentViewingId), eq(catalogViewingEpisodeWatches.catalogEpisodeId, catalogEpisodeId), eq(catalogViewingEpisodeWatches.id, input.watchId))
-    )
-
     return readSeriesWatches(transaction, owner)
   })
 }
 
-async function startSeriesRewatch(database: Database, owner: SeriesOwner, input: CatalogSeriesRewatchInput): Promise<CatalogSeriesWatchesResponse> {
+// oxlint-disable-next-line eslint/max-params -- The mutation separates database, authenticated owner, target and validated input.
+async function unmarkSeriesEpisodeWatched(database: Database, userId: string, episodeId: string, input: CatalogSeriesUnwatchInput): Promise<CatalogSeriesWatchesResponse> {
   return database.transaction(async transaction => {
-    const context = await lockSeriesContext(transaction, owner)
+    const owner = await findEpisodeOwner(transaction, userId, episodeId)
+    const context = await lockViewingContext(transaction, owner)
 
     const request = {
-      action: 'rewatch',
+      action: `episode:unwatch:${episodeId}`,
       input
     }
 
-    const replay = await replaySeriesRequest(transaction, owner, request)
+    const replay = await replayViewingRequest(transaction, owner, request)
 
-    if (replay !== null) {
-      return replay
-    }
+    if (replay !== null) { return readSeriesWatches(transaction, owner) }
 
     assertCurrentContext(context, input)
 
-    if (context.currentViewingId === null) {
-      throw new CatalogHttpError('INVALID_REQUEST', 400, { fields: { currentViewingId: 'Mark an episode before starting a rewatch.' } })
-    }
+    const target = and(eq(catalogViewingEpisodeWatches.userId, userId), eq(catalogViewingEpisodeWatches.catalogItemId, owner.catalogItemId), eq(catalogViewingEpisodeWatches.viewingId, input.currentViewingId), eq(catalogViewingEpisodeWatches.catalogEpisodeId, episodeId), eq(catalogViewingEpisodeWatches.id, input.watchId))
+    const marks = await transaction.select({ id: catalogViewingEpisodeWatches.id }).from(catalogViewingEpisodeWatches).where(target).for('update')
 
-    const previous = await readSeriesWatches(transaction, owner)
-    const viewing = previous.currentViewing
-
-    if (viewing === null) { throw new Error('Current series viewing is missing') }
-
-    if (previous.watches.length === 0) {
-      throw new CatalogHttpError('CONFLICT', 409, { fields: { currentViewingId: 'Watch an episode before starting another viewing.' } })
-    }
-
-    const actionAt = await captureSeriesActionTime(transaction)
-
-    if (viewing.status === 'watching') {
-      // A new viewing takes over the active context without recording a user pause or completion.
-      await transaction.update(catalogViewings).set({
-        status: 'paused',
-        revision: viewing.revision + 1
-      }).where(
-        eq(catalogViewings.id, context.currentViewingId)
+    const ratings = await transaction
+      .select({ id: catalogItemRatings.id })
+      .from(catalogItemRatings)
+      .where(
+        and(eq(catalogItemRatings.viewingId, input.currentViewingId), eq(catalogItemRatings.catalogEpisodeId, episodeId))
       )
+      .for('update')
+
+    if (marks.length > 0 && ratings.length > 0 && !input.confirmRatingRemoval) {
+      throw new CatalogHttpError('CONFLICT', 409, { fields: { confirmRatingRemoval: 'Removing this mark also removes its episode rating. Confirm to continue.' } })
     }
 
-    await createSeriesViewing(transaction, owner, {
-      context,
-      kind: 'rewatch_started',
-      actionAt
+    if (marks.length > 0) {
+      await transaction.delete(catalogViewingEpisodeWatches).where(target)
+      await bumpViewingRevision(transaction, owner, input.currentViewingId)
+      await bumpContextVersion(transaction, owner)
+    }
+
+    await recordViewingRequest(transaction, owner, {
+      action: request.action,
+      input,
+      viewingId: input.currentViewingId
     })
-
-    const response = await readSeriesWatches(transaction, owner)
-
-    await recordSeriesRequest(transaction, owner, {
-      request,
-      viewingId: response.currentViewing?.id ?? null,
-      watchIds: [],
-      previousStatus: viewing.status
-    })
-
-    return response
-  })
-}
-
-async function cancelSeriesRewatch(database: Database, owner: SeriesOwner, input: CatalogSeriesCancelRewatchInput): Promise<CatalogSeriesWatchesResponse> {
-  return database.transaction(async transaction => {
-    const context = await lockSeriesContext(transaction, owner)
-    const target = and(eq(catalogViewings.userId, owner.userId), eq(catalogViewings.catalogItemId, owner.catalogItemId), eq(catalogViewings.id, input.currentViewingId))
-
-    const targets = await transaction.select({
-      recordedAt: sql<string>`to_char(${catalogViewings.recordedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
-    }).from(catalogViewings).where(target).for('update')
-
-    const [viewing] = targets
-
-    // A repeated cancellation must not touch a later viewing.
-    if (viewing === undefined) { return readSeriesWatches(transaction, owner) }
-
-    assertCurrentContext(context, input)
-
-    const current = await readSeriesWatches(transaction, owner)
-
-    if (current.currentViewing?.isRewatch !== true || current.watches.length > 0) {
-      throw new CatalogHttpError('CONFLICT', 409, { fields: { currentViewingId: 'Only an empty new viewing can be canceled.' } })
-    }
-
-    const requests = await transaction.select({
-      previousViewingId: sql<string | null>`${catalogSeriesRequests.input}->>'currentViewingId'`,
-      previousStatus: sql<CatalogSeriesViewing['status'] | null>`${catalogSeriesRequests.result}->>'previousStatus'`,
-      hadCloseStatus: sql<boolean>`${catalogSeriesRequests.input} ? 'closeStatus'`
-    }).from(catalogSeriesRequests).where(
-      and(eq(catalogSeriesRequests.userId, owner.userId), eq(catalogSeriesRequests.catalogItemId, owner.catalogItemId), eq(catalogSeriesRequests.viewingId, input.currentViewingId), eq(catalogSeriesRequests.action, 'rewatch'), eq(catalogSeriesRequests.tombstoned, false))
-    ).limit(1)
-
-    const [creation] = requests
-
-    if (creation?.previousViewingId === undefined || creation.previousViewingId === null) {
-      throw new CatalogHttpError('CONFLICT', 409)
-    }
-
-    const previousTarget = and(eq(catalogViewings.userId, owner.userId), eq(catalogViewings.catalogItemId, owner.catalogItemId), eq(catalogViewings.id, creation.previousViewingId))
-
-    const previousRows = await transaction.select({
-      status: sql<CatalogSeriesViewing['status']>`${catalogViewings.status}`,
-      revision: catalogViewings.revision,
-
-      hasClosingEvent: sql<boolean>`EXISTS (SELECT 1 FROM catalog_timeline_events
-        WHERE viewing_id = ${creation.previousViewingId}::uuid AND kind IN ('series_paused', 'series_completed')
-        AND occurred_at = ${viewing.recordedAt}::timestamptz)`
-    }).from(catalogViewings).where(previousTarget).for('update')
-
-    const [previous] = previousRows
-
-    if (previous === undefined) { throw new CatalogHttpError('CONFLICT', 409) }
-
-    const previousStatus = creation.previousStatus ?? (creation.hadCloseStatus && previous.hasClosingEvent ? 'watching' : previous.status)
-    const condition = ownerCondition(owner)
-
-    await transaction.update(catalogViewingContexts).set({
-      currentViewingId: creation.previousViewingId,
-      contextVersion: context.contextVersion + 1
-    }).where(condition)
-
-    await transaction.update(catalogSeriesRequests).set({ tombstoned: true }).where(
-      and(eq(catalogSeriesRequests.userId, owner.userId), eq(catalogSeriesRequests.catalogItemId, owner.catalogItemId), eq(catalogSeriesRequests.viewingId, input.currentViewingId))
-    )
-
-    await transaction.delete(catalogViewings).where(target)
-
-    if (previous.status !== previousStatus) {
-      await transaction.update(catalogViewings).set({
-        status: previousStatus,
-        revision: previous.revision + 1
-      }).where(previousTarget)
-    }
-
-    if (creation.hadCloseStatus) {
-      // Earlier clients recorded a closing event and the new start at the same action time.
-      await transaction.delete(catalogTimelineEvents).where(
-        and(eq(catalogTimelineEvents.viewingId, creation.previousViewingId), sql`${catalogTimelineEvents.kind} IN ('series_paused', 'series_completed')`, sql`${catalogTimelineEvents.occurredAt} = ${viewing.recordedAt}::timestamptz`)
-      )
-    }
 
     return readSeriesWatches(transaction, owner)
   })
 }
 
-export { cancelSeriesRewatch, findSeriesWatches, markSeriesEpisodeWatched, markSeriesEpisodesWatched, startSeriesRewatch, unmarkSeriesEpisodeWatched }
+async function cancelSeriesRewatch(database: Database, owner: ViewingOwner, input: CatalogSeriesCancelRewatchInput): Promise<CatalogViewingSummary> {
+  return database.transaction(async transaction => {
+    const context = await lockViewingContext(transaction, owner)
+
+    const request = {
+      action: 'viewing:cancel-rewatch',
+      input
+    }
+
+    const replay = await replayViewingRequest(transaction, owner, request)
+
+    if (replay !== null) { return readViewingSummary(transaction, owner) }
+
+    assertCurrentContext(context, input)
+
+    const viewing = await findViewing(transaction, owner, input.currentViewingId)
+
+    if (!viewing.canCancelRewatch || !viewing.isRewatch) { throw new CatalogHttpError('CONFLICT', 409, { fields: { currentViewingId: 'Only a new viewing without marks or ratings can be canceled.' } }) }
+
+    const rows = await transaction.select({ result: catalogViewingRequests.result })
+      .from(catalogViewingRequests)
+      .where(
+        and(eq(catalogViewingRequests.userId, owner.userId), eq(catalogViewingRequests.catalogItemId, owner.catalogItemId), eq(catalogViewingRequests.viewingId, input.currentViewingId), eq(catalogViewingRequests.action, 'viewing:create'), eq(catalogViewingRequests.tombstoned, false))
+      )
+      .limit(1)
+
+    const creation = rows[0]?.result
+    const previousId = creation?.previousViewingId
+
+    if (creation === undefined || previousId === undefined) { throw new CatalogHttpError('CONFLICT', 409) }
+
+    await transaction
+      .select({ id: catalogViewings.id })
+      .from(catalogViewings)
+      .where(
+        eq(catalogViewings.id, previousId)
+      )
+      .for('update')
+
+    const previous = await findViewing(transaction, owner, previousId)
+
+    if (creation.completionEventId !== undefined && creation.completionEventId !== null) {
+      const closing = await transaction
+        .select({ id: catalogTimelineEvents.id })
+        .from(catalogTimelineEvents)
+        .where(
+          and(eq(catalogTimelineEvents.id, creation.completionEventId), eq(catalogTimelineEvents.viewingId, previousId), eq(catalogTimelineEvents.kind, 'series_completed'))
+        )
+        .limit(1)
+
+      if (previous.status !== 'completed' || previous.completedOn !== creation.completedByStartOn || closing.length === 0) {
+        throw new CatalogHttpError('CONFLICT', 409, { fields: { currentViewingId: 'The previous viewing was corrected after this rewatch started.' } })
+      }
+    }
+
+    await recordViewingRequest(transaction, owner, {
+      action: request.action,
+      input,
+      viewingId: previousId
+    })
+
+    const contextTarget = and(eq(catalogViewingContexts.userId, owner.userId), eq(catalogViewingContexts.catalogItemId, owner.catalogItemId))
+
+    await transaction.update(catalogViewingContexts).set({
+      currentViewingId: previousId,
+      contextVersion: context.contextVersion + 1
+    }).where(contextTarget)
+
+    await transaction
+      .delete(catalogViewings)
+      .where(
+        eq(catalogViewings.id, input.currentViewingId)
+      )
+
+    if (creation.completionEventId !== undefined && creation.completionEventId !== null) {
+      await transaction
+        .delete(catalogTimelineEvents)
+        .where(
+          and(eq(catalogTimelineEvents.id, creation.completionEventId), eq(catalogTimelineEvents.viewingId, previousId))
+        )
+
+      await transaction
+        .update(catalogViewings)
+        .set({
+          status: creation.previousStatus ?? previous.status,
+          completedOn: creation.previousCompletedOn ?? null,
+          revision: previous.revision + 1
+        })
+        .where(
+          eq(catalogViewings.id, previousId)
+        )
+    }
+
+    return readViewingSummary(transaction, owner)
+  })
+}
+
+export { cancelSeriesRewatch, ensureEpisodeWatch, findEpisodeOwner, findSeriesWatches, lockSeriesEpisodes, markSeriesEpisodeWatched, markSeriesEpisodesWatched, readSeriesWatches, unmarkSeriesEpisodeWatched }

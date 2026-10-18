@@ -1,388 +1,257 @@
-import { env } from 'node:process'
 import { randomUUID } from 'node:crypto'
+import { env } from 'node:process'
 import { createDatabase } from '@tv/database'
 import { Client } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
-import { findCatalogItemRating, findCatalogItemRatingSummary, setCatalogItemRating } from '../../ratings-repository.ts'
+import { readRatingSnapshot, setCurrentCatalogRating } from '../../rating-mutations.ts'
+import { findCatalogItemRatingSummary } from '../../ratings-repository.ts'
+import { ratingFixture, seasonTarget, titleTarget } from '../../../testing/rating-fixtures.ts'
 
-const databaseUrl = env.TEST_DATABASE_URL
-const client = new Client({ connectionString: databaseUrl })
-const userId = randomUUID()
-const otherUserId = randomUUID()
-const thirdUserId = randomUUID()
+const fixture = ratingFixture()
 
-await client.connect()
-
-async function itemId(title: string): Promise<string> {
-  const result = await client.query<{ id: string }>(`
-    SELECT catalog_item_id AS id FROM catalog_item_titles WHERE title = $1 AND is_original
-  `, [title])
-
-  const id = result.rows[0]?.id
-
-  if (id === undefined) { throw new Error(`Missing seeded title: ${title}`) }
-
-  return id
-}
-
-async function readRating(catalogItemId: string) {
-  const result = await client.query<{ id: string; score: number }>(`
-    SELECT id, score FROM catalog_item_ratings WHERE user_id = $1 AND catalog_item_id = $2
-  `, [userId, catalogItemId])
-
-  return result.rows
-}
-
-async function concurrentWrite(catalogItemId: string, score: number | null): Promise<boolean> {
-  const connection = new Client({
-    connectionString: databaseUrl,
-    application_name: 'rating-concurrent-save'
-  })
-
-  try {
-    await connection.connect()
-
-    const database = createDatabase(connection)
-
-    return await setCatalogItemRating(database, userId, {
-      catalogItemId,
-      score
-    })
-  } finally {
-    await connection.end()
-  }
-}
-
-describe('catalog rating persistence', () => {
-  beforeAll(async () => {
-    await assertDisposableTestDatabase(client)
-
-    await client.query('INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4), ($5, $6)', [
-      userId, `${userId}@example.com`, otherUserId, `${otherUserId}@example.com`, thirdUserId, `${thirdUserId}@example.com`
-    ])
-  })
-
-  beforeEach(async () => {
-    await client.query('DELETE FROM catalog_item_ratings WHERE user_id = ANY($1::uuid[])', [[userId, otherUserId, thirdUserId]])
-  })
+describe('viewing-owned ratings', () => {
+  beforeAll(fixture.setup)
+  beforeEach(fixture.reset)
 
   afterAll(async () => {
-    await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherUserId, thirdUserId]])
-    await client.end()
+    await fixture.cleanup()
   })
 
-  it.each(['Dead Man', 'Spartacus'])('preserves the ID on corrections but not after removal for %s', async (title) => {
-    const id = await itemId(title)
-    const database = createDatabase(client)
+  it.each([
+    {
+      kind: 'movie',
+      catalogItemId: fixture.movieId,
+      target: titleTarget,
+      startedOn: null,
+      completedOn: '2026-01-15',
+      status: 'completed',
+      watchCount: 0
+    },
+    {
+      kind: 'series',
+      catalogItemId: fixture.seriesId,
+      target: titleTarget,
+      startedOn: '2026-01-15',
+      completedOn: null,
+      status: 'watching',
+      watchCount: 0
+    },
+    {
+      kind: 'season',
+      catalogItemId: fixture.seriesId,
+      target: seasonTarget,
+      startedOn: '2026-01-15',
+      completedOn: null,
+      status: 'watching',
+      watchCount: 0
+    },
+    {
+      kind: 'episode',
+      catalogItemId: fixture.seriesId,
+      target: fixture.episodeTarget,
+      startedOn: '2026-01-15',
+      completedOn: null,
+      status: 'watching',
+      watchCount: 1
+    }
+  ])('creates one $kind viewing with its first score and keeps it through correction and removal', async ({ catalogItemId, target, startedOn, completedOn, status, watchCount }) => {
+    const first = await fixture.save(catalogItemId, target, 7)
+    const firstId = first.viewing?.id
 
-    await expect(findCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      seasonNumber: null
-    })).resolves.toStrictEqual({ score: null })
+    expect(first.score).toBe(7)
+    expect(firstId).toBeTypeOf('string')
+    expect(first.viewing?.startedOn).toBe(startedOn)
+    expect(first.viewing?.completedOn).toBe(completedOn)
+    expect(first.viewing?.status).toBe(status)
 
-    await expect(setCatalogItemRating(database, userId, {
-      catalogItemId: id,
+    const stored = await fixture.client.query<{ id:string;viewing_id:string;score:number }>('SELECT id, viewing_id, score FROM catalog_item_ratings WHERE user_id = $1', [fixture.userId])
+    const publicVotes = await fixture.client.query<{ source_viewing_id: string; score: number }>('SELECT source_viewing_id, score FROM catalog_rating_votes WHERE user_id = $1', [fixture.userId])
+
+    expect(publicVotes.rows).toStrictEqual([{
+      source_viewing_id: firstId,
       score: 7
-    })).resolves.toBe(true)
+    }])
 
-    const first = await readRating(id)
+    const eventsBefore = await fixture.client.query<{ id:string;kind:string;occurred_at:Date }>('SELECT id, kind, occurred_at FROM catalog_timeline_events WHERE user_id = $1 ORDER BY id', [fixture.userId])
+    const corrected = await fixture.save(catalogItemId, target, 9)
+    const unchanged = await fixture.save(catalogItemId, target, 9)
 
-    expect(first).toHaveLength(1)
-    expect(first[0]?.id).toBeTypeOf('string')
+    expect(unchanged).toStrictEqual(corrected)
 
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 9
-    })
+    const updated = await fixture.client.query<{ id:string;viewing_id:string;score:number }>('SELECT id, viewing_id, score FROM catalog_item_ratings WHERE user_id = $1', [fixture.userId])
 
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 9
-    })
-
-    await expect(readRating(id)).resolves.toStrictEqual([{
-      id: first[0]?.id,
+    expect(updated.rows).toStrictEqual([{
+      id: stored.rows[0]?.id,
+      viewing_id: firstId,
       score: 9
     }])
 
-    await setCatalogItemRating(database, otherUserId, {
-      catalogItemId: id,
-      score: 3
-    })
+    expect(corrected.viewing?.id).toBe(firstId)
+    expect(corrected.viewing?.completedOn).toBe(first.viewing?.completedOn)
+    expect(corrected.viewing?.startedOn).toBe(first.viewing?.startedOn)
 
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: null
-    })
+    const removed = await fixture.save(catalogItemId, target, null)
+    const viewings = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1', [fixture.userId])
+    const ratings = await fixture.client.query('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [fixture.userId])
+    const votes = await fixture.client.query('SELECT id FROM catalog_rating_votes WHERE user_id = $1', [fixture.userId])
+    const watches = await fixture.client.query('SELECT id FROM catalog_viewing_episode_watches WHERE user_id = $1', [fixture.userId])
+    const eventsAfter = await fixture.client.query<{ id:string;kind:string;occurred_at:Date }>('SELECT id, kind, occurred_at FROM catalog_timeline_events WHERE user_id = $1 ORDER BY id', [fixture.userId])
 
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: null
-    })
+    expect(removed.score).toBeNull()
+    expect(viewings.rows).toStrictEqual([{ id: firstId }])
+    expect(ratings.rows).toStrictEqual([])
+    expect(votes.rows).toStrictEqual([])
+    expect(watches.rows).toHaveLength(watchCount)
+    expect(eventsAfter.rows).toStrictEqual(eventsBefore.rows)
+    expect(eventsAfter.rows.some(event => event.kind === 'rating_changed')).toBe(false)
 
-    await expect(readRating(id)).resolves.toStrictEqual([])
+    const recreated = await fixture.save(catalogItemId, target, 9)
+    const restored = await fixture.client.query<{ id: string }>('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [fixture.userId])
 
-    await expect(findCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      seasonNumber: null
-    })).resolves.toStrictEqual({ score: null })
-
-    await expect(findCatalogItemRating(database, otherUserId, {
-      catalogItemId: id,
-      seasonNumber: null
-    })).resolves.toStrictEqual({ score: 3 })
-
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 9
-    })
-
-    const restored = await readRating(id)
-
-    expect(restored).toHaveLength(1)
-    expect(restored[0]?.id).not.toBe(first[0]?.id)
-    expect(restored[0]?.score).toBe(9)
+    expect(recreated.viewing?.id).toBe(firstId)
+    expect(restored.rows).toHaveLength(1)
+    expect(restored.rows[0]?.id).not.toBe(stored.rows[0]?.id)
   })
 
-  it.each([['Dead Man', 'Spartacus'], ['Spartacus', 'Dead Man']])('summarizes current votes for %s without mixing titles or deduplicating scores', async (title, otherTitle) => {
-    const id = await itemId(title)
-    const otherId = await itemId(otherTitle)
-    const database = createDatabase(client)
+  it('requires a supplied creation date and rolls all first-rating effects back on failure', async () => {
+    const change = await fixture.input(fixture.movieId, 7)
+    const { viewingDate, ...withoutDate } = change
 
-    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
+    expect(viewingDate).toBe('2026-01-15')
+
+    await expect(setCurrentCatalogRating(fixture.database, {
+      userId: fixture.userId,
+      catalogItemId: fixture.movieId
+    }, titleTarget, withoutDate)).rejects.toMatchObject({ status: 400 })
+
+    const rows = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1', [fixture.userId])
+
+    expect(rows.rows).toStrictEqual([])
+
+    await expect(findCatalogItemRatingSummary(fixture.database, fixture.movieId)).resolves.toStrictEqual({
       averageScore: null,
       ratingCount: 0
     })
-
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 6
-    })
-
-    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
-      averageScore: 6,
-      ratingCount: 1
-    })
-
-    await setCatalogItemRating(database, otherUserId, {
-      catalogItemId: id,
-      score: 6
-    })
-
-    await setCatalogItemRating(database, thirdUserId, {
-      catalogItemId: id,
-      score: 9
-    })
-
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: otherId,
-      score: 1
-    })
-
-    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
-      averageScore: 7,
-      ratingCount: 3
-    })
-
-    await expect(findCatalogItemRatingSummary(database, otherId)).resolves.toStrictEqual({
-      averageScore: 1,
-      ratingCount: 1
-    })
-
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 7
-    })
-
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 7
-    })
-
-    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
-      averageScore: 22 / 3,
-      ratingCount: 3
-    })
-
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: null
-    })
-
-    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
-      averageScore: 7.5,
-      ratingCount: 2
-    })
-
-    await setCatalogItemRating(database, otherUserId, {
-      catalogItemId: id,
-      score: null
-    })
-
-    await setCatalogItemRating(database, thirdUserId, {
-      catalogItemId: id,
-      score: null
-    })
-
-    await expect(findCatalogItemRatingSummary(database, id)).resolves.toStrictEqual({
-      averageScore: null,
-      ratingCount: 0
-    })
-
-    const missingId = randomUUID()
-
-    await expect(findCatalogItemRatingSummary(database, missingId)).resolves.toBeNull()
   })
 
-  it('enforces bounds, ownership, target references and uniqueness in PostgreSQL', async () => {
-    const id = await itemId('Dead Man')
-    const database = createDatabase(client)
+  it('does not create a viewing when removing an absent score and rejects stale contexts', async () => {
+    const absent = await fixture.save(fixture.movieId, titleTarget, null)
+    const stale = await fixture.input(fixture.movieId, 8)
 
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 7
-    })
+    expect(absent.viewing).toBeNull()
+    await fixture.save(fixture.movieId, titleTarget, 4)
 
-    const before = await readRating(id)
+    await expect(setCurrentCatalogRating(fixture.database, {
+      userId: fixture.userId,
+      catalogItemId: fixture.movieId
+    }, titleTarget, stale)).rejects.toMatchObject({ status: 409 })
 
-    const invalidUpdates = [0, 11].map(async score => {
-      await expect(client.query('UPDATE catalog_item_ratings SET score = $1 WHERE user_id = $2', [score, userId]))
-        .rejects.toMatchObject({ code: '23514' })
-    })
-
-    await Promise.all(invalidUpdates)
-
-    await expect(client.query('UPDATE catalog_item_ratings SET score = $1 WHERE user_id = $2', ['7.5', userId]))
-      .rejects.toMatchObject({ code: '22P02' })
-
-    await expect(client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 5)', [userId, id]))
-      .rejects.toMatchObject({ code: '23505' })
-
-    const missingUserId = randomUUID()
-
-    await expect(client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 5)', [missingUserId, id]))
-      .rejects.toMatchObject({ code: '23503' })
-
-    const missingItemId = randomUUID()
-
-    await expect(client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, score) VALUES ($1, $2, 5)', [userId, missingItemId]))
-      .rejects.toMatchObject({ code: '23503' })
-
-    await expect(readRating(id)).resolves.toStrictEqual(before)
+    await expect(readRatingSnapshot(fixture.database, {
+      userId: fixture.userId,
+      catalogItemId: fixture.movieId
+    }, titleTarget)).resolves.toMatchObject({ score: 4 })
   })
 
-  it('lets overlapping first saves succeed with one persisted rating', async () => {
-    const id = await itemId('Dead Man')
+  it('validates target existence and type before creating personal records', async () => {
+    const movie = await fixture.input(fixture.movieId, 5)
+    const series = await fixture.input(fixture.seriesId, 5)
+    const missing = await fixture.input(randomUUID(), 5)
 
-    await expect(readRating(id)).resolves.toStrictEqual([])
-    await client.query('BEGIN')
+    await expect(setCurrentCatalogRating(fixture.database, {
+      userId: fixture.userId,
+      catalogItemId: fixture.movieId
+    }, seasonTarget, movie)).rejects.toMatchObject({ status: 400 })
 
-    // Block writes while allowing reads, so both independent saves reach persistence before either inserts.
-    await client.query('LOCK TABLE catalog_item_ratings IN SHARE MODE')
+    await expect(setCurrentCatalogRating(fixture.database, {
+      userId: fixture.userId,
+      catalogItemId: fixture.seriesId
+    }, {
+      seasonNumber: 99,
+      catalogEpisodeId: null
+    }, series)).rejects.toMatchObject({ status: 404 })
 
-    const pendingSaves = [concurrentWrite(id, 3), concurrentWrite(id, 9)]
-    const settled = Promise.allSettled(pendingSaves)
+    const missingCatalogItemId = randomUUID()
+
+    await expect(setCurrentCatalogRating(fixture.database, {
+      userId: fixture.userId,
+      catalogItemId: missingCatalogItemId
+    }, titleTarget, missing)).rejects.toMatchObject({ status: 404 })
+
+    const rows = await fixture.client.query('SELECT id FROM catalog_viewings WHERE user_id = $1', [fixture.userId])
+
+    expect(rows.rows).toStrictEqual([])
+  })
+
+  it('waits for original-title metadata changes and rejects a title removed while its rating waits', async () => {
+    const connection = new Client({
+      connectionString: env.TEST_DATABASE_URL,
+      application_name: 'rating-metadata-race'
+    })
+
+    const input = await fixture.input(fixture.movieId, 8)
+
+    await connection.connect()
+    await fixture.client.query('BEGIN')
+    await fixture.client.query('UPDATE catalog_item_titles SET is_original = false WHERE catalog_item_id = $1 AND is_original', [fixture.movieId])
+
+    const concurrentDatabase = createDatabase(connection)
+
+    const pending = setCurrentCatalogRating(concurrentDatabase, {
+      userId: fixture.userId,
+      catalogItemId: fixture.movieId
+    }, titleTarget, input)
+
+    const settled = Promise.allSettled([pending])
 
     try {
       await vi.waitFor(async () => {
-        await client.query('SELECT pg_stat_clear_snapshot()')
+        await fixture.client.query('SELECT pg_stat_clear_snapshot()')
 
-        const waiting = await client.query<{ count: number }>(`
-          SELECT count(*)::integer AS count FROM pg_stat_activity
-          WHERE datname = current_database()
-            AND application_name = 'rating-concurrent-save'
-            AND wait_event_type = 'Lock'
-        `)
+        const waiting = await fixture.client.query<{ count: number }>('SELECT count(*)::integer AS count FROM pg_stat_activity WHERE datname = current_database() AND application_name = \'rating-metadata-race\' AND wait_event_type = \'Lock\'')
 
-        expect(waiting.rows[0]?.count).toBe(2)
+        expect(waiting.rows[0]?.count).toBe(1)
       }, { timeout: 5000 })
     } finally {
-      await client.query('COMMIT')
+      await fixture.client.query('COMMIT')
 
       await settled
+
+      await connection.end()
+      await fixture.client.query('UPDATE catalog_item_titles SET is_original = true WHERE catalog_item_id = $1', [fixture.movieId])
     }
 
-    const results = await settled
-    const after = await readRating(id)
+    await expect(settled).resolves.toMatchObject([{
+      status: 'rejected',
+      reason: { status: 404 }
+    }])
 
-    expect(results).toStrictEqual([
-      {
-        status: 'fulfilled',
-        value: true
-      },
-      {
-        status: 'fulfilled',
-        value: true
-      }
-    ])
+    const rows = await fixture.client.query('SELECT id FROM catalog_item_ratings WHERE user_id = $1', [fixture.userId])
 
-    expect(after).toHaveLength(1)
-    expect([3, 9]).toContain(after[0]?.score)
+    expect(rows.rows).toStrictEqual([])
   })
 
-  it('keeps one stable rating under concurrent saves and no duplicate under save/remove races', async () => {
-    const id = await itemId('Dead Man')
-    const database = createDatabase(client)
-
-    await setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 7
-    })
-
-    const before = await readRating(id)
-    const scores = [1, 2, 3, 4, 5, 6]
-    const pendingSaves = scores.map(async score => concurrentWrite(id, score))
-    const results = await Promise.all(pendingSaves)
-    const after = await readRating(id)
-
-    expect(results).toStrictEqual([true, true, true, true, true, true])
-    expect(after).toHaveLength(1)
-    expect(after[0]?.id).toBe(before[0]?.id)
-    expect(scores).toContain(after[0]?.score)
-    await Promise.all([concurrentWrite(id, null), concurrentWrite(id, 8)])
-
-    const raced = await readRating(id)
-
-    expect(raced.length).toBeLessThanOrEqual(1)
-
-    const onlySavedScore = raced.every(row => row.score === 8)
-
-    expect(onlySavedScore).toBe(true)
-    await concurrentWrite(id, null)
-    await expect(readRating(id)).resolves.toStrictEqual([])
-  })
-
-  it('does not rate a missing title or an item without original title metadata', async () => {
-    const database = createDatabase(client)
-    const id = randomUUID()
-
-    await expect(findCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      seasonNumber: null
-    })).resolves.toBeNull()
-
-    await expect(setCatalogItemRating(database, userId, {
-      catalogItemId: id,
-      score: 7
-    })).resolves.toBe(false)
-
-    await client.query('INSERT INTO catalog_items (id, type) VALUES ($1, $2)', [id, 'series'])
-
-    try {
-      await expect(setCatalogItemRating(database, userId, {
-        catalogItemId: id,
-        score: 7
-      })).resolves.toBe(false)
-
-      await expect(setCatalogItemRating(database, userId, {
-        catalogItemId: id,
-        score: null
-      })).resolves.toBe(false)
-
-      await expect(readRating(id)).resolves.toStrictEqual([])
-    } finally {
-      await client.query('DELETE FROM catalog_items WHERE id = $1', [id])
+  it('replays an absent score removal without clearing a viewing created later', async () => {
+    const owner = {
+      userId: fixture.userId,
+      catalogItemId: fixture.movieId
     }
+
+    const input = await fixture.input(fixture.movieId, null)
+    const removed = await setCurrentCatalogRating(fixture.database, owner, titleTarget, input)
+    const replay = await setCurrentCatalogRating(fixture.database, owner, titleTarget, input)
+
+    expect(replay).toStrictEqual(removed)
+    expect(replay.viewing).toBeNull()
+
+    const created = await fixture.save(fixture.movieId, titleTarget, 8)
+    const lateReplay = await setCurrentCatalogRating(fixture.database, owner, titleTarget, input)
+    const current = await readRatingSnapshot(fixture.database, owner, titleTarget)
+
+    expect(lateReplay.score).toBeNull()
+    expect(lateReplay.viewing).toBeNull()
+    expect(lateReplay.summary).toStrictEqual(created.summary)
+    expect(current.score).toBe(8)
+    expect(current.viewing?.id).toBe(created.viewing?.id)
   })
+
 })

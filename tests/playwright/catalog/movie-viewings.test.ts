@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
 import { addCookie } from '../helpers.ts'
 import { dune, chernobyl } from './details.fixtures.ts'
@@ -46,14 +47,6 @@ function observeCreationKeys(page: Page): string[] {
 
   return keys
 }
-async function getViewingLink(page: Page): Promise<string> {
-  const link = await history(page).getByRole('listitem').first().getByRole('link', { name: 'Link to viewing' }).getAttribute('href')
-
-  if (link === null) { throw new Error('Missing viewing link') }
-
-  return link
-}
-
 async function prepareMutation(page: Page, kind: 'add' | 'edit' | 'delete'): Promise<void> {
   if (kind === 'add') {
     await page.getByRole('button', {
@@ -61,13 +54,13 @@ async function prepareMutation(page: Page, kind: 'add' | 'edit' | 'delete'): Pro
       exact: true
     }).click()
 
-    await page.getByLabel('Started on', { exact: true }).fill('2020-01-01')
+    await page.getByLabel('Watched on', { exact: true }).fill('2020-01-01')
 
     return
   }
 
   const row = history(page).getByRole('listitem').first()
-  const name = kind === 'edit' ? 'Edit dates' : 'Delete'
+  const name = kind === 'edit' ? 'Edit date' : 'Delete'
 
   await row.getByRole('button', {
     name,
@@ -75,7 +68,7 @@ async function prepareMutation(page: Page, kind: 'add' | 'edit' | 'delete'): Pro
   }).click()
 
   if (kind === 'edit') {
-    await page.getByLabel('Started on', { exact: true }).fill('2020-01-01')
+    await page.getByLabel('Watched on', { exact: true }).fill('2020-01-01')
   }
 }
 
@@ -125,7 +118,7 @@ for (const kind of ['add', 'edit', 'delete'] as const) {
 
     const message = {
       add: 'Past viewing saved.',
-      edit: 'Viewing dates saved.',
+      edit: 'Viewing date saved.',
       delete: 'Viewing deleted.'
     }[kind]
 
@@ -134,9 +127,9 @@ for (const kind of ['add', 'edit', 'delete'] as const) {
   })
 }
 
-test('records first, repeat and past viewings, edits dates, cancels and confirms deletion, and opens exact dashboard links', async ({ context, page }) => {
+test('records first, repeat and past viewings, edits the date, cancels and confirms deletion, and opens dashboard title links', async ({ context, page }) => {
   const repeat = page.getByRole('button', {
-    name: 'Watched again',
+    name: 'Mark as watched',
     exact: true
   })
 
@@ -165,19 +158,8 @@ test('records first, repeat and past viewings, edits dates, cancels and confirms
       exact: true
   }).click()
 
-  await expect(page.getByLabel('Started on', { exact: true })).toBeFocused()
-  await page.getByLabel('Started on', { exact: true }).fill('2020-01-01')
-  await page.getByLabel('Completed on', { exact: true }).fill('2019-12-31')
-
-  await page.getByRole('button', {
-    name: 'Save viewing',
-    exact: true
-  }).focus()
-
-  await page.keyboard.press('Enter')
-  await expect(page.getByLabel('Completed on', { exact: true })).toBeFocused()
-  await expect(page.getByLabel('Completed on', { exact: true })).toHaveAttribute('aria-invalid', 'true')
-  await page.getByLabel('Completed on', { exact: true }).fill('2020-01-02')
+  await expect(page.getByLabel('Watched on', { exact: true })).toBeFocused()
+  await page.getByLabel('Watched on', { exact: true }).fill('2020-01-02')
 
   await page.getByRole('button', {
     name: 'Save viewing',
@@ -185,17 +167,20 @@ test('records first, repeat and past viewings, edits dates, cancels and confirms
   }).click()
 
   await expect(history(page).getByRole('listitem')).toHaveCount(3)
+  await expect(page.getByRole('status').filter({ hasText: 'Past viewing saved.' })).toBeVisible()
 
-  const past = history(page).getByRole('listitem').first()
+  const past = history(page).getByRole('listitem').last()
 
+  await expect(past.getByText('Jan 2, 2020', { exact: true })).toBeVisible()
   await expect(past.getByText('Current', { exact: true })).toHaveCount(0)
 
   await past.getByRole('button', {
-    name: 'Edit dates',
+    name: 'Edit date',
     exact: true
   }).click()
 
-  await page.getByLabel('Completed on', { exact: true }).fill('2020-02-03')
+  await expect(page.getByLabel('Watched on', { exact: true })).toHaveValue('2020-01-02')
+  await page.getByLabel('Watched on', { exact: true }).fill('2020-02-03')
 
   await page.getByRole('button', {
     name: 'Save viewing',
@@ -204,17 +189,17 @@ test('records first, repeat and past viewings, edits dates, cancels and confirms
 
   await expect(past.getByText('Feb 3, 2020', { exact: true })).toBeVisible()
 
-  const saved = page.getByRole('status').filter({ hasText: 'Viewing dates saved.' })
+  const saved = page.getByRole('status').filter({ hasText: 'Viewing date saved.' })
 
   await expect(saved).toBeVisible()
 
   await past.getByRole('button', {
-    name: 'Edit dates',
+    name: 'Edit date',
     exact: true
   }).click()
 
   await expect(saved).toHaveCount(0)
-  await page.getByLabel('Completed on', { exact: true }).fill('2020-02-04')
+  await page.getByLabel('Watched on', { exact: true }).fill('2020-02-04')
 
   await page.getByRole('button', {
     name: 'Save viewing',
@@ -225,10 +210,6 @@ test('records first, repeat and past viewings, edits dates, cancels and confirms
   await expect(saved).toBeVisible()
 
   })
-
-  const link = await getViewingLink(page)
-
-  expect(link).toContain('?viewingId=')
 
   await test.step('cancel and confirm deletion of the current viewing', async () => {
 
@@ -260,15 +241,13 @@ test('records first, repeat and past viewings, edits dates, cancels and confirms
   await expect(history(page).getByText('Current', { exact: true })).toHaveCount(0)
   })
 
-  await test.step('reload and open the exact viewing link', async () => {
+  await test.step('reload the saved viewing history', async () => {
     await page.reload()
-    await expect(history(page).getByRole('listitem')).toHaveCount(2)
-    await page.goto(link)
     await expect(history(page).getByRole('listitem')).toHaveCount(2)
     await expect(history(page).getByText('Current', { exact: true })).toHaveCount(0)
   })
 
-  await test.step('show separate dashboard rows and return to the exact viewing', async () => {
+  await test.step('show separate dashboard rows and return to the title', async () => {
     await page.goto('/dashboard')
     await expect(page.locator('dd')).toHaveText(['2', '0'])
     await expect(page.getByText('Movie viewings', { exact: true })).toBeVisible()
@@ -282,14 +261,14 @@ test('records first, repeat and past viewings, edits dates, cancels and confirms
       exact: true
   })).toHaveCount(2)
 
-  await expect(entries.first().getByRole('link')).toHaveAttribute('href', /\?viewingId=.+#viewing-/u)
+  await expect(entries.first().getByRole('link')).toHaveAttribute('href', path)
   await entries.first().getByRole('link').click()
-  await expect(page).toHaveURL(/\?viewingId=/u)
-  await expect(history(page).locator('[data-linked]')).toHaveCount(1)
+  await expect(page).toHaveURL(path)
+  await expect(history(page).getByRole('listitem')).toHaveCount(2)
   })
 })
 
-test('asks a guest to sign in for a linked movie and sends no private requests for series', async ({ page, context }) => {
+test('asks a guest to sign in and loads separate viewing histories for both title types', async ({ page, context }) => {
   const requests = observeViewingRequests(page)
 
   await page.goto(`${path}?viewingId=${dune.id}#viewing-${dune.id}`)
@@ -308,9 +287,9 @@ test('asks a guest to sign in for a linked movie and sends no private requests f
   await expect(page.getByRole('heading', {
     name: 'Your viewings',
     exact: true
-  })).toHaveCount(0)
+  })).toBeVisible()
 
-  expect(requests).toStrictEqual([])
+  expect(requests).toContain(`${appBaseUrl}/api/catalog/items/${chernobyl.id}/viewings`)
 })
 
 test.describe('viewing failure recovery', () => {
@@ -322,13 +301,14 @@ test.describe('viewing failure recovery', () => {
   test('keeps typed dates after failure and retries the creation key without an optimistic entry', async ({ page, context }) => {
     await addCookie(context, 'tv_session', 'e2e-session')
     await page.goto(path)
+    await waitForHydration(page)
 
     await page.getByRole('button', {
       name: 'Add past viewing',
       exact: true
     }).click()
 
-    await page.getByLabel('Started on', { exact: true }).fill('2020-01-01')
+    await page.getByLabel('Watched on', { exact: true }).fill('2020-01-01')
     await addCookie(context, 'fail_watched', '1')
 
     const keys = observeCreationKeys(page)
@@ -338,12 +318,15 @@ test.describe('viewing failure recovery', () => {
       exact: true
     }).click()
 
-    await expect(page.getByRole('alert')).toContainText('couldn’t save')
-    await expect(page.getByLabel('Started on', { exact: true })).toHaveValue('2020-01-01')
+    await expect(page.getByRole('alert')).toHaveText('We couldn’t confirm whether this change was saved. Retry to check the same change.')
+    await expect(page.getByLabel('Watched on', { exact: true })).toHaveValue('2020-01-01')
     await expect(history(page).getByRole('listitem')).toHaveCount(0)
 
-    await page.getByRole('button', {
-      name: 'Save viewing',
+    await page.getByRole('region', {
+      name: 'Your viewings',
+      exact: true
+    }).getByRole('button', {
+      name: 'Retry viewing',
       exact: true
     }).click()
 

@@ -67,14 +67,6 @@ const catalogTimelineQuerySchema = v.strictObject({
   cursor: v.optional(cursorSchema)
 })
 
-const catalogTimelineEpisodesQuerySchema = v.strictObject({
-  timeZone: catalogTimeZoneSchema,
-  viewingId: idSchema,
-  localDate: dateSchema,
-  groupCursor: cursorSchema,
-  cursor: v.optional(cursorSchema)
-})
-
 const eventEntries = {
   id: idSchema,
   occurredAt: timestampSchema
@@ -96,21 +88,30 @@ const catalogTimelineItemSchema = v.variant('kind', [
     kind: v.literal('movie_viewing'),
     viewingId: idSchema,
     startedOn: v.nullable(dateSchema),
-    completedOn: v.nullable(dateSchema)
+    completedOn: dateSchema,
+    score: scoreSchema
   }),
   v.strictObject({
     ...eventEntries,
+    id: v.pipe(v.string(), v.regex(/^episode_group:[0-9a-f-]{36}:\d{4}-\d{2}-\d{2}$/u)),
     kind: v.literal('episode_group'),
     viewingId: idSchema,
     localDate: dateSchema,
     totalCount: positiveIntegerSchema,
-    seasons: v.array(episodeSeasonSchema),
-    episodesCursor: cursorSchema
+    seasons: v.array(episodeSeasonSchema)
   }),
   v.strictObject({
     ...eventEntries,
-    kind: v.picklist(['series_started', 'rewatch_started', 'series_paused', 'series_completed']),
-    viewingId: idSchema
+    kind: v.picklist(['series_started', 'rewatch_started']),
+    viewingId: idSchema,
+    startedOn: dateSchema,
+    score: scoreSchema
+  }),
+  v.strictObject({
+    ...eventEntries,
+    kind: v.literal('series_completed'),
+    viewingId: idSchema,
+    completedOn: dateSchema
   }),
   v.strictObject({
     ...eventEntries,
@@ -118,16 +119,6 @@ const catalogTimelineItemSchema = v.variant('kind', [
     viewingId: idSchema,
     seasonNumber: v.nullable(positiveIntegerSchema),
     totalCount: positiveIntegerSchema
-  }),
-  v.strictObject({
-    ...eventEntries,
-    kind: v.literal('rating_changed'),
-    target: v.picklist(['item', 'season', 'episode']),
-    seasonNumber: v.nullable(positiveIntegerSchema),
-    catalogEpisodeId: v.nullable(idSchema),
-    episodeNumber: v.nullable(positiveIntegerSchema),
-    previousScore: scoreSchema,
-    score: scoreSchema
   })
 ])
 
@@ -136,42 +127,19 @@ const catalogTimelineResponseSchema = v.strictObject({
   nextCursor: v.nullable(cursorSchema)
 })
 
-const catalogTimelineEpisodeSchema = v.strictObject({
-  id: idSchema,
-  watchId: idSchema,
-  catalogEpisodeId: idSchema,
-  seasonNumber: positiveIntegerSchema,
-  episodeNumber: positiveIntegerSchema,
-  sourceTitle: v.nullable(v.string()),
-  markedAt: timestampSchema
-})
-
-const catalogTimelineEpisodesResponseSchema = v.strictObject({
-  items: v.array(catalogTimelineEpisodeSchema),
-  nextCursor: v.nullable(cursorSchema)
-})
-
 type CatalogTimelineQuery = v.InferOutput<typeof catalogTimelineQuerySchema>
-type CatalogTimelineEpisodesQuery = v.InferOutput<typeof catalogTimelineEpisodesQuerySchema>
 type CatalogTimelineItem = v.InferOutput<typeof catalogTimelineItemSchema>
 type CatalogTimelineResponse = v.InferOutput<typeof catalogTimelineResponseSchema>
-type CatalogTimelineEpisode = v.InferOutput<typeof catalogTimelineEpisodeSchema>
-type CatalogTimelineEpisodesResponse = v.InferOutput<typeof catalogTimelineEpisodesResponseSchema>
 type CatalogTimelineEpisodeSeason = v.InferOutput<typeof episodeSeasonSchema>
 
 export {
   catalogTimeZoneSchema,
-  catalogTimelineEpisodesQuerySchema,
-  catalogTimelineEpisodesResponseSchema,
   catalogTimelineQuerySchema,
   catalogTimelineResponseSchema
 }
 
 export type {
-  CatalogTimelineEpisode,
   CatalogTimelineEpisodeSeason,
-  CatalogTimelineEpisodesQuery,
-  CatalogTimelineEpisodesResponse,
   CatalogTimelineItem,
   CatalogTimelineQuery,
   CatalogTimelineResponse

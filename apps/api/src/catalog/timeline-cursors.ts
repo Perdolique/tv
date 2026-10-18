@@ -1,4 +1,5 @@
-import { catalogTimelineEpisodesQuerySchema, catalogTimeZoneSchema } from '@tv/shared/catalog-timeline'
+import { catalogTimeZoneSchema } from '@tv/shared/catalog-timeline'
+import { viewingDateSchema } from '@tv/shared/catalog-viewings'
 import * as v from 'valibot'
 
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog cursors reuse the canonical Base64URL codec.
@@ -11,49 +12,29 @@ interface TimelineScope {
   timeZone: string;
 }
 
-interface TimelinePosition {
+interface TimelineSourcePosition {
   occurredAt: string;
   id: string;
 }
 
-interface TimelineViewingPosition {
-  recordedAt: string;
-  id: string;
-}
-
-interface TimelineGroupScope extends TimelineScope {
-  viewingId: string;
+interface TimelinePosition extends TimelineSourcePosition {
   localDate: string;
 }
 
 interface TimelinePageCursor extends TimelineScope {
   kind: 'timeline';
-  upper: TimelinePosition;
+  upper: TimelineSourcePosition;
   after: TimelinePosition;
-  boundaryDate: string;
-  oldestSeenViewing: TimelineViewingPosition | null;
-  version: 1;
+  calendarVersion: string;
+  version: 4;
 }
-
-interface TimelineGroupCursor extends TimelineGroupScope {
-  kind: 'group';
-  upper: TimelinePosition;
-  version: 1;
-}
-
-interface TimelineEpisodesCursor extends TimelineGroupScope {
-  kind: 'episodes';
-  upper: TimelinePosition;
-  after: TimelinePosition;
-  version: 1;
-}
-
-type TimelineCursor = TimelinePageCursor | TimelineGroupCursor | TimelineEpisodesCursor
 
 function isExactTimestamp(value: string): boolean {
   const hasTimestampFormat = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(value)
 
-  if (!hasTimestampFormat) { return false }
+  if (!hasTimestampFormat) {
+    return false
+  }
 
   const hasZeroYear = value.startsWith('0000')
 
@@ -62,9 +43,8 @@ function isExactTimestamp(value: string): boolean {
   }
 
   const milliseconds = Date.parse(value)
-  const hasFiniteTimestamp = Number.isFinite(milliseconds)
 
-  if (!hasFiniteTimestamp) {
+  if (!Number.isFinite(milliseconds)) {
     return false
   }
 
@@ -79,49 +59,27 @@ function isExactTimestamp(value: string): boolean {
 const idSchema = v.pipe(v.string(), v.uuid())
 const timestampSchema = v.pipe(v.string(), v.check(isExactTimestamp))
 
-const positionSchema = v.strictObject({
+const sourcePositionSchema = v.strictObject({
   occurredAt: timestampSchema,
   id: idSchema
 })
 
-const viewingPositionSchema = v.strictObject({
-  recordedAt: timestampSchema,
-  id: idSchema
+const positionSchema = v.strictObject({
+  occurredAt: timestampSchema,
+  id: v.pipe(v.string(), v.regex(/^(?:[0-9a-f-]{36}|episode_group:[0-9a-f-]{36}:\d{4}-\d{2}-\d{2})$/u)),
+  localDate: viewingDateSchema
 })
 
-const scopeEntries = {
+const cursorSchema = v.strictObject({
   userId: idSchema,
   catalogItemId: idSchema,
   timeZone: catalogTimeZoneSchema,
-  upper: positionSchema,
-  version: v.literal(1)
-}
-
-const groupEntries = {
-  viewingId: catalogTimelineEpisodesQuerySchema.entries.viewingId,
-  localDate: catalogTimelineEpisodesQuerySchema.entries.localDate
-}
-
-const cursorSchema = v.variant('kind', [
-  v.strictObject({
-    ...scopeEntries,
-    kind: v.literal('timeline'),
-    after: positionSchema,
-    boundaryDate: catalogTimelineEpisodesQuerySchema.entries.localDate,
-    oldestSeenViewing: v.nullable(viewingPositionSchema)
-  }),
-  v.strictObject({
-    ...scopeEntries,
-    ...groupEntries,
-    kind: v.literal('group')
-  }),
-  v.strictObject({
-    ...scopeEntries,
-    ...groupEntries,
-    kind: v.literal('episodes'),
-    after: positionSchema
-  })
-])
+  kind: v.literal('timeline'),
+  upper: sourcePositionSchema,
+  after: positionSchema,
+  calendarVersion: v.pipe(v.string(), v.regex(/^[0-9a-f]{32}$/u)),
+  version: v.literal(4)
+})
 
 function invalidCursor(): CatalogHttpError {
   return new CatalogHttpError('INVALID_REQUEST', 400, {
@@ -129,7 +87,7 @@ function invalidCursor(): CatalogHttpError {
   })
 }
 
-function encodeTimelineCursor(cursor: TimelineCursor): string {
+function encodeTimelineCursor(cursor: TimelinePageCursor): string {
   const payload = JSON.stringify(cursor)
   const encoder = new TextEncoder()
   const bytes = encoder.encode(payload)
@@ -137,7 +95,11 @@ function encodeTimelineCursor(cursor: TimelineCursor): string {
   return encodeBase64Url(bytes)
 }
 
-function decodeTimelineCursor(value: string): TimelineCursor {
+function readTimelinePageCursor(value: string | null, scope: TimelineScope): TimelinePageCursor | null {
+  if (value === null) {
+    return null
+  }
+
   try {
     if (value.length > 4096) {
       throw invalidCursor()
@@ -153,26 +115,17 @@ function decodeTimelineCursor(value: string): TimelineCursor {
     const payload = decoder.decode(bytes)
     const json: unknown = JSON.parse(payload)
     const parsed = v.safeParse(cursorSchema, json)
-
-    if (!parsed.success) {
-      throw invalidCursor()
-    }
-
     const canonicalValue = encodeBase64Url(bytes)
 
-    if (canonicalValue !== value) {
+    if (!parsed.success || canonicalValue !== value) {
       throw invalidCursor()
     }
 
     const cursor = parsed.output
+    const matchesScope = cursor.userId === scope.userId && cursor.catalogItemId === scope.catalogItemId && cursor.timeZone === scope.timeZone
 
-    if ('after' in cursor) {
-      const sameTime = cursor.after.occurredAt === cursor.upper.occurredAt
-      const newer = cursor.after.occurredAt > cursor.upper.occurredAt || (sameTime && cursor.after.id > cursor.upper.id)
-
-      if (newer) {
-        throw invalidCursor()
-      }
+    if (!matchesScope) {
+      throw invalidCursor()
     }
 
     return cursor
@@ -181,83 +134,5 @@ function decodeTimelineCursor(value: string): TimelineCursor {
   }
 }
 
-function matchesScope(cursor: TimelineScope, scope: TimelineScope): boolean {
-  return cursor.userId === scope.userId && cursor.catalogItemId === scope.catalogItemId && cursor.timeZone === scope.timeZone
-}
-
-function matchesGroup(cursor: TimelineGroupScope, scope: TimelineGroupScope): boolean {
-  const hasSameScope = matchesScope(cursor, scope)
-
-  return hasSameScope && cursor.viewingId === scope.viewingId && cursor.localDate === scope.localDate
-}
-
-function readTimelinePageCursor(value: string | null, scope: TimelineScope): TimelinePageCursor | null {
-  if (value === null) {
-    return null
-  }
-
-  const cursor = decodeTimelineCursor(value)
-
-  if (cursor.kind !== 'timeline') {
-    throw invalidCursor()
-  }
-
-  const hasValidScope = matchesScope(cursor, scope)
-
-  if (!hasValidScope) {
-    throw invalidCursor()
-  }
-
-  return cursor
-}
-
-function readTimelineGroupCursor(value: string, scope: TimelineGroupScope): TimelineGroupCursor {
-  const cursor = decodeTimelineCursor(value)
-
-  if (cursor.kind !== 'group') {
-    throw invalidCursor()
-  }
-
-  const hasValidGroup = matchesGroup(cursor, scope)
-
-  if (!hasValidGroup) {
-    throw invalidCursor()
-  }
-
-  return cursor
-}
-
-function readTimelineEpisodesCursor(value: string | null, group: TimelineGroupCursor): TimelineEpisodesCursor | null {
-  if (value === null) {
-    return null
-  }
-
-  const cursor = decodeTimelineCursor(value)
-
-  if (cursor.kind !== 'episodes') {
-    throw invalidCursor()
-  }
-
-  const hasValidGroup = matchesGroup(cursor, group)
-
-  if (!hasValidGroup || cursor.upper.id !== group.upper.id || cursor.upper.occurredAt !== group.upper.occurredAt) {
-    throw invalidCursor()
-  }
-
-  return cursor
-}
-
-export {
-  encodeTimelineCursor,
-  readTimelineEpisodesCursor,
-  readTimelineGroupCursor,
-  readTimelinePageCursor
-}
-
-export type {
-  TimelineGroupCursor,
-  TimelinePageCursor,
-  TimelinePosition,
-  TimelineScope,
-  TimelineViewingPosition
-}
+export { encodeTimelineCursor, readTimelinePageCursor }
+export type { TimelinePageCursor, TimelinePosition, TimelineScope, TimelineSourcePosition }

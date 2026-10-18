@@ -7,6 +7,7 @@ import { waitForHydration } from './helpers.ts'
 const ratingPath = `/api/catalog/items/${dune.id}/rating`
 const titlePath = `/titles/${dune.id}`
 const ratingRoute = `**${ratingPath}`
+const viewingRoute = `**/api/catalog/items/${dune.id}/viewings`
 
 test.beforeEach(async ({ context }) => {
   await context.addCookies([{
@@ -51,7 +52,7 @@ for (const item of [dune, chernobyl]) {
       })).toHaveText('Rate')
 
       await expect(rate).toBeFocused()
-      await expect(panel.getByRole('status')).toHaveText('Rating saved.')
+      await expect(panel.getByRole('status')).toHaveText('Viewing and rating saved.')
       await expect(scoreCard).toContainText('7 out of 10')
     })
 
@@ -148,7 +149,7 @@ for (const item of [dune, chernobyl]) {
       })).toBeVisible()
 
       await expect(rate).toBeFocused()
-      await expect(scoreCard).toHaveText(/^Your rating\s*—\s*$/u)
+      await expect(scoreCard).toHaveText(/^Current viewing\s*—\s*$/u)
     })
 
     await expect(page.getByRole('button', {
@@ -175,7 +176,7 @@ for (const [width, nextWidth, pendingOverflowY] of [[400, 640, 'visible'], [1440
 
     const rate = page.getByRole('button', { name: /^(?:Rate|Rate, your rating: \d+ out of 10)$/u })
 
-    await page.route(ratingRoute, async route => {
+    await page.route(viewingRoute, async route => {
       await read.promise
 
       await route.continue()

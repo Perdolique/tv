@@ -6,6 +6,7 @@ import { dune } from './details.fixtures.ts'
 const ratingPath = `/api/catalog/items/${dune.id}/rating`
 const titlePath = `/titles/${dune.id}`
 const ratingRoute = `**${ratingPath}`
+const viewingPath = `/api/catalog/items/${dune.id}/viewings`
 
 test.beforeEach(async ({ context }) => {
   await context.addCookies([{
@@ -15,10 +16,10 @@ test.beforeEach(async ({ context }) => {
   }])
 })
 
-async function holdRatingFailure(page: Page) {
+async function holdRatingFailure(page: Page, routePattern = ratingRoute) {
   const response = Promise.withResolvers<boolean>()
 
-  await page.route(ratingRoute, async route => {
+  await page.route(routePattern, async route => {
     await response.promise
 
     await route.fulfill({
@@ -58,8 +59,13 @@ test.describe('rating failures', () => {
       await page.keyboard.press('Space')
       await expect(chosenScore).toBeDisabled()
       release()
-      await expect(panel.getByRole('alert')).toContainText('Try again')
-      await expect(chosenScore).toBeFocused()
+      await expect(panel.getByRole('alert')).toHaveText('We couldn’t confirm whether this change was saved. Retry to check the same change.')
+
+      await expect(panel.getByRole('button', {
+        name: 'Retry rating',
+        exact: true
+      })).toBeFocused()
+
       await expect(chosenScore).toHaveAttribute('aria-pressed', 'false')
 
       await expect(panel.getByRole('button', {
@@ -106,8 +112,12 @@ test.describe('rating failures', () => {
       await page.keyboard.press('Enter')
       await expect(remove).toBeDisabled()
       release()
-      await expect(panel.getByRole('alert')).toContainText('Try again')
-      await expect(remove).toBeFocused()
+      await expect(panel.getByRole('alert')).toHaveText('We couldn’t confirm whether this change was saved. Retry to check the same change.')
+
+      await expect(panel.getByRole('button', {
+        name: 'Retry rating',
+        exact: true
+      })).toBeFocused()
 
       await expect(panel.getByRole('button', {
         name: 'Rate, your rating: 7 out of 10',
@@ -156,7 +166,7 @@ test.describe('rating failures', () => {
       await expect(chosenScore).toBeDisabled()
       await follow.focus()
       release()
-      await expect(panel.getByRole('alert')).toContainText('Try again')
+      await expect(panel.getByRole('alert')).toHaveText('We couldn’t confirm whether this change was saved. Retry to check the same change.')
       await expect(follow).toBeFocused()
       await expect(chosenScore).toHaveAttribute('aria-pressed', 'false')
     } finally {
@@ -166,15 +176,16 @@ test.describe('rating failures', () => {
 
   test.describe('failed read retry', () => {
     test.use({ expectedHttpErrors: { values: [{
-      pathname: ratingPath,
+      pathname: viewingPath,
       status: 503
     }, {
-      pathname: ratingPath,
+      pathname: viewingPath,
       status: 503
     }] } })
 
     test('offers retry instead of showing an unrated score when reading fails', async ({ page }) => {
-      const first = await holdRatingFailure(page)
+      const viewingRoute = `**${viewingPath}`
+      const first = await holdRatingFailure(page, viewingRoute)
 
       first()
       await page.goto(titlePath)
@@ -182,14 +193,14 @@ test.describe('rating failures', () => {
       const panel = page.getByRole('region', { name: 'Your rating' })
       const retry = panel.getByRole('button', { name: 'Retry rating' })
 
-      await expect(panel.getByRole('alert')).toContainText('load your rating')
+      await expect(page.getByRole('alert')).toHaveText('We couldn’t refresh your viewings. Try again.')
 
       await expect(panel.getByRole('button', {
         name: 'Rate',
         exact: true
       })).toHaveCount(0)
 
-      const release = await holdRatingFailure(page)
+      const release = await holdRatingFailure(page, viewingRoute)
 
       try {
         await retry.focus()
@@ -198,7 +209,7 @@ test.describe('rating failures', () => {
         await expect(page.getByRole('region', { name: 'Personal score' })).toContainText('Loading…')
         await expect(retry).toHaveCount(0)
         release()
-        await expect(panel.getByRole('alert')).toContainText('load your rating')
+        await expect(page.getByRole('alert')).toHaveText('We couldn’t refresh your viewings. Try again.')
         await expect(retry).toBeFocused()
         await page.keyboard.press('Enter')
 

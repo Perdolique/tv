@@ -1,194 +1,160 @@
 import { useRequestFetch } from '#app'
+import { catalogRatingMutationResponseSchema } from '@tv/shared/catalog-viewings'
 import { isRecord } from '@tv/shared/type-guards'
-import { computed, ref, watch, type Ref } from 'vue'
+import { shallowRef, toRef, watch, type Ref } from 'vue'
 import * as v from 'valibot'
 import { useRequestCancellation } from '~/composables/use-request-cancellation.ts'
-import { catalogRatingResponseSchema } from '~/utils/catalog-response.ts'
+import type { CatalogViewingsState } from '~/composables/use-catalog-viewings.ts'
 import { catalogRatingPath, type CatalogRatingTarget } from '~/utils/catalog-rating-target.ts'
 
 type RatingStatus = 'idle' | 'loading' | 'loaded' | 'error'
-type RatingUnauthorized = 'load' | 'mutation' | null
 
-function useCatalogRating(
-  target: Readonly<Ref<CatalogRatingTarget | null>>,
-  accountId: Readonly<Ref<string | null>>
-) {
+function useCatalogRating(target: Readonly<Ref<CatalogRatingTarget | null>>, accountId: Readonly<Ref<string | null>>, viewings: CatalogViewingsState) {
   const requestFetch = useRequestFetch()
-  const targetPath = computed(() => target.value === null ? null : catalogRatingPath(target.value))
-  const status = ref<RatingStatus>('idle')
-  const score = ref<number | null>(null)
-  const isSaving = ref(false)
-  const saveError = ref('')
-  const unauthorized = ref<RatingUnauthorized>(null)
-  const requestCancellation = useRequestCancellation()
+  const targetPath = toRef(() => target.value === null ? null : catalogRatingPath(target.value))
+  const status = shallowRef<RatingStatus>('idle')
+  const score = shallowRef<number | null>(null)
+  const saveError = shallowRef('')
+  const unauthorized = shallowRef<'load' | 'mutation' | null>(null)
+  const reads = useRequestCancellation()
+  const { isSaving } = viewings
+  const mutationKey = toRef(() => `rating:${targetPath.value}:${viewings.selectedViewingId.value ?? 'current'}`)
+  const hasUnconfirmedMutation = toRef(() => viewings.unconfirmedMutation.value?.key === mutationKey.value)
+  const isBlocked = toRef(() => viewings.isMutationBlocked(mutationKey.value))
+  let writeRequest: object | null = null
+  const needsViewing = toRef(() => viewings.summary.value.currentViewingId === null && viewings.selectedViewingId.value === null)
 
   function reset(): void {
-    requestCancellation.cancel()
+    reads.cancel()
 
     score.value = null
-    isSaving.value = false
     saveError.value = ''
     status.value = 'idle'
     unauthorized.value = null
   }
-
   async function load(): Promise<void> {
-    const currentPath = targetPath.value
-    const cannotLoad = accountId.value === null || currentPath === null || isSaving.value
+    const path = targetPath.value
 
-    if (cannotLoad) {
-      return
-    }
+    if (path === null || accountId.value === null || isSaving.value || viewings.pendingMutation.value !== null) { return }
 
-    const request = requestCancellation.start()
+    const request = reads.start()
+    const viewingId = viewings.selectedViewingId.value
 
-    saveError.value = ''
     status.value = 'loading'
-    unauthorized.value = null
 
     try {
-      const requestUrl = `${currentPath}/rating`
+      const url = `${path}/rating`
 
-      const response = await requestFetch(
-        requestUrl,
-        {
-          retry: 0,
-          signal: request.signal
-        }
-      )
-
-      if (!requestCancellation.isCurrent(request)) {
-        return
-      }
-
-      const parsed = v.safeParse(catalogRatingResponseSchema, response)
-
-      if (!parsed.success) {
-        globalThis.console.error('Catalog rating response validation failed.', parsed.issues)
-
-        status.value = 'error'
-
-        return
-      }
-
-      score.value = parsed.output.score
-      status.value = 'loaded'
-    } catch (error) {
-      if (!requestCancellation.isCurrent(request)) {
-        return
-      }
-
-      const isUnauthorized = isRecord(error) && error.statusCode === 401
-
-      if (isUnauthorized) {
-        unauthorized.value = 'load'
-
-        return
-      }
-
-      globalThis.console.warn({
-        error,
-        message: 'Catalog rating request failed.'
-      })
-
-      status.value = 'error'
-    } finally {
-      requestCancellation.finish(request)
-    }
-  }
-
-  async function save(nextScore: number | null): Promise<boolean> {
-    const currentPath = targetPath.value
-    const cannotSave = accountId.value === null || currentPath === null || status.value !== 'loaded' || isSaving.value
-
-    if (cannotSave) {
-      return false
-    }
-
-    const request = requestCancellation.start()
-
-    isSaving.value = true
-    saveError.value = ''
-    unauthorized.value = null
-
-    try {
-      const requestUrl = `${currentPath}/rating`
-      const method = nextScore === null ? 'DELETE' : 'PUT'
-      const body = nextScore === null ? undefined : { score: nextScore }
-
-      const response = await requestFetch(requestUrl, {
-        method,
-        body,
+      const response: unknown = await requestFetch(url, {
+        query: viewingId === null ? undefined : { viewingId },
         retry: 0,
         signal: request.signal
       })
 
-      if (!requestCancellation.isCurrent(request)) {
-        return false
-      }
+      if (!reads.isCurrent(request)) { return }
 
-      const parsed = v.safeParse(catalogRatingResponseSchema, response)
-      const isInvalidResponse = !parsed.success || parsed.output.score !== nextScore
+      const result = v.parse(catalogRatingMutationResponseSchema, response)
 
-      if (isInvalidResponse) {
-        if (parsed.success) {
-          globalThis.console.error('Catalog rating response did not match the requested score.')
-        } else {
-          globalThis.console.error('Catalog rating response validation failed.', parsed.issues)
-        }
+      if (viewingId !== null && result.viewing?.id !== viewingId) { throw new Error('Rating response viewing mismatch') }
 
-        saveError.value = 'We couldn’t save your rating. Try again.'
+      viewings.applyConfirmed(result)
 
-        return false
-      }
-
-      score.value = parsed.output.score
-
-      return true
+      score.value = result.score
+      status.value = 'loaded'
     } catch (error) {
-      if (!requestCancellation.isCurrent(request)) {
-        return false
-      }
+      if (!reads.isCurrent(request)) { return }
 
-      const isUnauthorized = isRecord(error) && error.statusCode === 401
-
-      if (isUnauthorized) {
-        unauthorized.value = 'mutation'
-
-        return false
-      }
-
-      globalThis.console.warn({
+      if (isRecord(error) && error.statusCode === 401) { unauthorized.value = 'load' }
+      else {
+        globalThis.console.warn({
         error,
-        message: 'Catalog rating update request failed.'
+        message: 'Catalog rating request failed.'
       })
 
-      saveError.value = 'We couldn’t save your rating. Try again.'
+        status.value = 'error'
+      }
+    } finally { reads.finish(request) }
+  }
+  async function save(nextScore: number | null, viewingDate?: string): Promise<boolean> {
+    const path = targetPath.value
+    const ratingTarget = target.value
+
+    if (path === null || ratingTarget === null || status.value !== 'loaded' || isSaving.value) { return false }
+
+    reads.cancel()
+
+    saveError.value = ''
+
+    const requestAccount = accountId.value
+    const requestViewingId = viewings.selectedViewingId.value
+    const request = {}
+
+    writeRequest = request
+
+    const selected = viewings.selectedViewing.value
+    const historical = viewings.isHistorical.value && selected !== null
+    const itemId = encodeURIComponent(ratingTarget.catalogItemId)
+    const viewingId = selected === null ? '' : encodeURIComponent(selected.id)
+    const suffix = ratingTarget.seasonNumber === null ? '' : `/seasons/${ratingTarget.seasonNumber}`
+    const url = historical ? `/api/catalog/items/${itemId}/viewings/${viewingId}${suffix}/rating` : `${path}/rating`
+    const ratingViewing = historical ? selected : undefined
+
+    const response = await viewings.saveScore({
+      url,
+      key: mutationKey.value,
+      score: nextScore,
+      viewingDate,
+      viewing: ratingViewing
+    })
+
+    if (writeRequest === request) { writeRequest = null }
+
+    if (path !== targetPath.value || requestAccount !== accountId.value || requestViewingId !== viewings.selectedViewingId.value) { return false }
+
+    if (response === null) {
+      saveError.value = viewings.saveError.value
+      unauthorized.value = viewings.unauthorized.value
 
       return false
-    } finally {
-      if (requestCancellation.finish(request)) {
-        isSaving.value = false
-      }
     }
+
+    const result = v.parse(catalogRatingMutationResponseSchema, response)
+
+    score.value = result.score
+    status.value = 'loaded'
+
+    return true
+  }
+  async function retryMutation(): Promise<boolean> {
+    const saved = await viewings.retryMutation()
+
+    if (saved) { await load() }
+    else { saveError.value = viewings.saveError.value }
+
+    return saved
   }
 
-  watch([targetPath, accountId], ([currentPath, currentAccountId]) => {
+  watch([() => targetPath.value, () => accountId.value, () => viewings.selectionKey.value], () => {
     reset()
 
-    const shouldLoad = !import.meta.env.SSR && currentPath !== null && currentAccountId !== null
-
-    if (shouldLoad) {
-      void load()
-    }
+    if (!import.meta.env.SSR) { void load() }
   }, {
     flush: 'sync',
     immediate: true
   })
 
+  watch(viewings.isSaving, saving => {
+    if (saving) { reads.cancel() }
+    else if (!import.meta.env.SSR && writeRequest === null && viewings.pendingMutation.value === null && (status.value === 'idle' || status.value === 'loading')) { void load() }
+  }, { flush: 'sync' })
+
   return {
+    hasUnconfirmedMutation,
+    isBlocked,
     isSaving,
     load,
+    needsViewing,
+    retryMutation,
     save,
     saveError,
     score,
@@ -196,6 +162,5 @@ function useCatalogRating(
     unauthorized
   }
 }
-
 export { useCatalogRating }
 export type { RatingStatus }

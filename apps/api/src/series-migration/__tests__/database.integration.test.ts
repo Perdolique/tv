@@ -110,6 +110,18 @@ describe('filled series timeline migration', () => {
 
       await Promise.all(copies)
 
+      const afterFolder = join(directory, 'after')
+      const applicableFolders = folders.filter(folder => folder <= migrationName)
+
+      const finalCopies = applicableFolders.map(async folder => {
+        const source = join(migrationsFolder, folder)
+        const target = join(afterFolder, folder)
+
+        await cp(source, target, { recursive: true })
+      })
+
+      await Promise.all(finalCopies)
+
       const database = createDatabase(client)
 
       await migrate(database, { migrationsFolder: beforeFolder })
@@ -266,7 +278,7 @@ describe('filled series timeline migration', () => {
 
       const failedFolder = join(directory, 'failed')
 
-      await cp(migrationsFolder, failedFolder, { recursive: true })
+      await cp(afterFolder, failedFolder, { recursive: true })
 
       const failedMigrationFile = join(failedFolder, migrationName, 'migration.sql')
 
@@ -283,7 +295,7 @@ describe('filled series timeline migration', () => {
       const newTable = await client.query('SELECT to_regclass(\'catalog_viewing_episode_watches\') AS name')
 
       expect(newTable.rows).toStrictEqual([{ name: null }])
-      await migrate(database, { migrationsFolder })
+      await migrate(database, { migrationsFolder: afterFolder })
 
       const viewings = await client.query<MigratedSeriesViewing>(`SELECT viewings.id, viewings.user_id AS "userId", viewings.catalog_item_id AS "catalogItemId", viewings.status,
         to_char(viewings.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "recordedAt",

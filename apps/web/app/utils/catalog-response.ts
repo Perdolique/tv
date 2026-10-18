@@ -1,17 +1,14 @@
 import type {
   CatalogDetailsResponse,
-  CatalogEpisodeRatingsResponse,
   CatalogEpisodeRatingSummariesResponse,
   CatalogEpisodesResponse,
   CatalogFollowResponse,
-  CatalogRatingResponse,
   CatalogRatingSummaryResponse,
   CatalogReleasesResponse,
   CatalogSearchResponse,
   CatalogUpcomingReleasesResponse,
   CatalogViewingHistoryResponse,
   CatalogViewingSummaryResponse,
-  CatalogWatchedResponse,
   CatalogWatchlistResponse
 } from '@tv/shared/catalog'
 
@@ -56,14 +53,6 @@ const catalogFollowResponseSchema = v.strictObject({
   followed: v.boolean()
 }) satisfies v.GenericSchema<CatalogFollowResponse>
 
-const catalogWatchedResponseSchema = v.strictObject({
-  watched: v.boolean()
-}) satisfies v.GenericSchema<CatalogWatchedResponse>
-
-const catalogRatingResponseSchema = v.strictObject({
-  score: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10)))
-}) satisfies v.GenericSchema<CatalogRatingResponse>
-
 const catalogRatingSummaryResponseSchema = v.pipe(
   v.strictObject({
     averageScore: v.nullable(v.pipe(v.number(), v.finite(), v.minValue(1), v.maxValue(10))),
@@ -71,13 +60,6 @@ const catalogRatingSummaryResponseSchema = v.pipe(
   }),
   v.check(summary => (summary.ratingCount === 0) === (summary.averageScore === null))
 ) satisfies v.GenericSchema<CatalogRatingSummaryResponse>
-
-const catalogEpisodeRatingsResponseSchema = v.strictObject({
-  items: v.array(v.strictObject({
-    episodeId: catalogItemIdSchema,
-    score: catalogRatingResponseSchema.entries.score
-  }))
-}) satisfies v.GenericSchema<CatalogEpisodeRatingsResponse>
 
 const catalogEpisodeRatingSummariesResponseSchema = v.strictObject({
   items: v.array(v.pipe(v.strictObject({
@@ -180,16 +162,13 @@ function normalizeSearchQuery(value: unknown): string {
 export {
   catalogDetailsResponseSchema,
   catalogEpisodesResponseSchema,
-  catalogEpisodeRatingsResponseSchema,
   catalogEpisodeRatingSummariesResponseSchema,
   catalogFollowResponseSchema,
-  catalogRatingResponseSchema,
   catalogRatingSummaryResponseSchema,
   catalogReleasesResponseSchema,
   catalogUpcomingReleasesResponseSchema,
   catalogViewingHistoryResponseSchema,
   catalogViewingSummaryResponseSchema,
-  catalogWatchedResponseSchema,
   catalogSearchResponseSchema,
   catalogWatchlistResponseSchema,
   normalizeSearchQuery

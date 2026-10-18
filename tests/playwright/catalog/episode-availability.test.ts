@@ -38,7 +38,10 @@ async function openDatedEpisodes(page: Page, context: BrowserContext): Promise<v
     exact: true
   }).click()
 
-  await expect(page.getByRole('listitem')).toHaveCount(5)
+  await expect(page.getByRole('region', {
+    name: 'Season 1 episode ratings',
+    exact: true
+  }).getByRole('listitem')).toHaveCount(5)
 }
 
 async function removeOldMark(page: Page, title: string): Promise<void> {
@@ -88,7 +91,10 @@ for (const zone of zones) {
         exact: true
       })).toHaveCount(zone.available)
 
-      await expect(page.getByRole('listitem')).toHaveCount(5)
+      await expect(page.getByRole('region', {
+        name: 'Season 1 episode ratings',
+        exact: true
+      }).getByRole('listitem')).toHaveCount(5)
 
       const future = page.getByRole('listitem').filter({ hasText: 'Open Wide, O Earth' })
       const undated = page.getByRole('listitem').filter({ hasText: 'The Happiness of All Mankind' })
@@ -103,8 +109,8 @@ for (const zone of zones) {
         exact: true
       })).toHaveCount(0)
 
-      await expect(future.getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
-      await expect(undated.getByRole('button', { name: /^Rate episode,/u })).toBeEnabled()
+      await expect(future.getByRole('button', { name: /^Rate episode,/u })).toBeDisabled()
+      await expect(undated.getByRole('button', { name: /^Rate episode,/u })).toBeDisabled()
 
       await expect(page.getByRole('button', {
         name: 'Mark season 1 watched',
@@ -160,7 +166,12 @@ test('removes old future and undated marks without leaving new controls or losin
 
       expect([futureId, undatedId]).toContain(id)
 
-      const remaining = state.watchedEpisodeIds.filter(episodeId => episodeId !== id)
+      const remaining: string[] = []
+
+      for (const watch of state.watches) {
+        // oxlint-disable-next-line vitest/no-conditional-in-test -- Keep the other existing marks in the simulated deletion result in one pass.
+        if (watch.catalogEpisodeId !== id) { remaining.push(watch.catalogEpisodeId) }
+      }
 
       state = seriesResponse(remaining, viewingId, 1)
 

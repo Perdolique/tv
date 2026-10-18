@@ -1,0 +1,2 @@
+CREATE INDEX "catalog_viewings_owner_item_recorded_index" ON "catalog_viewings" ("user_id","catalog_item_id","recorded_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "catalog_viewings_owner_recorded_index" ON "catalog_viewings" ("user_id","recorded_at" DESC NULLS LAST,"id" DESC NULLS LAST);
