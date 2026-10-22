@@ -1,4 +1,8 @@
 import type { NuxtOptions } from 'nuxt/schema'
+import { viewingStatusPresentation } from './app/utils/catalog-viewing-status.ts'
+
+const viewingStatuses = Object.values(viewingStatusPresentation)
+const viewingStatusIcons = viewingStatuses.map(status => status.icon)
 
 type TypeScriptCompilerOptions = NonNullable<
   NuxtOptions['typescript']['tsConfig']['compilerOptions']
@@ -51,6 +55,7 @@ export default defineNuxtConfig({
 
   icon: {
     clientBundle: {
+      icons: viewingStatusIcons,
       scan: true,
       sizeLimitKb: 64
     },

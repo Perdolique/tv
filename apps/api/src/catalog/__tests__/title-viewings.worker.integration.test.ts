@@ -111,6 +111,82 @@ describe('title viewing Worker contract', () => {
     await Promise.all(requests)
   })
 
+  it.each(['paused', 'dropped'] as const)('returns %s through the private HTTP contract and rejects missing or stale context', async status => {
+    const id = await findCatalogItemId('Chernobyl')
+    const path = `/api/catalog/items/${id}/viewings`
+    const createRequestId = crypto.randomUUID()
+
+    const createdResponse = await request(path, 'POST', TEST_COOKIE, {
+      requestId: createRequestId,
+      mode: 'current',
+      currentViewingId: null,
+      contextVersion: 0,
+      status: 'watching',
+      startedOn: '2026-10-01',
+      completedOn: null
+    })
+
+    const createdRaw: unknown = await createdResponse.json()
+    const created = v.parse(catalogViewingMutationResponseSchema, createdRaw)
+    const target = `${path}/${created.viewing.id}`
+    const requestId = crypto.randomUUID()
+
+    const input = {
+      requestId,
+      revision: created.viewing.revision,
+      currentViewingId: created.viewing.id,
+      contextVersion: created.summary.contextVersion,
+      status,
+      startedOn: created.viewing.startedOn,
+      completedOn: null
+    }
+
+    const missing = await request(target, 'PATCH', TEST_COOKIE, {
+      ...input,
+      contextVersion: undefined
+    })
+
+    expect(missing.status).toBe(400)
+
+    const updatedResponse = await request(target, 'PATCH', TEST_COOKIE, input)
+    const updatedRaw: unknown = await updatedResponse.json()
+    const updated = v.parse(catalogViewingMutationResponseSchema, updatedRaw)
+
+    expect(updatedResponse.status).toBe(200)
+    expectNoStore(updatedResponse)
+
+    expect(updated.viewing).toMatchObject({
+      id: created.viewing.id,
+      status,
+      completedOn: null
+    })
+
+    const repeated = await request(target, 'PATCH', TEST_COOKIE, input)
+    const repeatedBody: unknown = await repeated.json()
+
+    expect(repeatedBody).toStrictEqual(updated)
+
+    const staleRequestId = crypto.randomUUID()
+
+    const stale = await request(target, 'PATCH', TEST_COOKIE, {
+      ...input,
+      requestId: staleRequestId
+    })
+
+    expect(stale.status).toBe(409)
+
+    const filtered = await request(`/api/catalog/viewing-history?status=${status}`)
+    const history: unknown = await filtered.json()
+
+    expect(filtered.status).toBe(200)
+    expectNoStore(filtered)
+
+    expect(history).toMatchObject({ items: [{
+      viewingId: created.viewing.id,
+      status
+    }] })
+  })
+
   it.each([
     {
       name: 'malformed JSON',
@@ -317,6 +393,8 @@ describe('title viewing Worker contract', () => {
 
     const dates = {
       requestId: dateRequestId,
+      currentViewingId: first.summary.currentViewingId,
+      contextVersion: first.summary.contextVersion,
       status: 'completed',
       revision: 1,
       startedOn: '2024-02-29',

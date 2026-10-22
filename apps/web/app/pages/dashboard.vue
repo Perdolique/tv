@@ -88,7 +88,7 @@
                     <h3 :class="$style.itemTitle" :lang="item.titleLocale">{{ item.title }}</h3>
                     <p :class="$style.metadata">{{ item.metadata }}</p>
                     <div :class="$style.viewingState">
-                      <AppStatusChip :tone="item.tone">{{ item.statusLabel }}</AppStatusChip>
+                      <AppStatusChip :tone="item.tone" :class="$style.status"><Icon :class="$style.statusIcon" aria-hidden="true" mode="svg" :name="item.statusIcon" />{{ item.statusLabel }}</AppStatusChip>
                       <span :class="[$style.score, { 'is-rated': item.isRated }]">{{ item.scoreLabel }}</span>
                     </div>
                     <p v-for="date in item.dates" :key="date.label" :class="$style.timestamp">{{ date.label }} <time :datetime="date.value">{{ date.display }}</time></p>
@@ -141,7 +141,9 @@
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
-  import AppStatusChip, { type StatusChipTone } from '~/components/ui/AppStatusChip.vue'
+  import AppStatusChip from '~/components/ui/AppStatusChip.vue'
+  import { catalogViewingStatusSchema } from '@tv/shared/catalog-viewings'
+  import { viewingStatusPresentation } from '~/utils/catalog-viewing-status.ts'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
   import { useViewingHistory } from '~/composables/use-viewing-history.ts'
   import { formatCalendarDateForDisplay } from '~/utils/calendar-date.ts'
@@ -160,7 +162,14 @@
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
   const hasSessionError = computed(() => state.value.status === 'error')
   const accountId = computed(() => state.value.status === 'authenticated' ? state.value.user.id : null)
-  const selectedStatus = computed(() => route.query.status === 'watching' || route.query.status === 'completed' ? route.query.status : null)
+
+  const selectedStatus = computed(() => {
+    const value = route.query.status
+    const status = catalogViewingStatusSchema.options.find(option => option === value)
+
+    return status ?? null
+  })
+
   const isFiltered = computed(() => selectedStatus.value !== null)
 
   const filters = [{
@@ -169,6 +178,12 @@
   }, {
     label: 'Watching',
     value: 'watching'
+  }, {
+    label: 'Paused',
+    value: 'paused'
+  }, {
+    label: 'Dropped',
+    value: 'dropped'
   }, {
     label: 'Completed',
     value: 'completed'
@@ -239,7 +254,7 @@
   const historyRows = computed(() => items.value.map(item => {
     const typeLabel = item.type === 'movie' ? 'Movie' : 'Series'
     const metadata = item.releaseYear === null ? typeLabel : `${typeLabel} · ${item.releaseYear}`
-    const tone: StatusChipTone = item.status === 'completed' ? 'success' : 'info'
+    const presentation = viewingStatusPresentation[item.status]
     const dates = []
 
     if (item.startedOn !== null) {
@@ -268,8 +283,9 @@
       location: `/titles/${item.id}`,
       dates,
       metadata,
-      tone,
-      statusLabel: item.status === 'completed' ? 'Completed' : 'Watching',
+      tone: presentation.tone,
+      statusIcon: presentation.icon,
+      statusLabel: presentation.label,
       scoreLabel: item.score === null ? 'Not rated' : `${item.score}/10`,
       isRated: item.score !== null,
       posterUrl: item.posterUrl,
@@ -443,6 +459,8 @@
     .filter:has(:checked) { border-color: var(--color-accent); }
     .filter input { accent-color: var(--color-accent); }
     .action[aria-disabled='true'] { background: var(--color-surface-muted); color: var(--color-text-secondary); cursor: progress; }
+    .status { gap: var(--space-1); }
+    .statusIcon { inline-size: 1rem; block-size: 1rem; flex-shrink: 0; }
     .viewingState { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-1); }
     .score {
       color: var(--color-text-secondary);

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { env } from 'node:process'
 import { createDatabase } from '@tv/database'
 import type { CatalogSeriesWatchInput, CatalogSeriesWatchesResponse } from '@tv/shared/catalog-series'
+import type { CatalogViewing, CatalogViewingStatus, CatalogViewingSummary } from '@tv/shared/catalog-viewings'
 import { Client } from 'pg'
 import { afterAll, afterEach, assert, beforeEach, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
@@ -81,6 +82,38 @@ async function events(): Promise<string[]> {
   return result.rows.map(row => row.kind)
 }
 
+interface ViewingSnapshot {
+  viewing: CatalogViewing | null;
+  summary: CatalogViewingSummary;
+}
+
+async function changeViewingStatus(snapshot: ViewingSnapshot, status: CatalogViewingStatus) {
+  const { viewing } = snapshot
+
+  assert(viewing !== null)
+
+  const requestId = randomUUID()
+
+  const targetOwner = {
+    ...owner,
+    viewingId: viewing.id
+  }
+
+  const completedOn = status === 'completed' ? '2000-01-05' : null
+
+  const input = {
+    requestId,
+    revision: viewing.revision,
+    currentViewingId: snapshot.summary.currentViewingId,
+    contextVersion: snapshot.summary.contextVersion,
+    status,
+    startedOn: viewing.startedOn,
+    completedOn
+  }
+
+  return updateViewing(database, targetOwner, input)
+}
+
 async function rewatch(response: CatalogSeriesWatchesResponse) {
   const requestId = randomUUID()
 
@@ -127,6 +160,280 @@ describe('series viewing persistence', () => {
   })
 
   afterAll(async () => { await client.end() })
+
+  it.each(['paused', 'dropped'] as const)('keeps %s explicit through new marks, bulk marks, episode scores and completion corrections', async status => {
+    const firstInput = initialInput()
+    const first = await markSeriesEpisodeWatched(database, userId, episodeIds[0], firstInput)
+    const ratingContext = nextInput(first)
+
+    const rated = await setCurrentCatalogRating(database, owner, target, {
+      ...ratingContext,
+      score: 7
+    })
+
+    const before = await events()
+    const inactive = await changeViewingStatus(rated, status)
+
+    expect(inactive.viewing).toMatchObject({
+      status,
+      score: 7,
+      completedOn: null,
+      startedOn: '2000-01-01'
+    })
+
+    expect(inactive.summary.currentVoteScore).toBe(7)
+
+    const inactiveEvents = await events()
+
+    expect(inactiveEvents).toStrictEqual(before)
+
+    const noop = await changeViewingStatus(inactive, status)
+
+    expect(noop).toStrictEqual(inactive)
+
+    const episodeTarget = {
+      seasonNumber: null,
+      catalogEpisodeId: episodeIds[1]
+    }
+
+    const scoreRequestId = randomUUID()
+
+    const scored = await setCurrentCatalogRating(database, owner, episodeTarget, {
+      requestId: scoreRequestId,
+      currentViewingId: inactive.viewing.id,
+      contextVersion: inactive.summary.contextVersion,
+      score: 8,
+      timeZone: 'Pacific/Kiritimati'
+    })
+
+    expect(scored.viewing?.status).toBe(status)
+    expect(scored.watches).toHaveLength(2)
+
+    const extraFirst = randomUUID()
+    const extraSecond = randomUUID()
+    const extra = [extraFirst, extraSecond] as const
+
+    await client.query(`INSERT INTO catalog_episodes (id,catalog_item_id,season_number,episode_number,air_date)
+      VALUES ($1,$3,2,1,'2000-01-01'),($2,$3,2,2,'2000-01-01')`, [extra[0], extra[1], catalogItemId])
+
+    const markRequestId = randomUUID()
+
+    const marked = await markSeriesEpisodeWatched(database, userId, extra[0], {
+      requestId: markRequestId,
+      currentViewingId: inactive.viewing.id,
+      contextVersion: scored.summary.contextVersion,
+      timeZone: 'UTC'
+    })
+
+    expect(marked.viewing?.status).toBe(status)
+
+    const bulkInput = nextInput(marked)
+    const bulk = await markSeriesEpisodesWatched(database, owner, bulkInput, null)
+
+    expect(bulk.viewing).toMatchObject({
+      status,
+      id: inactive.viewing.id,
+      score: 7
+    })
+
+    expect(bulk.watches).toHaveLength(4)
+    expect(bulk.summary.currentVoteScore).toBe(7)
+
+    const completed = await changeViewingStatus(bulk, 'completed')
+
+    expect(completed.viewing.completedOn).toBe('2000-01-05')
+
+    const completedEvents = await events()
+
+    expect(completedEvents).toContain('series_completed')
+
+    const corrected = await changeViewingStatus(completed, status)
+
+    expect(corrected.viewing.completedOn).toBeNull()
+
+    const correctedEvents = await events()
+
+    expect(correctedEvents).not.toContain('series_completed')
+
+    const resumed = await changeViewingStatus(corrected, 'watching')
+
+    expect(resumed.viewing).toMatchObject({
+      id: inactive.viewing.id,
+      status: 'watching',
+      score: 7,
+      startedOn: '2000-01-01'
+    })
+
+    expect(resumed.summary.currentVoteScore).toBe(7)
+  })
+
+  it.each(['paused', 'dropped'] as const)('preserves a %s predecessor across rewatch, cancellation and historical resume', async status => {
+    const firstInput = initialInput()
+    const first = await markSeriesEpisodeWatched(database, userId, episodeIds[0], firstInput)
+    const ratingContext = nextInput(first)
+
+    const rated = await setCurrentCatalogRating(database, owner, target, {
+      ...ratingContext,
+      score: 7
+    })
+
+    const inactive = await changeViewingStatus(rated, status)
+    const createRequestId = randomUUID()
+
+    const createInput = {
+      requestId: createRequestId,
+      mode: 'current' as const,
+      currentViewingId: inactive.viewing.id,
+      contextVersion: inactive.summary.contextVersion,
+      status: 'watching' as const,
+      startedOn: '2000-01-03',
+      completedOn: null
+    }
+
+    const next = await createViewing(database, owner, createInput)
+
+    expect(next.viewing).toMatchObject({
+      status: 'watching',
+      score: null,
+      canCancelRewatch: true
+    })
+
+    expect(next.summary.currentVoteScore).toBe(7)
+
+    const predecessor = await findViewing(database, owner, inactive.viewing.id)
+
+    expect(predecessor).toStrictEqual(inactive.viewing)
+
+    const rewatchEvents = await events()
+
+    expect(rewatchEvents).not.toContain('series_completed')
+
+    const oldSnapshot = {
+      viewing: inactive.viewing,
+      summary: next.summary
+    }
+
+    const conflictingResume = changeViewingStatus(oldSnapshot, 'watching')
+
+    await expect(conflictingResume).rejects.toMatchObject({
+      status: 409,
+      fields: { status: 'Pause, drop or complete the other watching viewing before resuming this one.' }
+    })
+
+    const cancelRequestId = randomUUID()
+
+    const cancelInput = {
+      requestId: cancelRequestId,
+      currentViewingId: next.viewing.id,
+      contextVersion: next.summary.contextVersion
+    }
+
+    const cancelled = await cancelSeriesRewatch(database, owner, cancelInput)
+
+    expect(cancelled.currentViewingId).toBe(inactive.viewing.id)
+
+    const restored = await findViewing(database, owner, inactive.viewing.id)
+
+    expect(restored).toStrictEqual(inactive.viewing)
+
+    const cancelledReplay = createViewing(database, owner, createInput)
+
+    await expect(cancelledReplay).rejects.toMatchObject({ status: 409 })
+
+    const resumed = await changeViewingStatus({
+      viewing: inactive.viewing,
+      summary: cancelled
+    }, 'watching')
+
+    const secondInactive = await changeViewingStatus(resumed, status)
+    const anotherRequestId = randomUUID()
+
+    const another = await createViewing(database, owner, {
+      ...createInput,
+      requestId: anotherRequestId,
+      contextVersion: secondInactive.summary.contextVersion
+    })
+
+    const pausedNew = await changeViewingStatus(another, 'paused')
+
+    const historical = await changeViewingStatus({
+      viewing: secondInactive.viewing,
+      summary: pausedNew.summary
+    }, 'watching')
+
+    expect(historical.summary).toMatchObject({
+      currentViewingId: inactive.viewing.id,
+      currentVoteScore: 7
+    })
+
+    const stillPaused = await findViewing(database, owner, another.viewing.id)
+
+    expect(stillPaused).toMatchObject({ status: 'paused' })
+  })
+
+  it('serializes competing status changes, rejects stale context and replays without restoring a superseded state', async () => {
+    const firstInput = initialInput()
+    const first = await markSeriesEpisodeWatched(database, userId, episodeIds[0], firstInput)
+    const paused = await changeViewingStatus(first, 'paused')
+
+    const targetOwner = {
+      ...owner,
+      viewingId: paused.viewing.id
+    }
+
+    const requestId = randomUUID()
+
+    const input = {
+      requestId,
+      revision: paused.viewing.revision,
+      currentViewingId: paused.viewing.id,
+      contextVersion: paused.summary.contextVersion,
+      status: 'watching' as const,
+      startedOn: paused.viewing.startedOn,
+      completedOn: null
+    }
+
+    const staleContextVersion = input.contextVersion - 1
+
+    const staleChange = updateViewing(database, targetOwner, {
+      ...input,
+      contextVersion: staleContextVersion
+    })
+
+    await expect(staleChange).rejects.toMatchObject({ status: 409 })
+
+    const competingRequestId = randomUUID()
+
+    const competing = {
+      ...input,
+      requestId: competingRequestId,
+      status: 'dropped' as const
+    }
+
+    const firstChange = concurrent(async db => updateViewing(db, targetOwner, input))
+    const secondChange = concurrent(async db => updateViewing(db, targetOwner, competing))
+    const results = await Promise.allSettled([firstChange, secondChange])
+    const accepted = results.filter(result => result.status === 'fulfilled')
+    const rejected = results.filter(result => result.status === 'rejected')
+
+    expect(accepted).toHaveLength(1)
+    expect(rejected).toMatchObject([{ reason: { status: 409 } }])
+
+    const latest = await findSeriesWatches(database, owner)
+    const expectedRevision = paused.viewing.revision + 1
+    const expectedContextVersion = paused.summary.contextVersion + 1
+
+    expect(latest.viewing?.revision).toBe(expectedRevision)
+    expect(latest.summary.contextVersion).toBe(expectedContextVersion)
+
+    // oxlint-disable-next-line vitest/no-conditional-in-test -- Either serialized request may win; replay the actual committed request.
+    const winnerInput = latest.viewing?.status === 'watching' ? input : competing
+    const corrected = await changeViewingStatus(latest, 'paused')
+    const replay = await updateViewing(database, targetOwner, winnerInput)
+
+    expect(replay).toStrictEqual(corrected)
+    expect(replay.viewing.status).toBe('paused')
+  })
 
   it('serializes competing first marks, preserves the chosen start date and replays only the same operation', async () => {
     const requests = [initialInput(), initialInput()]
@@ -267,6 +574,8 @@ describe('series viewing persistence', () => {
       viewingId: viewing.id
     }, {
       requestId: completionRequestId,
+      currentViewingId: first.summary.currentViewingId,
+      contextVersion: first.summary.contextVersion,
       revision: viewing.revision,
       status: 'completed',
       startedOn: viewing.startedOn,
@@ -287,6 +596,8 @@ describe('series viewing persistence', () => {
       viewingId: viewing.id
     }, {
       requestId: reopeningRequestId,
+      currentViewingId: updated.summary.currentViewingId,
+      contextVersion: updated.summary.contextVersion,
       revision: updated.viewing.revision,
       status: 'watching',
       startedOn: viewing.startedOn,
@@ -302,6 +613,8 @@ describe('series viewing persistence', () => {
       viewingId: viewing.id
     }, {
       requestId: secondCompletionRequestId,
+      currentViewingId: updated.summary.currentViewingId,
+      contextVersion: updated.summary.contextVersion,
       revision: updated.viewing.revision,
       status: 'completed',
       startedOn: viewing.startedOn,
@@ -497,6 +810,8 @@ describe('series viewing persistence', () => {
       viewingId: cleared.viewing.id
     }, {
       requestId: completionRequestId,
+      currentViewingId: cleared.summary.currentViewingId,
+      contextVersion: cleared.summary.contextVersion,
       revision: cleared.viewing.revision,
       status: 'completed',
       startedOn: cleared.viewing.startedOn,
@@ -557,6 +872,8 @@ describe('series viewing persistence', () => {
       viewingId: previous.id
     }, {
       requestId: correctionRequestId,
+      currentViewingId: next.summary.currentViewingId,
+      contextVersion: next.summary.contextVersion,
       revision: closed.revision,
       status: 'completed',
       startedOn: closed.startedOn,
@@ -611,8 +928,7 @@ describe('series viewing persistence', () => {
       completedOn: null
     })).rejects.toMatchObject({ status: 400 })
 
-    await rewatch(first)
-
+    const current = await rewatch(first)
     const closed = await findViewing(database, owner, previous.id)
     const reopeningRequestId = randomUUID()
 
@@ -621,6 +937,8 @@ describe('series viewing persistence', () => {
       viewingId: previous.id
     }, {
       requestId: reopeningRequestId,
+      currentViewingId: current.summary.currentViewingId,
+      contextVersion: current.summary.contextVersion,
       revision: closed.revision,
       status: 'watching',
       startedOn: closed.startedOn,

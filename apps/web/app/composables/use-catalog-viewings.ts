@@ -594,7 +594,7 @@ function useCatalogViewings(catalogItemId: Readonly<Ref<string | null>>, account
 
     return response !== null
   }
-  async function update(viewing: CatalogViewing, dates: CatalogViewingDraft): Promise<boolean> {
+  async function update(viewing: CatalogViewing, dates: CatalogViewingDraft, key = `update:${viewing.id}`): Promise<boolean> {
     const url = path()
 
     if (url === null) { return false }
@@ -605,13 +605,15 @@ function useCatalogViewings(catalogItemId: Readonly<Ref<string | null>>, account
     const body = {
       requestId,
       revision: viewing.revision,
+      currentViewingId: summary.value.currentViewingId,
+      contextVersion: summary.value.contextVersion,
       status: dates.status,
       startedOn: dates.startedOn,
       completedOn: dates.completedOn
     }
 
     const response = await mutate({
-      key: `update:${viewing.id}`,
+      key,
       url: `${url}/${id}`,
       method: 'PATCH',
       body,

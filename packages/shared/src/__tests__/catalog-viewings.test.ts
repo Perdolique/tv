@@ -25,6 +25,8 @@ const createInput = {
 const updateInput = {
   requestId,
   revision: 1,
+  currentViewingId: null,
+  contextVersion: 0,
   status: 'completed',
   startedOn: null,
   completedOn: '2026-10-17'
@@ -101,7 +103,7 @@ describe('viewing calendar and mutation contracts', () => {
     }).success).toBe(true)
   })
 
-  it('requires operation identity, context and revision and rejects owner and legacy status overrides', () => {
+  it('requires operation identity, context and revision and rejects owner and unsupported status overrides', () => {
     expect(v.safeParse(catalogViewingCreateSchema, {
       ...createInput,
       requestId: undefined
@@ -127,15 +129,76 @@ describe('viewing calendar and mutation contracts', () => {
       score: 8
     }).success).toBe(false)
 
-    expect(v.safeParse(catalogViewingCreateSchema, {
+    const unknownStatus = v.safeParse(catalogViewingCreateSchema, {
       ...createInput,
-      status: 'paused'
-    }).success).toBe(false)
+      status: 'unknown',
+      startedOn: '2026-10-17',
+      completedOn: null
+    })
+
+    expect(unknownStatus.success).toBe(false)
 
     expect(v.safeParse(catalogViewingUpdateSchema, {
       ...updateInput,
       revision: 0
     }).success).toBe(false)
+  })
+
+  it.each(['paused', 'dropped'] as const)('accepts %s corrections with a start but no completion and keeps creation explicit', status => {
+    const input = {
+      ...updateInput,
+      status,
+      startedOn: '2026-10-17',
+      completedOn: null
+    }
+
+    const accepted = v.safeParse(catalogViewingUpdateSchema, input)
+
+    expect(accepted.success).toBe(true)
+
+    const missingStart = v.safeParse(catalogViewingUpdateSchema, {
+      ...input,
+      startedOn: null
+    })
+
+    expect(missingStart.success).toBe(false)
+
+    const withCompletion = v.safeParse(catalogViewingUpdateSchema, {
+      ...input,
+      completedOn: '2026-10-18'
+    })
+
+    expect(withCompletion.success).toBe(false)
+
+    const missingContextVersion = v.safeParse(catalogViewingUpdateSchema, {
+      ...input,
+      contextVersion: undefined
+    })
+
+    expect(missingContextVersion.success).toBe(false)
+
+    const missingCurrentViewing = v.safeParse(catalogViewingUpdateSchema, {
+      ...input,
+      currentViewingId: undefined
+    })
+
+    expect(missingCurrentViewing.success).toBe(false)
+
+    const unknownStatus = v.safeParse(catalogViewingUpdateSchema, {
+      ...input,
+      status: 'unknown'
+    })
+
+    expect(unknownStatus.success).toBe(false)
+
+    const creation = v.safeParse(catalogViewingCreateSchema, {
+      ...createInput,
+      status,
+      startedOn: input.startedOn,
+      completedOn: null
+    })
+
+    expect(creation.success).toBe(false)
   })
 
   it('uses dated, account-free current and historical rating requests for every target', () => {

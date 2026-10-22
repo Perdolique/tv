@@ -122,6 +122,7 @@
                   <p :class="$style.accessible" role="status">{{ viewingAnnouncement }}</p>
                 </template>
               </section>
+              <CatalogViewingStatus v-if="currentStatusViewing" :state="viewings" :viewing="currentStatusViewing" :account-id="accountId" size="medium" />
               <CatalogSeriesRewatch v-if="showSeriesRewatch" :class="$style.personalAction" :state="viewings" />
             </div>
           </div>
@@ -324,6 +325,8 @@
   import { useCatalogViewings } from '~/composables/use-catalog-viewings.ts'
   import CatalogTitleTimeline from '~/components/catalog/CatalogTitleTimeline.vue'
   import CatalogSeriesRewatch from '~/components/catalog/CatalogSeriesRewatch.vue'
+  import CatalogViewingStatus from '~/components/catalog/CatalogViewingStatus.vue'
+  import { viewingStatusPresentation } from '~/utils/catalog-viewing-status.ts'
   import { useTitleTimeline } from '~/composables/use-title-timeline.ts'
   import { useBrowserTimeZone } from '~/composables/use-browser-time-zone.ts'
   import CatalogViewings from '~/components/catalog/CatalogViewings.vue'
@@ -630,33 +633,30 @@
     if (selected === null) { return 'Season and episode ratings will belong to your first viewing.' }
 
     const label = viewings.isHistorical.value ? 'Past viewing' : 'Current viewing'
-    const end = selected.completedOn === null ? 'Watching' : `Completed ${selected.completedOn}`
+    const statusLabel = viewingStatusPresentation[selected.status].label
+    const end = selected.completedOn === null ? statusLabel : `Completed ${selected.completedOn}`
 
     return `${label}: started ${selected.startedOn}. ${end}.`
   })
 
   const showSeriesRewatch = toRef(() => isSeries.value && isAuthenticated.value && episodeWatches.currentViewing.value !== null)
+  const currentStatusViewing = toRef(() => showSeriesRewatch.value ? viewings.currentViewing.value : null)
 
   const seriesViewingStatus = toRef(() => {
     const viewing = episodeWatches.currentViewing.value
 
     if (!showSeriesRewatch.value || episodeWatches.status.value !== 'loaded' || viewing === null) { return null }
 
-    const labels = {
-      watching: {
-        label: viewing.isRewatch ? 'Rewatching' : 'Watching',
-        icon: viewing.isRewatch ? 'hugeicons:reload' : 'hugeicons:play-circle',
-        tone: 'info'
-      },
+    const presentation = viewingStatusPresentation[viewing.status]
+    const isWatchingAgain = viewing.status === 'watching' && viewing.isRewatch
+    const label = isWatchingAgain ? 'Rewatching' : presentation.label
+    const icon = isWatchingAgain ? 'hugeicons:reload' : presentation.icon
 
-      completed: {
-        label: 'Completed',
-        icon: 'hugeicons:checkmark-circle-02',
-        tone: 'success'
-      }
-    } as const
-
-    return labels[viewing.status]
+    return {
+      label,
+      icon,
+      tone: presentation.tone
+    }
   })
 
   const timeline = useTitleTimeline(catalogItemId, accountId, {

@@ -72,7 +72,7 @@ const PAGE_SIZE = 20
 const viewingColumns = {
   id: catalogViewings.id,
   catalogItemId: catalogViewings.catalogItemId,
-  status: sql<'watching' | 'completed'>`${catalogViewings.status}`,
+  status: sql<CatalogViewing['status']>`${catalogViewings.status}`,
   startedOn: catalogViewings.startedOn,
   completedOn: catalogViewings.completedOn,
   recordedAt: sql<string>`to_char(${catalogViewings.recordedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
@@ -374,7 +374,10 @@ async function bumpViewingRevision(transaction: CatalogTransaction, owner: Viewi
 
 function requireViewingDates(type: 'movie' | 'series', draft: CatalogViewingDraft): void {
   const invalidMovie = type === 'movie' && (draft.status !== 'completed' || draft.completedOn === null)
-  const invalidSeries = type === 'series' && (draft.startedOn === null || (draft.status === 'watching' ? draft.completedOn !== null : draft.completedOn === null))
+  const isCompleted = draft.status === 'completed'
+  const invalidCompletion = isCompleted ? draft.completedOn === null : draft.completedOn !== null
+  const invalidSeriesDates = draft.startedOn === null || invalidCompletion
+  const invalidSeries = type === 'series' && invalidSeriesDates
   const reversedDates = draft.startedOn !== null && draft.completedOn !== null && draft.startedOn > draft.completedOn
 
   if (invalidMovie || invalidSeries || reversedDates) {
@@ -564,11 +567,13 @@ async function updateViewing(database: Database, owner: ViewingTarget, input: Ca
 
     const viewing = await findViewing(transaction, owner, owner.viewingId)
 
+    assertCurrentContext(context, input)
+
     if (input.revision !== viewing.revision) { throw new CatalogHttpError('CONFLICT', 409) }
 
     requireViewingDates(context.type, input)
 
-    const reopening = viewing.status === 'completed' && input.status === 'watching'
+    const reopening = viewing.status !== 'watching' && input.status === 'watching'
 
     if (reopening) {
       const active = await transaction
@@ -579,12 +584,19 @@ async function updateViewing(database: Database, owner: ViewingTarget, input: Ca
         )
         .for('update')
 
-      if (active.length > 0) { throw new CatalogHttpError('CONFLICT', 409, { fields: { status: 'Complete the other active viewing before reopening this one.' } }) }
+      if (active.length > 0) { throw new CatalogHttpError('CONFLICT', 409, { fields: { status: 'Pause, drop or complete the other watching viewing before resuming this one.' } }) }
 
       const ownerContext = contextCondition(owner)
 
       await transaction.update(catalogViewingContexts).set({ currentViewingId: owner.viewingId }).where(ownerContext)
 
+    }
+
+    const wasCompleted = viewing.status === 'completed'
+    const isCompleted = input.status === 'completed'
+    const isLeavingCompleted = wasCompleted && !isCompleted
+
+    if (isLeavingCompleted) {
       await transaction
         .delete(catalogTimelineEvents)
         .where(
@@ -607,7 +619,9 @@ async function updateViewing(database: Database, owner: ViewingTarget, input: Ca
           eq(catalogViewings.id, owner.viewingId)
         )
 
-      if (context.type === 'series' && viewing.status === 'watching' && input.status === 'completed') {
+      const isCompletingSeries = context.type === 'series' && !wasCompleted && isCompleted
+
+      if (isCompletingSeries) {
         await transaction.insert(catalogTimelineEvents).values({
           userId: owner.userId,
           catalogItemId: owner.catalogItemId,

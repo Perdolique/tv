@@ -65,14 +65,18 @@ test('completes partial progress, reopens the same viewing and isolates historic
 
   await test.step('complete and reopen while keeping partial progress and scores', async () => {
     await first.getByRole('button', {
-      name: 'Complete viewing',
+      name: /^Viewing status$/u
+    }).click()
+
+    await first.getByRole('button', {
+      name: 'Completed',
       exact: true
     }).click()
 
     await first.getByLabel('Completed on', { exact: true }).fill('2026-10-17')
 
     await first.getByRole('button', {
-      name: 'Save viewing',
+      name: 'Complete viewing',
       exact: true
     }).click()
 
@@ -86,12 +90,11 @@ test('completes partial progress, reopens the same viewing and isolates historic
     }).and(page.locator('[aria-pressed="true"]'))).toHaveCount(1)
 
     await first.getByRole('button', {
-      name: 'Reopen viewing',
-      exact: true
+      name: /^Viewing status$/u
     }).click()
 
     await first.getByRole('button', {
-      name: 'Save viewing',
+      name: 'Watching',
       exact: true
     }).click()
 
@@ -156,7 +159,7 @@ test('completes partial progress, reopens the same viewing and isolates historic
     await expect(episodeRating(page).getByText('2 out of 10', { exact: true })).toBeVisible()
     await expect(episodeRating(page).getByText('1 rating', { exact: true })).toBeVisible()
 
-    await history(page).getByRole('listitem').filter({ hasText: 'Current' }).getByRole('button', {
+    await history(page).locator('[data-current]').getByRole('button', {
       name: 'View season and episode ratings',
       exact: true
     }).click()
@@ -165,7 +168,7 @@ test('completes partial progress, reopens the same viewing and isolates historic
   })
 
   await test.step('delete the vote source and retain the older viewing without reviving its votes', async () => {
-    const current = history(page).getByRole('listitem').filter({ hasText: 'Current' })
+    const current = history(page).locator('[data-current]')
 
     await current.getByRole('button', {
       name: 'Delete',

@@ -46,7 +46,7 @@ interface Operation {
 }
 interface RewatchOrigin {
   previousViewingId: string | null;
-  previousStatus: 'watching' | 'completed' | null;
+  previousStatus: CatalogViewing['status'] | null;
   previousCompletedOn: string | null;
   completedByStartOn: string | null;
   completionToken: string | null;
@@ -746,7 +746,7 @@ async function viewingMutation(request: Request, url: URL, state: RequestState):
     const hasPreviousMarks = state.account.watches.some(watch => watch.viewingId === previous?.id)
     const previousRatingKeys = [...state.account.ratings.keys()]
     const hasPreviousRatings = previousRatingKeys.some(key => key.startsWith(previousPrefix))
-    const requiresActivity = previous !== null && (previous.status === 'watching' || previous.isRewatch)
+    const requiresActivity = previous !== null && (previous.status !== 'completed' || previous.isRewatch)
 
     if (title?.type === 'series' && requiresActivity && !hasPreviousMarks && !hasPreviousRatings) {
       return failure(409, { currentViewingId: 'Add an episode mark or rating before starting another viewing.' })
@@ -814,6 +814,8 @@ async function viewingMutation(request: Request, url: URL, state: RequestState):
 
   const input = parsed.output
 
+  if (!currentContextMatches(state, input)) { return failure(409) }
+
   if (input.revision !== viewing.revision) { return failure(409) }
 
   const title = detailsItems.find(item => item.id === state.target.itemId)
@@ -823,20 +825,28 @@ async function viewingMutation(request: Request, url: URL, state: RequestState):
   if (invalidMovie || invalidSeries) { return failure(400) }
 
   const anotherWatching = state.account.items.some(item => item.catalogItemId === state.target.itemId && item.id !== viewing.id && item.status === 'watching')
-  const reopening = viewing.status === 'completed' && input.status === 'watching'
+  const reopening = viewing.status !== 'watching' && input.status === 'watching'
 
-  if (reopening && anotherWatching) { return failure(409) }
+  if (reopening && anotherWatching) { return failure(409, { status: 'Pause, drop or complete the other watching viewing before resuming this one.' }) }
 
   const changed = viewing.status !== input.status || viewing.startedOn !== input.startedOn || viewing.completedOn !== input.completedOn
 
   if (reopening) {
     state.context.currentViewingId = viewing.id
+  }
 
+  const wasCompleted = viewing.status === 'completed'
+  const isCompleted = input.status === 'completed'
+  const isLeavingCompleted = wasCompleted && !isCompleted
+
+  if (isLeavingCompleted) {
     state.account.completionEvents.delete(viewing.id)
   }
 
   if (changed) {
-    if (title?.type === 'series' && viewing.status === 'watching' && input.status === 'completed') {
+    const isCompletingSeries = title?.type === 'series' && !wasCompleted && isCompleted
+
+    if (isCompletingSeries) {
       const completionId = crypto.randomUUID()
 
       state.account.completionEvents.set(viewing.id, completionId)

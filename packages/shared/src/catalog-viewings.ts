@@ -27,7 +27,9 @@ const versionSchema = v.pipe(v.number(), v.integer(), v.minValue(0))
 const revisionSchema = v.pipe(v.number(), v.integer(), v.minValue(1))
 const viewingIdSchema = v.pipe(v.string(), v.uuid())
 const scoreSchema = v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10))
-const statusSchema = v.picklist(['watching', 'completed'])
+const catalogViewingStatusSchema = v.picklist(['watching', 'paused', 'dropped', 'completed'])
+
+type CatalogViewingStatus = v.InferOutput<typeof catalogViewingStatusSchema>
 
 const timeZoneSchema = v.pipe(v.string(), v.minLength(1), v.maxLength(100), v.check(value => {
   const hasValidCharacters = /^[A-Za-z][A-Za-z0-9_+./-]*$/u.test(value)
@@ -51,11 +53,11 @@ interface CatalogViewingDates {
 }
 
 interface CatalogViewingDraft extends CatalogViewingDates {
-  status: 'watching' | 'completed';
+  status: CatalogViewingStatus;
 }
 
 function hasValidDates(input: CatalogViewingDraft): boolean {
-  if (input.status === 'watching') {
+  if (input.status !== 'completed') {
     return input.startedOn !== null && input.completedOn === null
   }
 
@@ -68,7 +70,7 @@ const contextEntries = {
 }
 
 const dateEntries = {
-  status: statusSchema,
+  status: catalogViewingStatusSchema,
   startedOn: nullableDateSchema,
   completedOn: nullableDateSchema
 }
@@ -79,6 +81,7 @@ const catalogViewingCreateSchema = v.pipe(
     mode: v.picklist(['current', 'history']),
     ...contextEntries,
     ...dateEntries,
+    status: v.picklist(['watching', 'completed']),
     completeCurrentOn: v.optional(viewingDateSchema)
   }),
   v.forward(v.check(input => hasValidDates(input), 'Choose the required dates, with completion on or after the start.'), ['completedOn'])
@@ -88,6 +91,7 @@ const catalogViewingUpdateSchema = v.pipe(
   v.strictObject({
     requestId: viewingIdSchema,
     revision: revisionSchema,
+    ...contextEntries,
     ...dateEntries
   }),
   v.forward(v.check(input => hasValidDates(input), 'Choose the required dates, with completion on or after the start.'), ['completedOn'])
@@ -210,6 +214,7 @@ export {
   catalogViewingResponseSchema,
   catalogViewingSchema,
   catalogViewingSummarySchema,
+  catalogViewingStatusSchema,
   catalogViewingUpdateSchema,
   catalogViewingsResponseSchema,
   timeZoneSchema,
@@ -226,6 +231,7 @@ export type {
   CatalogViewingDates,
   CatalogViewingDraft,
   CatalogViewingSummary,
+  CatalogViewingStatus,
   CatalogViewingsResponse,
   CatalogViewingCreateInput,
   CatalogViewingDeleteInput,

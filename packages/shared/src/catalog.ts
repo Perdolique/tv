@@ -1,3 +1,5 @@
+import type { CatalogViewingStatus } from './catalog-viewings.ts'
+
 type CatalogItemType = 'movie' | 'series'
 
 interface CatalogSearchItem {
@@ -79,8 +81,6 @@ interface CatalogWatchlistItem extends CatalogSearchItem {
 interface CatalogWatchlistResponse {
   items: CatalogWatchlistItem[];
 }
-
-type CatalogViewingStatus = 'watching' | 'completed'
 
 interface CatalogViewingHistoryItem extends CatalogWatchlistItem {
   viewingId: string;
@@ -169,8 +169,9 @@ export type {
   CatalogViewingHistoryItem,
   CatalogViewingHistoryResponse,
   CatalogViewingSeries,
-  CatalogViewingStatus,
   CatalogViewingSummaryResponse,
   CatalogWatchlistItem,
   CatalogWatchlistResponse
 }
+
+export type { CatalogViewingStatus } from './catalog-viewings.ts'

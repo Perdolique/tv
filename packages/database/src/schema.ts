@@ -1,5 +1,6 @@
 /* oxlint-disable eslint/max-lines -- The central schema keeps related catalog and account table exports in one place. */
 import { sql } from 'drizzle-orm'
+import type { CatalogViewingStatus } from '@tv/shared/catalog-viewings'
 
 import {
   boolean,
@@ -213,7 +214,7 @@ const catalogViewings = pgTable('catalog_viewings', {
   revision: integer().notNull().default(1)
 }, (table) => [
   unique('catalog_viewings_owner_item_id_unique').on(table.userId, table.catalogItemId, table.id),
-  check('catalog_viewings_status', sql`${table.status} IN ('watching', 'completed')`),
+  check('catalog_viewings_status', sql`${table.status} IN ('watching', 'paused', 'dropped', 'completed')`),
   uniqueIndex('catalog_viewings_one_watching_unique').on(table.userId, table.catalogItemId).where(sql`${table.status} = 'watching'`),
   check('catalog_viewings_revision_positive', sql`${table.revision} > 0`),
   check('catalog_viewings_date_order', sql`${table.startedOn} <= ${table.completedOn}`),
@@ -350,7 +351,7 @@ const catalogTimelineEventWatches = pgTable('catalog_timeline_event_watches', {
 
 interface CatalogViewingRequestResult {
   previousViewingId?: string;
-  previousStatus?: 'watching' | 'completed';
+  previousStatus?: CatalogViewingStatus;
   previousCompletedOn?: string | null;
   completionEventId?: string | null;
   completedByStartOn?: string;
