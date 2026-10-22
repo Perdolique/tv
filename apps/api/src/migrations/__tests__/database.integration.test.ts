@@ -1108,7 +1108,10 @@ describe('unified viewing ratings migration', () => {
       await expect(client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id) VALUES ($1, $2)', [firstUserId, movieId])).rejects.toMatchObject({ code: '23514' })
       await expect(client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id, status) VALUES ($1, $2, \'watching\')', [firstUserId, seriesId])).rejects.toMatchObject({ code: '23514' })
       await expect(client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id, status, started_on) VALUES ($1, $2, \'completed\', \'2020-01-01\')', [firstUserId, seriesId])).rejects.toMatchObject({ code: '23514' })
-      await expect(client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id, status, started_on) VALUES ($1, $2, \'paused\', \'2020-01-01\')', [firstUserId, seriesId])).rejects.toMatchObject({ code: '23514' })
+
+      const unknownStatus = client.query('INSERT INTO catalog_viewings (user_id, catalog_item_id, status, started_on) VALUES ($1, $2, \'unknown\', \'2020-01-01\')', [firstUserId, seriesId])
+
+      await expect(unknownStatus).rejects.toMatchObject({ code: '23514' })
       await client.query('INSERT INTO catalog_viewings (id, user_id, catalog_item_id, completed_on) VALUES ($1, $2, $3, \'2020-02-29\')', [movieViewingId, firstUserId, movieId])
       await client.query('INSERT INTO catalog_viewings (id, user_id, catalog_item_id, status, started_on) VALUES ($1, $2, $3, \'watching\', \'2020-01-01\')', [seriesViewingId, firstUserId, seriesId])
       await client.query('INSERT INTO catalog_item_ratings (user_id, catalog_item_id, viewing_id, score) VALUES ($1, $2, $3, 8)', [firstUserId, movieId, movieViewingId])

@@ -4,6 +4,8 @@
       <label :for="statusId">Viewing status</label>
       <select :id="statusId" v-model="selectedStatus" :class="$style.input" :disabled="isSaving">
         <option value="watching">Watching</option>
+        <option value="paused">Paused</option>
+        <option value="dropped">Dropped</option>
         <option value="completed">Completed</option>
       </select>
     </div>
@@ -76,6 +78,8 @@
     else if (completionError.value) { completedField.value?.focus() }
   }
 
+  watch(() => initial.status, status => { selectedStatus.value = status })
+
   watch(() => fields, async () => {
     const owner = globalThis.document.activeElement
     const formHadFocus = form.value?.contains(owner) === true
@@ -101,6 +105,8 @@
     const result = v.safeParse(catalogViewingUpdateSchema, {
       requestId,
       revision: 1,
+      currentViewingId: null,
+      contextVersion: 0,
       status,
       startedOn: nextStartedOn,
       completedOn: nextCompletedOn

@@ -249,6 +249,8 @@ describe('postgreSQL catalog title viewings', () => {
       const dateRequestId = randomUUID()
 
       const dates = {
+        currentViewingId: second.summary.currentViewingId,
+        contextVersion: second.summary.contextVersion,
         startedOn: '2020-02-29',
         completedOn: '2020-03-01',
         revision: 1,

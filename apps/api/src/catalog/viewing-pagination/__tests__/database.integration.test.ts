@@ -89,6 +89,8 @@ describe('viewing history snapshot and state changes', () => {
       viewingId
     }, {
       requestId: randomUUID(),
+      currentViewingId: null,
+      contextVersion: 0,
       revision: 1,
       status: scenario.nextStatus,
       startedOn: '2026-01-01',

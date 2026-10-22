@@ -26,7 +26,7 @@ describe('viewing history cursors', () => {
   it.each([
     { version: undefined }, { version: 0 }, { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 },
     { calendarDate: '2026-02-30' }, { calendarDate: '0000-01-01' }, { calendarDate: '2026-09-22T00:00:00Z' },
-    { historyVersion: 'invalid' }, { viewingId: 'invalid' }, { status: 'paused' },
+    { historyVersion: 'invalid' }, { viewingId: 'invalid' }, { status: 'paused' }, { status: 'unknown' },
     { userId: '30000000-0000-7000-8000-000000000003' }, { status: 'watching' }, { titleLocale: 'ru' }
   ])('rejects invalid or out-of-scope cursor data: %j', override => {
     const payload = JSON.stringify({
@@ -64,10 +64,36 @@ describe('viewing history cursors', () => {
     expect(() => decodeViewingCursor(noncanonical, canonicalScope)).toThrow('The request is invalid.')
   })
 
-  it('supports only the two delivered status filters', () => {
-    expect(parseViewingStatus(null)).toBeNull()
-    expect(parseViewingStatus('watching')).toBe('watching')
-    expect(parseViewingStatus('completed')).toBe('completed')
-    expect(() => parseViewingStatus('paused')).toThrow('The request is invalid.')
+  it.each(['paused', 'dropped'] as const)('round trips a cursor scoped to %s', status => {
+    const statusScope = {
+      ...scope,
+      status
+    }
+
+    const statusCursor = {
+      ...cursor,
+      status
+    }
+
+    const encoded = encodeViewingCursor(statusCursor)
+    const decoded = decodeViewingCursor(encoded, statusScope)
+
+    expect(decoded).toStrictEqual(statusCursor)
+    expect(() => decodeViewingCursor(encoded, scope)).toThrow('The request is invalid.')
+  })
+
+  it('supports all four explicit status filters and rejects unknown values', () => {
+    const all = parseViewingStatus(null)
+    const watching = parseViewingStatus('watching')
+    const paused = parseViewingStatus('paused')
+    const dropped = parseViewingStatus('dropped')
+    const completed = parseViewingStatus('completed')
+
+    expect(all).toBeNull()
+    expect(watching).toBe('watching')
+    expect(paused).toBe('paused')
+    expect(dropped).toBe('dropped')
+    expect(completed).toBe('completed')
+    expect(() => parseViewingStatus('unknown')).toThrow('The request is invalid.')
   })
 })

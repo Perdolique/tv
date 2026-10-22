@@ -41,12 +41,32 @@ test('filters by keyboard, restores Back/Forward and reload, and focuses View al
   await expect(entries).toHaveCount(7)
   await expect(page.locator('dd')).toHaveText(['0', '18', '7', '0'])
   await page.keyboard.press('ArrowRight')
+
+  await expect(page.getByRole('radio', {
+    name: 'Paused',
+    exact: true
+  })).toBeChecked()
+
+  await expect(page).toHaveURL(/status=paused$/u)
+  await page.keyboard.press('ArrowRight')
+
+  await expect(page.getByRole('radio', {
+    name: 'Dropped',
+    exact: true
+  })).toBeChecked()
+
+  await expect(page).toHaveURL(/status=dropped$/u)
+  await page.keyboard.press('ArrowRight')
   await expect(completed).toBeChecked()
   await expect(entries).toHaveCount(18)
   await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(0)
   await page.goBack()
+  await page.goBack()
+  await page.goBack()
   await expect(watching).toBeChecked()
   await expect(entries).toHaveCount(7)
+  await page.goForward()
+  await page.goForward()
   await page.goForward()
   await expect(completed).toBeChecked()
   await expect(entries).toHaveCount(18)

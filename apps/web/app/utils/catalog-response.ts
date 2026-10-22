@@ -12,7 +12,7 @@ import type {
   CatalogWatchlistResponse
 } from '@tv/shared/catalog'
 
-import { viewingDateSchema } from '@tv/shared/catalog-viewings'
+import { catalogViewingStatusSchema, viewingDateSchema } from '@tv/shared/catalog-viewings'
 import * as v from 'valibot'
 import { parseCalendarDate } from '~/utils/calendar-date.ts'
 
@@ -88,7 +88,7 @@ const catalogViewingHistoryResponseSchema = v.object({
   items: v.pipe(v.array(v.pipe(v.object({
     ...viewingTitleEntries,
     viewingId: catalogItemIdSchema,
-    status: v.picklist(['watching', 'completed']),
+    status: catalogViewingStatusSchema,
     startedOn: v.nullable(viewingDateSchema),
     completedOn: v.nullable(viewingDateSchema),
     score: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10)))
@@ -99,9 +99,9 @@ const catalogViewingHistoryResponseSchema = v.object({
 
     if (item.startedOn === null) { return false }
 
-    return item.status === 'watching'
-      ? item.completedOn === null
-      : item.completedOn !== null && item.completedOn >= item.startedOn
+    return item.status === 'completed'
+      ? item.completedOn !== null && item.completedOn >= item.startedOn
+      : item.completedOn === null
   }))), v.maxLength(20)),
 
   nextCursor: v.nullable(v.pipe(v.string(), v.minLength(1)))

@@ -25,7 +25,7 @@
       <ul :class="$style.list" :aria-label="listLabel">
         <li v-for="viewing in rows" :id="viewing.elementId" :key="viewing.id" :class="$style.row" :data-current="viewing.isCurrent || undefined" tabindex="-1">
           <div :class="$style.rowHeader">
-            <h3 :class="$style.rowHeading">{{ viewing.statusLabel }} <span v-if="viewing.isCurrent" :class="$style.badge">Current</span></h3>
+            <h3 :class="$style.rowHeading"><AppStatusChip v-if="isSeries" :tone="viewing.statusTone" :class="$style.status"><Icon :class="$style.statusIcon" aria-hidden="true" mode="svg" :name="viewing.statusIcon" />{{ viewing.statusLabel }}</AppStatusChip><template v-else>{{ viewing.statusLabel }}</template> <span v-if="viewing.isCurrent" :class="$style.badge">Current</span></h3>
           </div>
           <dl v-if="viewing.showDates" :class="$style.dates">
             <div v-if="isSeries"><dt :class="$style.dateLabel">Started on</dt><dd :class="$style.dateValue">{{ viewing.startedLabel }}</dd></div>
@@ -65,7 +65,7 @@
             />
             <AppButton size="small" variant="secondary" :disabled="areMutationsDisabled" @click="open(viewing.id)">{{ editLabel }}</AppButton>
             <AppButton v-if="isSeries" size="small" variant="secondary" :disabled="areMutationsDisabled" :aria-pressed="viewing.isSelected" @click="select(viewing.record)">View season and episode ratings</AppButton>
-            <AppButton v-if="isSeries" size="small" variant="secondary" :disabled="areMutationsDisabled" @click="changeStatus(viewing.record)">{{ viewing.statusAction }}</AppButton>
+            <CatalogViewingStatus v-if="isSeries" :state="state" :viewing="viewing.record" :account-id="accountId" @opened="pinStatusViewing(viewing.record)" />
             <AppButton size="small" variant="secondary" :class="$style.danger" :disabled="areMutationsDisabled" @click="confirmDelete(viewing.id)">Delete</AppButton>
           </div>
         </li>
@@ -84,7 +84,10 @@
   import CatalogRating from '~/components/catalog/CatalogRating.vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
+  import AppStatusChip from '~/components/ui/AppStatusChip.vue'
   import CatalogViewingDatesForm from '~/components/catalog/CatalogViewingDatesForm.vue'
+  import CatalogViewingStatus from '~/components/catalog/CatalogViewingStatus.vue'
+  import { viewingStatusPresentation } from '~/utils/catalog-viewing-status.ts'
   import { formatCalendarDateForDisplay, getLocalCalendarDate } from '~/utils/calendar-date.ts'
 
   interface Props {
@@ -115,13 +118,15 @@
   const viewingSaveError = toRef(() => {
     const isRewatch = state.saveKey.value.startsWith('rewatch:')
     const belongsToRewatch = isRewatch || (type === 'series' && state.saveKey.value === 'create:current')
-    const isHistoryError = state.saveOperation.value === 'viewing' && !belongsToRewatch
+    const isStatusChange = state.saveKey.value.startsWith('status:')
+    const isHistoryError = state.saveOperation.value === 'viewing' && !belongsToRewatch && !isStatusChange
 
     return isHistoryError ? saveError.value : ''
   })
 
   const announcement = shallowRef('')
   const activeViewing = ref<CatalogViewing | null>(null)
+  const statusViewing = ref<CatalogViewing | null>(null)
   const today = getLocalCalendarDate()
   const isSeries = toRef(() => type === 'series')
   const listLabel = toRef(() => isSeries.value ? 'Series viewings' : 'Movie viewings')
@@ -141,8 +146,9 @@
     const mutation = state.unconfirmedMutation.value
     const isRewatch = mutation?.key.startsWith('rewatch:')
     const belongsToRewatch = isRewatch || (type === 'series' && mutation?.key === 'create:current')
+    const isStatusChange = mutation?.key.startsWith('status:')
 
-    return mutation?.operation === 'viewing' && !belongsToRewatch
+    return mutation?.operation === 'viewing' && !belongsToRewatch && !isStatusChange
   })
 
   const retryLabel = toRef(() => {
@@ -165,12 +171,17 @@
     const extra: CatalogViewing[] = []
     const ids = items.value.map(item => item.id)
     const known = new Set(ids)
-    const activeRecord = activeViewing.value
+    const retainedRecords = [activeViewing.value, statusViewing.value]
 
-    if (activeRecord !== null) {
-      const isKnown = known.has(activeRecord.id)
+    for (const record of retainedRecords) {
+      if (record !== null) {
+        const isKnown = known.has(record.id)
 
-      if (!isKnown) { extra.push(activeRecord) }
+        if (!isKnown) {
+          extra.push(record)
+          known.add(record.id)
+        }
+      }
     }
 
     return [...extra, ...items.value]
@@ -181,8 +192,7 @@
     const displayed = isEditing && activeViewing.value?.id === record.id ? activeViewing.value : record
     const watchedLabel = record.completedOn === null ? null : formatCalendarDateForDisplay(record.completedOn, { dateStyle: 'medium' })
     const startedLabel = record.startedOn === null ? null : formatCalendarDateForDisplay(record.startedOn, { dateStyle: 'medium' })
-    const statusLabel = record.status === 'watching' ? 'Watching viewing' : 'Completed viewing'
-    const statusAction = record.status === 'watching' ? 'Complete viewing' : 'Reopen viewing'
+    const statusLabel = `${viewingStatusPresentation[record.status].label} viewing`
     const selectedId = state.selectedViewingId.value ?? summary.value.currentViewingId
     const isSelected = record.id === selectedId
     const mutationKey = record.id === summary.value.currentViewingId ? 'rating:item:current' : `rating:item:${record.id}`
@@ -211,7 +221,8 @@
       watchedLabel,
       startedLabel,
       statusLabel,
-      statusAction,
+      statusTone: viewingStatusPresentation[record.status].tone,
+      statusIcon: viewingStatusPresentation[record.status].icon,
       isSelected,
       hasUnconfirmedRating,
       isRatingBlocked
@@ -337,17 +348,8 @@
     state.select(viewing)
     emit('selected')
   }
-  function changeStatus(viewing: CatalogViewing): void {
-    open(viewing.id)
-
-    const nextStatus = viewing.status === 'watching' ? 'completed' : 'watching'
-    const completedOn = nextStatus === 'completed' ? getLocalCalendarDate() : null
-
-    activeViewing.value = {
-      ...viewing,
-      status: nextStatus,
-      completedOn
-    }
+  function pinStatusViewing(viewing: CatalogViewing): void {
+    statusViewing.value = viewing
   }
   async function rate(viewing: CatalogViewing, score: number | null): Promise<boolean> {
     ratingOwnerId.value = viewing.id
@@ -422,12 +424,20 @@
 
   watch(state.confirmedViewing, viewing => {
     const isActiveViewing = viewing !== null && activeViewing.value?.id === viewing.id
+    const isEditing = form.value === viewing?.id
+    const shouldRefreshActiveViewing = isActiveViewing && !isEditing
+    const isStatusViewing = viewing !== null && statusViewing.value?.id === viewing.id
 
-    if (isActiveViewing) { activeViewing.value = viewing }
+    // Keep the editor's revision with its draft until an explicit refresh.
+    if (shouldRefreshActiveViewing) { activeViewing.value = viewing }
+
+    if (isStatusViewing) { statusViewing.value = viewing }
   }, { flush: 'sync' })
 
   watch(state.deletedViewingId, id => {
     if (id !== null && activeViewing.value?.id === id) { void close() }
+
+    if (id !== null && statusViewing.value?.id === id) { statusViewing.value = null }
   }, { flush: 'sync' })
 
 
@@ -436,6 +446,8 @@
 <style module>
   @layer reset, vendor, tokens, base, components, utilities;
   @layer components {
+    .status { gap: var(--space-1); }
+    .statusIcon { inline-size: 1rem; block-size: 1rem; flex-shrink: 0; }
     .component { display: grid; align-content: start; gap: var(--space-6); min-inline-size: 0; }
     .historyAction { justify-self: start; }
     .header, .rowHeader, .actions { display: flex; align-items: center; flex-wrap: wrap; }

@@ -108,7 +108,7 @@ describe('viewing Worker routes', () => {
     expect(filtered.items).toHaveLength(summary.watchingSeriesCount)
   })
 
-  it.each(['cursor=invalid', 'status=paused'])('validates %s after checking authentication', async parameter => {
+  it.each(['cursor=invalid', 'status=unknown'])('validates %s after checking authentication', async parameter => {
     const invalid = await request(`${historyPath}?${parameter}`)
     const anonymous = await request(`${historyPath}?${parameter}`, false)
 

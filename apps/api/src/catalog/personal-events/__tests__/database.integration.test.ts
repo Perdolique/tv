@@ -230,6 +230,8 @@ describe('atomic personal events', () => {
 
     const updated = await updateViewing(database, owner, {
       requestId: dateRequestId,
+      currentViewingId: created.summary.currentViewingId,
+      contextVersion: created.summary.contextVersion,
       revision: created.viewing.revision,
       status: 'completed',
       startedOn: null,

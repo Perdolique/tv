@@ -199,6 +199,8 @@ describe('catalog viewing history and writes', () => {
 
     expect(harness.fetch.mock.calls[1]?.[1].body).toMatchObject({
       revision: 1,
+      currentViewingId: summary.currentViewingId,
+      contextVersion: summary.contextVersion,
       status: 'completed',
       completedOn: '2026-09-30',
       requestId: requestIdPattern

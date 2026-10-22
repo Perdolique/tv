@@ -1,5 +1,5 @@
 import type { CatalogViewingHistoryItem, CatalogViewingHistoryResponse, CatalogViewingStatus } from '@tv/shared/catalog'
-import { viewingDateSchema } from '@tv/shared/catalog-viewings'
+import { catalogViewingStatusSchema, viewingDateSchema } from '@tv/shared/catalog-viewings'
 import * as v from 'valibot'
 
 // oxlint-disable-next-line import/no-relative-parent-imports -- Catalog cursors reuse the canonical Base64URL codec.
@@ -32,11 +32,10 @@ interface CatalogViewingHistoryRow extends CatalogWatchlistRow {
 const VIEWING_HISTORY_PAGE_SIZE = 20
 const VIEWING_HISTORY_QUERY_LIMIT = VIEWING_HISTORY_PAGE_SIZE + 1
 const INVALID_CURSOR_MESSAGE = 'Use a valid viewing history cursor.'
-const statusSchema = v.picklist(['watching', 'completed'])
 
 const cursorSchema = v.strictObject({
   userId: v.pipe(v.string(), v.uuid()),
-  status: v.nullable(statusSchema),
+  status: v.nullable(catalogViewingStatusSchema),
   titleLocale: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
   viewingId: v.pipe(v.string(), v.uuid()),
   calendarDate: viewingDateSchema,
@@ -47,11 +46,11 @@ const cursorSchema = v.strictObject({
 function parseViewingStatus(value: string | null): CatalogViewingStatus | null {
   if (value === null) { return null }
 
-  const parsed = v.safeParse(statusSchema, value)
+  const parsed = v.safeParse(catalogViewingStatusSchema, value)
 
   if (!parsed.success) {
     throw new CatalogHttpError('INVALID_REQUEST', 400, {
-      fields: { status: 'Choose watching or completed.' }
+      fields: { status: 'Choose watching, paused, dropped or completed.' }
     })
   }
 

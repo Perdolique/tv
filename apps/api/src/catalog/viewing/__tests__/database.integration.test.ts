@@ -252,6 +252,8 @@ describe('private viewing data', () => {
       case 'date': {
         await updateViewing(database, owner, {
           requestId: randomUUID(),
+          currentViewingId: null,
+          contextVersion: 0,
           revision: 1,
           status: 'completed',
           startedOn: null,
