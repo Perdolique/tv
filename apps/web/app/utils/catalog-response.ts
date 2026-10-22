@@ -12,6 +12,7 @@ import type {
   CatalogWatchlistResponse
 } from '@tv/shared/catalog'
 
+import { viewingDateSchema } from '@tv/shared/catalog-viewings'
 import * as v from 'valibot'
 import { parseCalendarDate } from '~/utils/calendar-date.ts'
 
@@ -83,44 +84,42 @@ const viewingTitleEntries = {
   posterUrl: catalogPosterUrlSchema
 }
 
-const viewingMarkEntries = {
-  ...viewingTitleEntries,
-  entryId: catalogItemIdSchema,
-  markedAt: v.pipe(v.string(), v.isoTimestamp(), v.regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u))
-}
-
 const catalogViewingHistoryResponseSchema = v.object({
-  items: v.pipe(v.array(v.variant('kind', [
-    v.object({
-      ...viewingMarkEntries,
-      kind: v.literal('movie'),
-      type: v.literal('movie'),
-      episodeNumber: v.null(),
-      seasonNumber: v.null(),
-      sourceTitle: v.null()
-    }),
-    v.object({
-      ...viewingMarkEntries,
-      kind: v.literal('episode'),
-      type: v.literal('series'),
-      episodeNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      seasonNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      sourceTitle: v.nullable(v.string())
-    })
-  ])), v.maxLength(20)),
+  items: v.pipe(v.array(v.pipe(v.object({
+    ...viewingTitleEntries,
+    viewingId: catalogItemIdSchema,
+    status: v.picklist(['watching', 'completed']),
+    startedOn: v.nullable(viewingDateSchema),
+    completedOn: v.nullable(viewingDateSchema),
+    score: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10)))
+  }), v.check(item => {
+    if (item.type === 'movie') {
+      return item.status === 'completed' && item.startedOn === null && item.completedOn !== null
+    }
+
+    if (item.startedOn === null) { return false }
+
+    return item.status === 'watching'
+      ? item.completedOn === null
+      : item.completedOn !== null && item.completedOn >= item.startedOn
+  }))), v.maxLength(20)),
 
   nextCursor: v.nullable(v.pipe(v.string(), v.minLength(1)))
 }) satisfies v.GenericSchema<CatalogViewingHistoryResponse>
 
 const catalogViewingSummaryResponseSchema = v.object({
-  watchedMovieCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  watchedEpisodeCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  watchedMovieCount: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+  watchedEpisodeCount: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+  completedSeriesCount: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+  watchingSeriesCount: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
 
-  series: v.array(v.object({
+  activeSeries: v.pipe(v.array(v.object({
     ...viewingTitleEntries,
     type: v.literal('series'),
-    watchedEpisodeCount: v.pipe(v.number(), v.integer(), v.minValue(1))
-  }))
+    viewingId: catalogItemIdSchema,
+    startedOn: viewingDateSchema,
+    watchedEpisodeCount: v.pipe(v.number(), v.safeInteger(), v.minValue(0))
+  })), v.maxLength(5))
 }) satisfies v.GenericSchema<CatalogViewingSummaryResponse>
 
 const calendarDateSchema = v.pipe(

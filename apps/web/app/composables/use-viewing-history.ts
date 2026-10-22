@@ -1,69 +1,80 @@
 import { clearNuxtData, useAsyncData, useRequestFetch } from '#app'
-import type { CatalogViewingHistoryItem, CatalogViewingHistoryResponse } from '@tv/shared/catalog'
+import type { CatalogViewingHistoryItem, CatalogViewingHistoryResponse, CatalogViewingStatus } from '@tv/shared/catalog'
 import { isRecord } from '@tv/shared/type-guards'
 import * as v from 'valibot'
-import { computed, onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
+import { computed, onScopeDispose, shallowRef, watch, type Ref } from 'vue'
 import { catalogViewingHistoryResponseSchema } from '~/utils/catalog-response.ts'
 
 type HistoryOutcome =
   | { status: 'idle' }
-  | { accountId: string; generation: number; status: 'loaded'; page: CatalogViewingHistoryResponse }
-  | { accountId: string; generation: number; status: 'error' | 'unauthorized' }
+  | { key: string; generation: number; status: 'loaded'; page: CatalogViewingHistoryResponse }
+  | { key: string; generation: number; status: 'error' | 'unauthorized' }
 
-interface HistoryPageResponse {
-  response: unknown;
-  isFirstPage: boolean;
+function historyKey(accountId: string | null, status: CatalogViewingStatus | null): string {
+  return `catalog-viewing-history:${accountId ?? 'anonymous'}:${status ?? 'all'}`
 }
 
-function historyKey(accountId: string | null): string {
-  return `catalog-viewing-history:${accountId ?? 'anonymous'}`
+function isInvalidCursor(error: unknown): boolean {
+  if (!isRecord(error) || error.statusCode !== 400 || !isRecord(error.data)) { return false }
+
+  const body = error.data.error
+
+  return isRecord(body) && body.code === 'INVALID_REQUEST' && isRecord(body.fields) && typeof body.fields.cursor === 'string'
 }
 
-// Owns SSR history, its cursor continuation, and account-scoped cancellation.
-function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
+// Owns SSR history, explicit refresh, and cancellation within an account and status filter.
+function useViewingHistory(accountId: Readonly<Ref<string | null>>, status: Readonly<Ref<CatalogViewingStatus | null>>) {
   const requestFetch = useRequestFetch()
-  const key = computed(() => historyKey(accountId.value))
-  const continuation = ref<CatalogViewingHistoryResponse | null>(null)
+  const key = computed(() => historyKey(accountId.value, status.value))
+  const confirmed = shallowRef<CatalogViewingHistoryResponse | null>(null)
+  const generation = shallowRef(0)
   const isLoadingMore = shallowRef(false)
   const hasLoadMoreError = shallowRef(false)
+  const needsRefresh = shallowRef(false)
+  const failedRead = shallowRef(false)
   const loadMoreUnauthorized = shallowRef(false)
-  const didRecoverCursor = shallowRef(false)
-  let generation = 0
   let controller: AbortController | null = null
   let activeRequest: Promise<CatalogViewingHistoryItem[]> | null = null
 
-  function clearContinuation(): void {
-    generation += 1
+  function cancelContinuation(): void {
+    generation.value += 1
 
     controller?.abort()
 
     controller = null
     activeRequest = null
-    continuation.value = null
     isLoadingMore.value = false
     hasLoadMoreError.value = false
-    loadMoreUnauthorized.value = false
-    didRecoverCursor.value = false
   }
 
-  watch(accountId, (_accountId, previousAccountId) => {
-    clearContinuation()
+  function reset(): void {
+    cancelContinuation()
 
-    const previousKey = historyKey(previousAccountId)
+    confirmed.value = null
+    needsRefresh.value = false
+    failedRead.value = false
+    loadMoreUnauthorized.value = false
+  }
+
+  watch([accountId, status], (_scope, [previousAccount, previousStatus]) => {
+    reset()
+
+    const previousKey = historyKey(previousAccount, previousStatus)
 
     clearNuxtData(previousKey)
   }, { flush: 'sync' })
 
   const ready = useAsyncData(key, async (_app, { signal }): Promise<HistoryOutcome> => {
-    const requestedAccountId = accountId.value
-    const requestGeneration = generation
+    const requestedKey = key.value
+    const requestGeneration = generation.value
 
-    if (requestedAccountId === null) {
-      return { status: 'idle' }
-    }
+    if (accountId.value === null) { return { status: 'idle' } }
 
     try {
+      const query = status.value === null ? undefined : { status: status.value }
+
       const response = await requestFetch('/api/catalog/viewing-history', {
+        query,
         retry: 0,
         signal
       })
@@ -76,22 +87,20 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
         globalThis.console.error('Catalog viewing history response validation failed.', parsed.issues)
 
         return {
-          accountId: requestedAccountId,
+          key: requestedKey,
           generation: requestGeneration,
           status: 'error'
         }
       }
 
       return {
-        accountId: requestedAccountId,
+        key: requestedKey,
         generation: requestGeneration,
         status: 'loaded',
         page: parsed.output
       }
     } catch (error) {
-      if (signal.aborted) {
-        throw error
-      }
+      if (signal.aborted) { throw error }
 
       const unauthorized = isRecord(error) && error.statusCode === 401
 
@@ -103,7 +112,7 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
       }
 
       return {
-        accountId: requestedAccountId,
+        key: requestedKey,
         generation: requestGeneration,
         status: unauthorized ? 'unauthorized' : 'error'
       }
@@ -116,116 +125,90 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
   const outcome = computed(() => {
     const current = ready.data.value
 
-    if (current?.status === 'idle' || current?.generation !== generation || current.accountId !== accountId.value) {
-      return
-    }
+    if (current?.status === 'idle' || current?.generation !== generation.value || current.key !== key.value) { return }
 
     return current
   })
 
-  const items = computed(() => {
-    if (outcome.value?.status !== 'loaded' || loadMoreUnauthorized.value) {
-      return []
+  watch(outcome, current => {
+    if (current?.status === 'loaded') {
+      confirmed.value = current.page
+      needsRefresh.value = false
+      failedRead.value = false
+    } else if (current?.status === 'error') {
+      failedRead.value = true
+    } else if (current?.status === 'unauthorized') {
+      confirmed.value = null
+      failedRead.value = false
     }
-
-    return continuation.value === null
-      ? outcome.value.page.items
-      : [...outcome.value.page.items, ...continuation.value.items]
+  }, {
+    flush: 'sync',
+    immediate: true
   })
 
-  const nextCursor = computed(() => {
-    if (outcome.value?.status !== 'loaded') {
-      return null
-    }
-
-    return continuation.value === null ? outcome.value.page.nextCursor : continuation.value.nextCursor
-  })
-
-  const hasMore = computed(() => nextCursor.value !== null && !loadMoreUnauthorized.value)
-  const hasError = computed(() => outcome.value?.status === 'error')
   const unauthorized = computed(() => outcome.value?.status === 'unauthorized' || loadMoreUnauthorized.value)
-  const isLoading = computed(() => accountId.value !== null && (ready.status.value === 'pending' || outcome.value === undefined))
+  const items = computed(() => unauthorized.value ? [] : confirmed.value?.items ?? [])
+  const hasData = computed(() => confirmed.value !== null && !unauthorized.value)
+  const hasMore = computed(() => hasData.value && confirmed.value?.nextCursor !== null && !needsRefresh.value)
+  const hasError = computed(() => failedRead.value && !hasData.value)
+  const isLoading = computed(() => accountId.value !== null && !hasData.value && !hasError.value && !unauthorized.value)
+  const isRefreshing = computed(() => accountId.value !== null && ready.status.value === 'pending')
 
   function clear(): void {
-    clearContinuation()
+    reset()
     ready.clear()
   }
 
-  async function reload(): Promise<void> {
-    clear()
+  async function reload(): Promise<boolean> {
+    cancelContinuation()
 
-    if (accountId.value !== null) {
-      await ready.execute({ dedupe: 'cancel' })
-    }
-  }
+    if (accountId.value === null) { return false }
 
-  async function requestPage(cursor: string, signal: AbortSignal): Promise<HistoryPageResponse> {
-    try {
-      const response: unknown = await requestFetch('/api/catalog/viewing-history', {
-        query: { cursor },
-        retry: 0,
-        signal
-      })
+    const requestedKey = key.value
+    const requestGeneration = generation.value
 
-      return {
-        response,
-        isFirstPage: false
-      }
-    } catch (error) {
-      const isErrorRecord = isRecord(error)
+    await ready.execute({ dedupe: 'cancel' })
 
-      if (!isErrorRecord || error.statusCode !== 400) {
-        throw error
-      }
-
-      signal.throwIfAborted()
-
-      // Keep every loaded page until the replacement page is confirmed.
-      const response: unknown = await requestFetch('/api/catalog/viewing-history', {
-        retry: 0,
-        signal
-      })
-
-      return {
-        response,
-        isFirstPage: true
-      }
-    }
+    return requestedKey === key.value && requestGeneration === generation.value && outcome.value?.status === 'loaded'
   }
 
   async function loadMore(): Promise<CatalogViewingHistoryItem[]> {
-    if (activeRequest !== null) {
-      return activeRequest
-    }
+    if (activeRequest !== null) { return activeRequest }
 
-    const requestedCursor = nextCursor.value
-    const requestedAccountId = accountId.value
+    const cursor = confirmed.value?.nextCursor
 
-    if (requestedAccountId === null || requestedCursor === null || unauthorized.value) {
-      return []
-    }
+    if (!hasMore.value || cursor === null || cursor === undefined || isRefreshing.value) { return [] }
 
-    const requestGeneration = generation
+    const requestedKey = key.value
+    const requestGeneration = generation.value
     const requestController = new globalThis.AbortController()
+
+    const query = status.value === null ? { cursor } : {
+      cursor,
+      status: status.value
+    }
 
     controller = requestController
     isLoadingMore.value = true
     hasLoadMoreError.value = false
-    didRecoverCursor.value = false
+
+    function isCurrent(): boolean {
+      return !requestController.signal.aborted && generation.value === requestGeneration && key.value === requestedKey
+    }
 
     const request = (async (): Promise<CatalogViewingHistoryItem[]> => {
       try {
-        const { response, isFirstPage } = await requestPage(requestedCursor, requestController.signal)
+        const response = await requestFetch('/api/catalog/viewing-history', {
+          query,
+          retry: 0,
+          signal: requestController.signal
+        })
 
-        requestController.signal.throwIfAborted()
-
-        if (generation !== requestGeneration || accountId.value !== requestedAccountId) {
-          return []
-        }
+        if (!isCurrent()) { return [] }
 
         const parsed = v.safeParse(catalogViewingHistoryResponseSchema, response)
 
-        if (!parsed.success || (!isFirstPage && parsed.output.nextCursor === requestedCursor)) {
+        if (!parsed.success || parsed.output.nextCursor === cursor) {
           globalThis.console.error('Catalog viewing history continuation validation failed.', parsed)
 
           hasLoadMoreError.value = true
@@ -233,41 +216,24 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
           return []
         }
 
-        if (isFirstPage) {
-          ready.data.value = {
-            accountId: requestedAccountId,
-            generation: requestGeneration,
-            status: 'loaded',
-            page: parsed.output
-          }
-
-          continuation.value = null
-          didRecoverCursor.value = true
-
-          return []
-        }
-
-        const existingKeys = items.value.map(item => `${item.kind}:${item.entryId}`)
+        const existingKeys = items.value.map(item => item.viewingId)
         const known = new Set(existingKeys)
-        const added = parsed.output.items.filter(item => !known.has(`${item.kind}:${item.entryId}`))
-        const previous = continuation.value?.items ?? []
+        const added = parsed.output.items.filter(item => !known.has(item.viewingId))
 
-        continuation.value = {
-          items: [...previous, ...added],
+        confirmed.value = {
+          items: [...items.value, ...added],
           nextCursor: parsed.output.nextCursor
         }
 
         return added
       } catch (error) {
-        if (requestController.signal.aborted || generation !== requestGeneration || accountId.value !== requestedAccountId) {
-          return []
-        }
+        if (!isCurrent()) { return [] }
 
-        const isErrorRecord = isRecord(error)
-
-        if (isErrorRecord && error.statusCode === 401) {
-          continuation.value = null
+        if (isRecord(error) && error.statusCode === 401) {
+          confirmed.value = null
           loadMoreUnauthorized.value = true
+        } else if (isInvalidCursor(error)) {
+          needsRefresh.value = true
         } else {
           globalThis.console.warn({
             error,
@@ -279,9 +245,7 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
 
         return []
       } finally {
-        if (generation === requestGeneration) {
-          isLoadingMore.value = false
-        }
+        if (isCurrent()) { isLoadingMore.value = false }
       }
     })()
 
@@ -301,13 +265,14 @@ function useViewingHistory(accountId: Readonly<Ref<string | null>>) {
 
   return {
     hasError,
-    didRecoverCursor,
     hasLoadMoreError,
     hasMore,
     isLoading,
     isLoadingMore,
+    isRefreshing,
     items,
     loadMore,
+    needsRefresh,
     ready,
     reload,
     unauthorized

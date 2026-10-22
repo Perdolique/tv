@@ -5,7 +5,7 @@ import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
 import { calendarReleases } from '../calendar/fixtures.ts'
 import { watchlistItems } from '../watchlist/fixtures.ts'
 import { paginatedHistory } from '../dashboard/fixtures.ts'
-import { handleDiaryRequest, movieViewings, episodeWatches } from '../catalog/viewings.worker.ts'
+import { handleDiaryRequest, diaryViewings, episodeWatches } from '../catalog/viewings.worker.ts'
 import { createViewingItems, createViewingSummary } from '../dashboard/service.ts'
 import { longEmail } from './constants.ts'
 import { handleImportRequest, OPERATOR_ID, POSTER_ID } from '../imports/worker.ts'
@@ -754,24 +754,50 @@ async function handleCatalogViewing(request: Request, url: URL): Promise<Respons
   const watches = episodeWatches(request)
 
   // Diary state supplies every repeated mark and its identity to the dashboard.
-  const viewings = movieViewings(request)
-  const items = hasCookie(request, 'paginated_viewing=1') ? paginatedHistory : createViewingItems(viewings, watches)
+  const viewings = diaryViewings(request)
+  const items = hasCookie(request, 'paginated_viewing=1') ? paginatedHistory : createViewingItems(viewings)
 
   if (isSummary) {
-    const summary = createViewingSummary(items)
+    const summary = createViewingSummary(items, watches)
 
     return json(summary)
   }
 
+  const status = url.searchParams.get('status')
+  const filtered = status === null ? items : items.filter(item => item.status === status)
   const cursor = url.searchParams.get('cursor')
-  const position = cursor === null ? -1 : items.findIndex(item => `${item.kind}:${item.entryId}` === cursor)
-  const page = items.slice(position + 1, position + 21)
+
+  const signatureData = JSON.stringify({
+    status,
+    locale: url.searchParams.get('titleLocale'),
+    items: filtered
+  })
+
+  const bytes = new TextEncoder().encode(signatureData)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  const signature = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  let position = -1
+
+  if (cursor !== null) {
+    const [cursorSignature, id] = cursor.split(':')
+
+    position = filtered.findIndex(item => item.viewingId === id)
+
+    if (cursorSignature !== signature || position === -1) {
+      return json({ error: {
+        code: 'INVALID_REQUEST',
+        fields: { cursor: 'Your viewings changed. Refresh history.' }
+      } }, 400)
+    }
+  }
+
+  const page = filtered.slice(position + 1, position + 21)
   const last = page.at(-1)
-  const hasMore = position + 21 < items.length
+  const hasMore = position + 21 < filtered.length
 
   return json({
     items: page,
-    nextCursor: hasMore && last !== undefined ? `${last.kind}:${last.entryId}` : null
+    nextCursor: hasMore && last !== undefined ? `${signature}:${last.viewingId}` : null
   })
 }
 

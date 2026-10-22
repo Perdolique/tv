@@ -249,7 +249,7 @@ test('records first, repeat and past viewings, edits the date, cancels and confi
 
   await test.step('show separate dashboard rows and return to the title', async () => {
     await page.goto('/dashboard')
-    await expect(page.locator('dd')).toHaveText(['2', '0'])
+    await expect(page.locator('dd')).toHaveText(['2', '0', '0', '0'])
     await expect(page.getByText('Movie viewings', { exact: true })).toBeVisible()
 
     const entries = page.getByRole('list', { name: 'Viewing entries' }).getByRole('listitem')

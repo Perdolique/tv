@@ -9,8 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { assertDisposableTestDatabase } from '../../../testing/test-database.ts'
 import { findCatalogTimeline } from '../../timeline-repository.ts'
 import { findViewings } from '../../viewings-repository.ts'
-import { findViewingHistoryRows } from '../../viewing-repository.ts'
-import { createViewingHistoryResponse, decodeViewingCursor } from '../../viewing-history.ts'
+import { findViewingHistory } from '../../viewing-repository.ts'
 
 const userId = '93000000-0000-4000-8000-000000000011'
 const otherUserId = '93000000-0000-4000-8000-000000000012'
@@ -531,13 +530,17 @@ describe('private title timeline reads', () => {
       }
 
       const timelinePage = await findCatalogTimeline(database, movieOwner, query)
-      const cursor = decodeViewingCursor(dashboardCursor)
-      const historyRows = await findViewingHistoryRows(database, userId, cursor)
-      const dashboardPage = createViewingHistoryResponse(historyRows, 'en')
+
+      const dashboardPage = await findViewingHistory(database, {
+        userId,
+        status: null,
+        titleLocale: 'en'
+      }, dashboardCursor)
+
       const pageViewingIds = viewingPage.items.map(viewing => viewing.id)
       const movieEvents = timelinePage.items.filter(item => item.kind === 'movie_viewing')
       const pageTimelineIds = movieEvents.map(item => item.viewingId)
-      const pageDashboardIds = dashboardPage.items.map(item => item.entryId)
+      const pageDashboardIds = dashboardPage.items.map(item => item.viewingId)
 
       viewingIds.push(...pageViewingIds)
       timelineIds.push(...pageTimelineIds)

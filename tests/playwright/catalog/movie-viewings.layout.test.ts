@@ -122,7 +122,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       })).toBeFocused()
 
       await page.goto('/dashboard')
-      await expect(page.locator('dd')).toHaveText(['2', '0'])
+      await expect(page.locator('dd')).toHaveText(['2', '0', '0', '0'])
       await expectNoHorizontalOverflow(page)
 
       await page.screenshot({

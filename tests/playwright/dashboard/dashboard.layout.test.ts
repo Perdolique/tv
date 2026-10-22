@@ -58,6 +58,14 @@ function sectionLabels(elements: Element[]) {
   return labels
 }
 
+function clippedContent(elements: Element[]): boolean[] {
+  return elements.map(element => {
+    const isClipped = element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth
+
+    return isClipped
+  })
+}
+
 test.beforeEach(async ({ context }) => {
   await addCookie(context, 'tv_session', 'e2e-session')
   await addCookie(context, 'paginated_viewing', '1')
@@ -82,7 +90,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       })
 
       const series = page.getByRole('region', {
-        name: 'By series',
+        name: 'Currently watching',
         exact: true
       })
 
@@ -97,11 +105,19 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const metricsBounds = await visibleBounds(metrics)
       const readingOrder = await page.locator('dl, section[aria-labelledby]').evaluateAll(sectionLabels)
 
-      expect(readingOrder).toStrictEqual(['Viewing summary', 'Viewing history', 'By series'])
+      expect(readingOrder).toStrictEqual(['Viewing summary', 'Viewing history', 'Currently watching'])
       expect(historyBounds.y).toBeGreaterThan(metricsBounds.y + metricsBounds.height)
       expect(seriesBounds.y).toBeGreaterThan(metricsBounds.y + metricsBounds.height)
       await expect(rows).toHaveCount(20)
       await expect(rows.first().getByText('No poster available')).toBeVisible()
+
+      const placeholders = series.getByText('No poster available', { exact: true })
+
+      await expect(placeholders).toHaveCount(5)
+
+      const clippedPlaceholders = await placeholders.evaluateAll(clippedContent)
+
+      expect(clippedPlaceholders).toStrictEqual([false, false, false, false, false])
       expect(await getVisibleLineCount(rows.first().getByRole('heading'))).toBeLessThanOrEqual(2)
       expectColumns(historyBounds, seriesBounds, width)
 
@@ -120,6 +136,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       const path = testInfo.outputPath('dashboard.png')
 
       await page.screenshot({ path })
+      await series.screenshot({ path: testInfo.outputPath('active-series.png') })
     })
   }
 }
@@ -178,14 +195,14 @@ test('keeps keyboard focus and the current destination visible in forced colors 
   await expectNoHorizontalOverflow(page)
 })
 
-for (const [timezoneId, date] of [['America/Los_Angeles', 'Sep 21, 2026'], ['Asia/Tokyo', 'Sep 22, 2026']] as const) {
+for (const [timezoneId, date] of [['America/Los_Angeles', 'Sep 22, 2026'], ['Asia/Tokyo', 'Sep 22, 2026']] as const) {
   test.describe(`dashboard timestamps in ${timezoneId}`, () => {
     test.use({
       timezoneId,
       locale: 'en-US'
     })
 
-    test('shows local mark dates without hydration errors', async ({ page }) => {
+    test('keeps calendar dates unchanged across time zones without hydration errors', async ({ page }) => {
       await page.goto('/dashboard')
       await waitForHydration(page)
 
@@ -195,7 +212,7 @@ for (const [timezoneId, date] of [['America/Los_Angeles', 'Sep 21, 2026'], ['Asi
       }).locator('time').first()
 
       await expect(timestamp).toContainText(date)
-      await expect(timestamp).toHaveAttribute('datetime', '2026-09-22T00:15:00.123Z')
+      await expect(timestamp).toHaveAttribute('datetime', '2026-09-22')
     })
   })
 }

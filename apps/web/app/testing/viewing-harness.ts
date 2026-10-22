@@ -1,10 +1,11 @@
+import type { CatalogViewingStatus } from '@tv/shared/catalog'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { computed, effectScope, ref, shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { movie, summary } from './viewing-fixtures.ts'
 
 interface RequestOptions {
   signal: AbortSignal;
-  query?: Record<'cursor', string>;
+  query?: { cursor?: string; status?: CatalogViewingStatus };
 }
 
 const harness = vi.hoisted(() => {
@@ -104,12 +105,13 @@ const scopes: ReturnType<typeof effectScope>[] = []
 function setup(initialAccount: string | null = 'first') {
   const scope = effectScope()
   const accountId = ref(initialAccount)
+  const status = ref<CatalogViewingStatus | null>(null)
 
   scopes.push(scope)
 
   const result = scope.run(() => {
     return {
-      history: useViewingHistory(accountId),
+      history: useViewingHistory(accountId, status),
       summary: useViewingSummary(accountId)
     }
   })
@@ -120,6 +122,7 @@ function setup(initialAccount: string | null = 'first') {
 
   return {
     accountId,
+    status,
     history: result.history,
     scope,
     summary: result.summary

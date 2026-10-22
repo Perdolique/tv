@@ -4,7 +4,7 @@ import { movie, summary } from '../../testing/viewing-fixtures.ts'
 import { catalogViewingHistoryResponseSchema, catalogViewingSummaryResponseSchema } from '../catalog-response.ts'
 
 describe('viewing response validation', () => {
-  it('accepts exact timestamp strings and zero counts', () => {
+  it('accepts calendar dates and zero counts', () => {
     const response = {
       items: [movie],
       nextCursor: null
@@ -15,20 +15,21 @@ describe('viewing response validation', () => {
   })
 
   it.each([
-    { markedAt: 'yesterday' },
-    { markedAt: '2026-09-22T13:00:00.123Z' },
-    { entryId: 'not-a-uuid' },
+    { completedOn: 'yesterday' },
+    { completedOn: '2026-02-30' },
+    { completedOn: null },
+    { viewingId: 'not-a-uuid' },
     { posterUrl: 'https://untrusted.example/poster.png' },
+    { status: 'watching' },
     {
-      kind: 'episode',
-      type: 'movie'
+      type: 'series',
+      startedOn: null
     },
     {
-      kind: 'episode',
       type: 'series',
-      seasonNumber: 0,
-      episodeNumber: 1
-    }
+      startedOn: '2026-10-01'
+    },
+    { score: 11 }
   ])('rejects malformed history metadata: %j', (override) => {
     const response = {
       items: [{
@@ -42,7 +43,7 @@ describe('viewing response validation', () => {
     expect(v.safeParse(catalogViewingHistoryResponseSchema, response).success).toBe(false)
   })
 
-  it('rejects overlong pages, negative totals, and series without a watched episode', () => {
+  it('rejects overlong pages, negative totals, and overlong active lists', () => {
     const tooMany = {
       items: Array.from({ length: 21 }, () => movie),
       nextCursor: null
@@ -53,18 +54,19 @@ describe('viewing response validation', () => {
       watchedMovieCount: -1
     }
 
-    const emptySeries = {
+    const tooManySeries = {
       ...summary,
 
-      series: [{
+      activeSeries: Array.from({ length: 6 }, () => {return {
         ...movie,
         type: 'series',
+        startedOn: '2026-09-22',
         watchedEpisodeCount: 0
-      }]
+      }})
     }
 
     expect(v.safeParse(catalogViewingHistoryResponseSchema, tooMany).success).toBe(false)
     expect(v.safeParse(catalogViewingSummaryResponseSchema, negative).success).toBe(false)
-    expect(v.safeParse(catalogViewingSummaryResponseSchema, emptySeries).success).toBe(false)
+    expect(v.safeParse(catalogViewingSummaryResponseSchema, tooManySeries).success).toBe(false)
   })
 })

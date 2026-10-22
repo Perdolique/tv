@@ -1169,9 +1169,15 @@ describe('viewing index restoration migration', () => {
 
       expect(removedIndexes.rows).toStrictEqual([])
 
+      const restorationMigration = '20261018144903_restore-recorded-viewing-indexes'
+      const restorationSource = join(migrationsFolder, restorationMigration)
+      const restorationTarget = join(fixture.migrationsFolder, restorationMigration)
+
+      await cp(restorationSource, restorationTarget, { recursive: true })
+
       // Act
-      await migrate(fixture.database, { migrationsFolder })
-      await migrate(fixture.database, { migrationsFolder })
+      await migrate(fixture.database, { migrationsFolder: fixture.migrationsFolder })
+      await migrate(fixture.database, { migrationsFolder: fixture.migrationsFolder })
 
       const afterIndexes = await fixture.client.query(`SELECT indexname, indexdef FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = 'catalog_viewings' ORDER BY indexname`)

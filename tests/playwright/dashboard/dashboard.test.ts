@@ -45,7 +45,7 @@ test('redirects a guest through sign in to an empty private dashboard', async ({
   await page.goto('/dashboard')
   await signIn(page)
   await expect(page).toHaveURL(`${appBaseUrl}/dashboard`)
-  await expect(page.getByRole('heading', { name: 'Nothing marked as watched yet' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No viewings yet' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Browse catalog' })).toHaveAttribute('href', '/')
 
   await expect(page.getByRole('link', {
@@ -53,10 +53,10 @@ test('redirects a guest through sign in to an empty private dashboard', async ({
     exact: true
   })).toHaveAttribute('aria-current', 'page')
 
-  await expect(page.locator('dd')).toHaveText(['0', '0'])
+  await expect(page.locator('dd')).toHaveText(['0', '0', '0', '0'])
 })
 
-test('uses movie and episode marks, refreshes after removal, and isolates accounts after sign in', async ({ page, context }) => {
+test('uses movie and series viewings, refreshes after removal, and isolates accounts after sign in', async ({ page, context }) => {
   await addCookie(context, 'tv_session', 'e2e-session')
   await page.goto(`/titles/${dune.id}`)
 
@@ -87,14 +87,14 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   }).click()
 
   await expect(marks(page)).toHaveCount(2)
-  await expect(page.locator('dd')).toHaveText(['1', '1'])
+  await expect(page.locator('dd')).toHaveText(['1', '0', '1', '1'])
 
-  const episodeEntry = marks(page).filter({ hasText: 'Episode · S1 · E2' })
+  const episodeEntry = marks(page).filter({ hasText: 'Series · 2019' })
   const movieEntry = marks(page).filter({ hasText: 'Movie · 2021' })
 
-  await expect(episodeEntry).toContainText('Episode · S1 · E2')
-  await expect(episodeEntry).toContainText('Please Remain Calm')
-  await expect(page.getByRole('list', { name: 'Watched episodes by series' })).toContainText('1 episode watched')
+  await expect(episodeEntry).toContainText('Series · 2019')
+  await expect(episodeEntry).toContainText('Watching')
+  await expect(page.getByRole('list', { name: 'Currently watching series' })).toContainText('1 episode watched')
   await expect(movieEntry).toContainText('Movie · 2021')
   await expect(movieEntry).toContainText('Watched')
 
@@ -128,20 +128,20 @@ test('uses movie and episode marks, refreshes after removal, and isolates accoun
   }).click()
 
   await expect(marks(page)).toHaveCount(1)
-  await expect(page.locator('dd')).toHaveText(['0', '1'])
+  await expect(page.locator('dd')).toHaveText(['0', '0', '1', '1'])
   await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/dashboard`)
   await signIn(page, longEmail)
   await expect(page).toHaveURL(`${appBaseUrl}/dashboard`)
-  await expect(page.locator('dd')).toHaveText(['0', '0'])
+  await expect(page.locator('dd')).toHaveText(['0', '0', '0', '0'])
   await expect(marks(page)).toHaveCount(0)
   await page.getByRole('button', { name: 'Sign out' }).click()
   await signIn(page)
   await expect(marks(page)).toHaveCount(1)
-  await expect(page.locator('dd')).toHaveText(['0', '1'])
+  await expect(page.locator('dd')).toHaveText(['0', '0', '1', '1'])
 })
 
-test('server renders the first page without duplicate hydration requests and loads older marks by keyboard', async ({ page, context }) => {
+test('server renders the first page without duplicate hydration requests and loads older viewings by keyboard', async ({ page, context }) => {
   await addCookie(context, 'tv_session', 'e2e-session')
   await addCookie(context, 'paginated_viewing', '1')
 
@@ -149,7 +149,7 @@ test('server renders the first page without duplicate hydration requests and loa
   const response = await page.goto('/dashboard')
   const html = await response?.text()
 
-  expect(html).toContain('Episode 25')
+  expect(html).toContain('A very long series title')
   await waitForHydration(page)
   expect(privateRequests).toStrictEqual([])
   await expect(marks(page)).toHaveCount(20)
@@ -165,9 +165,9 @@ test('server renders the first page without duplicate hydration requests and loa
   await expect(page.getByRole('region', {
     name: 'Viewing history',
     exact: true
-  }).getByRole('status')).toHaveText('5 older marks added.')
+  }).getByRole('status')).toHaveText('5 older viewings added.')
 
-  await expect(marks(page).last()).toContainText('Episode 1')
+  await expect(marks(page).last().getByRole('link')).toHaveAttribute('data-viewing-id', '52000000-0000-7000-8000-000000000001')
 })
 
 test('shows loading feedback on client navigation and keeps the four destinations keyboard accessible', async ({ page, context }) => {
@@ -228,7 +228,7 @@ failedMoreTest('retains visible marks after a failed continuation and retries wi
   const button = page.getByRole('button', { name: 'Load more' })
 
   await button.click()
-  await expect(page.getByRole('alert')).toHaveText('We couldn’t load older marks. Try again.')
+  await expect(page.getByRole('alert')).toHaveText('We couldn’t load older viewings. Try again.')
   await expect(marks(page)).toHaveCount(20)
   await expect(button).toBeFocused()
   await button.click()
@@ -256,7 +256,7 @@ failedSummaryTest('recovers the summary independently while history remains usab
   await expect(marks(page)).toHaveCount(20)
   await expect(page.getByRole('alert')).toHaveText('We couldn’t load your viewing summary. Try again.')
   await page.getByRole('button', { name: 'Retry summary' }).click()
-  await expect(page.locator('dd')).toHaveText(['0', '25'])
+  await expect(page.locator('dd')).toHaveText(['0', '18', '7', '0'])
 
   await expect(page.getByRole('heading', {
     name: 'Dashboard',
@@ -280,7 +280,7 @@ expiredTest('clears the whole dashboard when a continuation reports an expired s
   await page.getByRole('button', { name: 'Load more' }).click()
   await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/dashboard`)
   await expect(marks(page)).toHaveCount(0)
-  await expect(page.getByRole('list', { name: 'Watched episodes by series' })).toHaveCount(0)
+  await expect(page.getByRole('list', { name: 'Currently watching series' })).toHaveCount(0)
   await expect(page.locator('dd')).toHaveCount(0)
 })
 
@@ -301,7 +301,7 @@ failedHistoryTest('recovers initial history while keeping the summary visible', 
     exact: true
   }).click()
 
-  await expect(page.locator('dd')).toHaveText(['0', '25'])
+  await expect(page.locator('dd')).toHaveText(['0', '18', '7', '0'])
   await expect(page.getByRole('alert')).toHaveText('We couldn’t load your viewing history. Try again.')
   await page.getByRole('button', { name: 'Retry history' }).click()
   await expect(marks(page)).toHaveCount(20)
@@ -332,7 +332,7 @@ failedSessionTest('retries a failed session check without treating it as an empt
     exact: true
   })).toBeFocused()
 
-  await expect(page.locator('dd')).toHaveText(['0', '0'])
+  await expect(page.locator('dd')).toHaveText(['0', '0', '0', '0'])
 })
 
 test('keeps a slow poster inside its row and shows the movie-only series state', async ({ page, context }) => {
@@ -361,6 +361,6 @@ test('keeps a slow poster inside its row and shows the movie-only series state',
   const after = await marks(page).first().boundingBox()
 
   expect(after).toStrictEqual(before)
-  await expect(page.getByText('No episodes marked as watched yet.')).toBeVisible()
-  await expect(page.locator('dd')).toHaveText(['1', '0'])
+  await expect(page.getByText('No series in progress.')).toBeVisible()
+  await expect(page.locator('dd')).toHaveText(['1', '0', '0', '0'])
 })

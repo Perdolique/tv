@@ -222,6 +222,7 @@ const catalogViewings = pgTable('catalog_viewings', {
   index('catalog_viewings_owner_recorded_index').on(table.userId, table.recordedAt.desc(), table.id.desc()),
   index('catalog_viewings_owner_item_watched_index').on(table.userId, table.catalogItemId, table.completedOn.desc(), table.id.desc()),
   index('catalog_viewings_owner_watched_index').on(table.userId, table.completedOn.desc(), table.id.desc()),
+  index('catalog_viewings_owner_calendar_index').on(table.userId, sql`coalesce(${table.completedOn}, ${table.startedOn}) DESC`, table.id.desc()),
   index('catalog_viewings_item_index').on(table.catalogItemId)
 ])
 

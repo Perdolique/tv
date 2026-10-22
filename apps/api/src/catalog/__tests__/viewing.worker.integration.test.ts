@@ -56,7 +56,7 @@ describe('viewing Worker routes', () => {
     await expect(response.json()).resolves.toMatchObject({ error: { code: 'AUTHENTICATION_REQUIRED' } })
   })
 
-  it('returns empty data, mixed marks, counts, translations and older pages', async () => {
+  it('returns empty data, mixed viewings, counts, translations and scoped pages', async () => {
     const empty = await request(historyPath)
 
     await expect(empty.json()).resolves.toStrictEqual({
@@ -66,7 +66,7 @@ describe('viewing Worker routes', () => {
 
     await withClient(async (client) => {
       await client.query(`INSERT INTO catalog_viewings (user_id, catalog_item_id, completed_on)
-        SELECT $1, id, '2026-09-22'::date FROM catalog_items WHERE type = 'movie' ORDER BY id LIMIT 2`, [userId])
+        SELECT $1, item.id, '2026-09-22'::date FROM (SELECT id FROM catalog_items WHERE type = 'movie' ORDER BY id LIMIT 1) item CROSS JOIN generate_series(1, 24)`, [userId])
 
       const episodes = await client.query<{ id: string }>('SELECT id FROM catalog_episodes ORDER BY id LIMIT 23')
       const episodeIds = episodes.rows.map(episode => episode.id)
@@ -86,23 +86,31 @@ describe('viewing Worker routes', () => {
     expect(first.nextCursor).not.toBeNull()
 
     expect(summary).toMatchObject({
-      watchedMovieCount: 2,
+      watchedMovieCount: 24,
       watchedEpisodeCount: 23
     })
 
-    expect(summary.series.reduce((total, series) => total + series.watchedEpisodeCount, 0)).toBe(23)
+    expect(summary.activeSeries.length).toBeLessThanOrEqual(5)
+    expect(summary.watchingSeriesCount).toBeGreaterThan(0)
+    expect(summary.completedSeriesCount).toBe(0)
 
-    const next = await request(`${historyPath}?cursor=${first.nextCursor}`)
+    const next = await request(`${historyPath}?titleLocale=ru&cursor=${first.nextCursor}`)
     const older = await next.json<CatalogViewingHistoryResponse>()
 
-    expect(older.items).toHaveLength(5)
+    expect(first.items.length + older.items.length).toBe(24 + summary.watchingSeriesCount)
     expect(older.nextCursor).toBeNull()
-    expect(older.items.filter(item => item.kind === 'movie')).toHaveLength(2)
+    expect([...first.items, ...older.items].filter(item => item.type === 'movie')).toHaveLength(24)
+
+    const watching = await request(`${historyPath}?status=watching`)
+    const filtered = await watching.json<CatalogViewingHistoryResponse>()
+
+    expect(filtered.items.every(item => item.status === 'watching')).toBe(true)
+    expect(filtered.items).toHaveLength(summary.watchingSeriesCount)
   })
 
-  it('validates cursors after checking authentication', async () => {
-    const invalid = await request(`${historyPath}?cursor=invalid`)
-    const anonymous = await request(`${historyPath}?cursor=invalid`, false)
+  it.each(['cursor=invalid', 'status=paused'])('validates %s after checking authentication', async parameter => {
+    const invalid = await request(`${historyPath}?${parameter}`)
+    const anonymous = await request(`${historyPath}?${parameter}`, false)
 
     expect(invalid.status).toBe(400)
     expect(anonymous.status).toBe(401)
@@ -110,8 +118,7 @@ describe('viewing Worker routes', () => {
     expect(anonymous.headers.get('cache-control')).toBe('no-store')
 
     await expect(invalid.json()).resolves.toMatchObject({ error: {
-      code: 'INVALID_REQUEST',
-      fields: { cursor: 'Use a valid viewing history cursor.' }
+      code: 'INVALID_REQUEST'
     } })
   })
 
@@ -120,7 +127,7 @@ describe('viewing Worker routes', () => {
       kind: 'episode',
       entryId: '30000000-0000-7000-8000-000000000001',
       markedAt: '2026-09-22T13:00:00.123456Z',
-      version: 4
+      version: 5
     })
 
     const legacyBase64 = btoa(legacyPayload)

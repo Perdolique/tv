@@ -5,11 +5,11 @@ const longTitle = 'A very long series title with enough words to fill the availa
 
 const paginatedHistory: readonly Readonly<CatalogViewingHistoryItem>[] = Array.from({ length: 25 }, (_value, index) => {
   const suffix = String(25 - index).padStart(12, '0')
+  const isWatching = index < 7
 
   return {
-    id: chernobyl.id,
-    entryId: `52000000-0000-7000-8000-${suffix}`,
-    kind: 'episode',
+    id: isWatching ? `53000000-0000-7000-8000-${suffix}` : chernobyl.id,
+    viewingId: `52000000-0000-7000-8000-${suffix}`,
     type: 'series',
     title: longTitle,
     originalTitle: chernobyl.originalTitle,
@@ -17,10 +17,10 @@ const paginatedHistory: readonly Readonly<CatalogViewingHistoryItem>[] = Array.f
     titleLocale: 'en',
     releaseYear: chernobyl.releaseYear,
     posterUrl: null,
-    markedAt: '2026-09-22T00:15:00.123456Z',
-    episodeNumber: 25 - index,
-    seasonNumber: 1,
-    sourceTitle: `Episode ${25 - index}`
+    status: isWatching ? 'watching' : 'completed',
+    startedOn: isWatching ? '2026-09-22' : '2026-09-20',
+    completedOn: isWatching ? null : '2026-09-22',
+    score: index % 2 === 0 ? null : 8
   } as const satisfies CatalogViewingHistoryItem
 })
 
