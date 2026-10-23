@@ -136,7 +136,7 @@
 
   type RegistrationMode = 'check-email' | 'email' | 'invalid' | 'password'
 
-  definePageMeta({ middleware: 'guest' })
+  definePageMeta({ middleware: ['registration', 'guest'] })
   useHead({ title: 'Create account · TV' })
 
   const registerMarketingItems = [

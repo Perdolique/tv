@@ -3,8 +3,12 @@ import type { Page } from '@playwright/test'
 interface NuxtHydrationState {
   isHydrating: boolean;
 }
+interface VueRouter {
+  push: (target: string) => Promise<unknown>;
+}
 interface VueGlobalProperties {
   $nuxt: NuxtHydrationState;
+  $router: VueRouter;
 }
 interface VueApplicationConfig {
   globalProperties: VueGlobalProperties;
@@ -25,6 +29,21 @@ async function waitForHydration(page: Page): Promise<void> {
   })
 }
 
+async function navigateWithClientRouter(page: Page, target: string): Promise<void> {
+  await page.evaluate(async (path) => {
+    const root = globalThis.document.querySelector<VueRootElement>('#__nuxt')
+
+    // oxlint-disable-next-line eslint/no-underscore-dangle -- Vue exposes the application instance on the root element for browser tooling.
+    const router = root?.__vue_app__?.config.globalProperties.$router
+
+    if (router === undefined) {
+      throw new Error('Nuxt client router is unavailable')
+    }
+
+    await router.push(path)
+  }, target)
+}
+
 async function openEpisodes(page: Page): Promise<void> {
   await waitForHydration(page)
 
@@ -34,4 +53,4 @@ async function openEpisodes(page: Page): Promise<void> {
   }).click()
 }
 
-export { openEpisodes, waitForHydration }
+export { navigateWithClientRouter, openEpisodes, waitForHydration }

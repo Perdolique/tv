@@ -26,6 +26,7 @@ type AuthErrorCode =
   | 'INVALID_VERIFICATION'
   | 'PASSWORD_COMPROMISED'
   | 'RATE_LIMITED'
+  | 'REGISTRATION_DISABLED'
   | 'SERVICE_UNAVAILABLE'
 
 interface AuthErrorBody {

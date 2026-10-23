@@ -19,7 +19,7 @@
     "postinstall": "pnpm --filter @tv/web run prepare",
     "prepare": "husky",
     "test:e2e": "playwright test --project=chromium",
-    "test:e2e:ci": "CI=true playwright test --project=chromium",
+    "test:e2e:ci": "CI=true playwright test --project=chromium && CI=true PLAYWRIGHT_REGISTRATION_ENABLED=false playwright test --project=chromium",
     "test:integration": "pnpm --filter @tv/api run test:integration",
     "test:typecheck": "pnpm --recursive --if-present run test:typecheck && pnpm run cf-typegen:check",
     "test:unit": "pnpm --recursive --if-present run test:unit",

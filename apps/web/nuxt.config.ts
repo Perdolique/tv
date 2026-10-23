@@ -86,6 +86,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
+      registrationEnabled: true,
       turnstileSiteKey: TURNSTILE_PRODUCTION_SITE_KEY
     }
   },

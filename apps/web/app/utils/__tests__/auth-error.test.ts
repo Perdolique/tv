@@ -68,6 +68,21 @@ describe(parseAuthError, () => {
     })
   })
 
+  it('shows the safe registration-disabled response', () => {
+    const result = parseAuthError({
+      error: {
+        code: 'REGISTRATION_DISABLED',
+        message: 'Registration is not available.'
+      }
+    })
+
+    expect(result).toStrictEqual({
+      code: 'REGISTRATION_DISABLED',
+      fields: {},
+      message: 'Registration is not available.'
+    })
+  })
+
   it.each([
     null,
     { error: 'broken' },

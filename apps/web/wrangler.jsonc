@@ -21,6 +21,9 @@
       "service": "tv-api"
     }
   ],
+  "vars": {
+    "NUXT_PUBLIC_REGISTRATION_ENABLED": "true"
+  },
   "dev": {
     "ip": "127.0.0.1",
     "port": 3001
@@ -33,6 +36,9 @@
   "env": {
     "staging": {
       "name": "tv-web-staging",
+      "vars": {
+        "NUXT_PUBLIC_REGISTRATION_ENABLED": "false"
+      },
       "routes": [
         {
           "pattern": "tv-staging.perd.dev",

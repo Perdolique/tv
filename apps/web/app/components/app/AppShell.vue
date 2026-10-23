@@ -5,7 +5,7 @@
       <nav :class="$style.guestNavigation" aria-label="Main navigation">
         <NuxtLink :class="$style.guestLink" to="/" :aria-current="catalogCurrent">Catalog</NuxtLink>
         <NuxtLink :class="$style.guestLink" :to="signInLocation">Sign in</NuxtLink>
-        <NuxtLink :class="$style.guestLink" :to="registerLocation">Create an account</NuxtLink>
+        <NuxtLink v-if="registrationEnabled" :class="$style.guestLink" :to="registerLocation">Create an account</NuxtLink>
       </nav>
       <div v-if="hasSessionError" :class="$style.sessionError">
         <AppMessage role="status">Your account is temporarily unavailable. You can still browse the catalog.</AppMessage>
@@ -89,7 +89,7 @@
 
 <script lang="ts" setup>
   import { Icon } from '#components'
-  import { useRequestFetch, useRoute } from '#app'
+  import { useRequestFetch, useRoute, useRuntimeConfig } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { computed, nextTick, ref, toRef, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
@@ -113,6 +113,7 @@
   const emit = defineEmits<Emits>()
   const route = useRoute()
   const requestFetch = useRequestFetch()
+  const { registrationEnabled } = useRuntimeConfig().public
   const { restoreSession, setAnonymous, state } = useAuthSession()
   const { canManage, discover: discoverImportAccess } = useCatalogImportAccess()
   const sessionRetryButton = useTemplateRef('sessionRetryButton')
