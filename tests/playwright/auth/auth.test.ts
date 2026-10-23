@@ -4,7 +4,7 @@ import { TURNSTILE_RESPONSE_FIELD } from '../../../packages/shared/src/turnstile
 import { isRecord } from '../../../packages/shared/src/type-guards.ts'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
-import { waitForHydration } from '../catalog/helpers.ts'
+import { navigateWithClientRouter, waitForHydration } from '../catalog/helpers.ts'
 import { longEmail } from './constants.ts'
 
 const validPassword = 'correct horse battery staple'
@@ -101,26 +101,6 @@ interface SignInOptions {
   target?: string;
 }
 
-interface VueRouter {
-  push: (target: string) => Promise<unknown>;
-}
-
-interface VueGlobalProperties {
-  $router: VueRouter;
-}
-
-interface VueApplicationConfig {
-  globalProperties: VueGlobalProperties;
-}
-
-interface VueApplication {
-  config: VueApplicationConfig;
-}
-
-interface VueRootElement extends HTMLElement {
-  __vue_app__?: VueApplication;
-}
-
 interface PausedRequest {
   readonly count: number;
   release: () => Promise<void>;
@@ -202,21 +182,6 @@ async function addRecoverableSessionCookies(
   }
 
   await context.addCookies(cookies)
-}
-
-async function navigateWithClientRouter(page: Page, target: string): Promise<void> {
-  await page.evaluate(async (path) => {
-    const root = globalThis.document.querySelector<VueRootElement>('#__nuxt')
-
-    // oxlint-disable-next-line eslint/no-underscore-dangle -- Vue exposes the application instance on the root element for browser tooling.
-    const router = root?.__vue_app__?.config.globalProperties.$router
-
-    if (router === undefined) {
-      throw new Error('Nuxt client router is unavailable')
-    }
-
-    await router.push(path)
-  }, target)
 }
 
 async function pauseFirstRequest(page: Page, url: string): Promise<PausedRequest> {

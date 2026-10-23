@@ -5,6 +5,15 @@ import { appBaseUrl } from './tests/playwright/constants.ts'
 delete env.NO_COLOR
 
 const isCI = Boolean(env.CI)
+const isRegistrationDisabled = env.PLAYWRIGHT_REGISTRATION_ENABLED === 'false'
+const disabledRegistrationTests = '**/auth/registration-disabled.test.ts'
+
+const testSelection = isRegistrationDisabled
+  ? { testMatch: disabledRegistrationTests }
+  : { testIgnore: [disabledRegistrationTests] }
+
+const registrationOverride = isRegistrationDisabled ? '--var NUXT_PUBLIC_REGISTRATION_ENABLED:false' : ''
+const webServerCommand = `pnpm --filter @tv/web run build && wrangler dev -c apps/web/wrangler.jsonc -c tests/playwright/auth/wrangler.jsonc --port 8889 ${registrationOverride}`
 
 const reporters: ReporterDescription[] = [
   ['html', { open: 'never' }]
@@ -16,6 +25,7 @@ if (isCI) {
 
 export default defineConfig({
   testDir: './tests/playwright',
+  ...testSelection,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
   reporter: reporters,
@@ -35,7 +45,7 @@ export default defineConfig({
   }],
 
   webServer: {
-    command: 'pnpm --filter @tv/web run build && wrangler dev -c apps/web/wrangler.jsonc -c tests/playwright/auth/wrangler.jsonc --port 8889',
+    command: webServerCommand,
     url: appBaseUrl,
     reuseExistingServer: false,
     timeout: 120_000,

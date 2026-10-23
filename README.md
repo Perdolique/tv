@@ -32,9 +32,13 @@ Integration tests need local PostgreSQL 18 and a role allowed to create database
 
 See [package.json](package.json) for all commands, including migration generation, formatting, linting, and type checks.
 
+Browser tests use enabled registration by default. Run `PLAYWRIGHT_REGISTRATION_ENABLED=false vp run test:e2e` for the disabled-registration scenarios; CI runs both modes.
+
 ## Deployment
 
 GitHub Actions migrates and deploys staging for same-repository pull requests and production for pushes to `master`. Fork and Dependabot pull requests run checks only. Each environment uses its own Neon branch, Hyperdrive configuration, and `DATABASE_URL` secret.
+
+Registration is enabled in production and disabled in staging. The API enforces `REGISTRATION_ENABLED`; the web Worker uses `NUXT_PUBLIC_REGISTRATION_ENABLED` to hide account-creation links and redirect `/register` to sign-in. Set both values to `"true"` to enable registration or `"false"` to disable it in the matching Wrangler environment. Existing accounts can still sign in when registration is disabled.
 
 For a manual deployment, authenticate Wrangler and load the owner connection string for the intended Neon branch:
 

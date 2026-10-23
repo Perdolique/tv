@@ -65,7 +65,7 @@
 
     </AuthForm>
 
-    <template #footer>
+    <template v-if="registrationEnabled" #footer>
       New to TV?
       <NuxtLink :to="registerLocation">
         Create an account
@@ -76,7 +76,7 @@
 
 <script lang="ts" setup>
   import { definePageMeta } from '#app/composables/pages'
-  import { navigateTo, useHead, useRequestFetch, useRoute, useState } from '#app'
+  import { navigateTo, useHead, useRequestFetch, useRoute, useRuntimeConfig, useState } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
   import { TURNSTILE_ACTIONS, TURNSTILE_RESPONSE_FIELD } from '@tv/shared/turnstile'
   import * as v from 'valibot'
@@ -105,6 +105,7 @@
 
   const route = useRoute()
   const requestFetch = useRequestFetch()
+  const { registrationEnabled } = useRuntimeConfig().public
   const { setAuthenticated, state } = useAuthSession()
   const requestCancellation = useRequestCancellation()
 

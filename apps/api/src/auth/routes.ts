@@ -179,6 +179,15 @@ function createAuthApp(): Hono<AuthEnvironment> {
       throw new AuthHttpError('INVALID_REQUEST', 400)
     }
 
+    const isRegistrationRequest = context.req.path === '/api/auth/register'
+      || context.req.path === '/api/auth/register/complete'
+
+    const shouldBlockRegistration = isRegistrationRequest && context.env.REGISTRATION_ENABLED !== 'true'
+
+    if (shouldBlockRegistration) {
+      throw new AuthHttpError('REGISTRATION_DISABLED', 403)
+    }
+
     // oxlint-disable-next-line node/callback-return -- Hono middleware continues after awaiting next().
     await next()
     context.header('Cache-Control', 'no-store')

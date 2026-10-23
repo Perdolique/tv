@@ -72,6 +72,7 @@
     }
   ],
   "vars": {
+    "REGISTRATION_ENABLED": "true",
     "WEB_ORIGIN": "https://tv.perd.dev"
   },
   "routes": [
@@ -166,6 +167,7 @@
         }
       ],
       "vars": {
+        "REGISTRATION_ENABLED": "false",
         "WEB_ORIGIN": "https://tv-staging.perd.dev"
       },
       "routes": [
