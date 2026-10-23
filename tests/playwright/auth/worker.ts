@@ -1,3 +1,5 @@
+import { handleTitleRequests, submitTitleRequest } from '../requests/worker.ts'
+
 /* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
 import { handleDiscoveryRequest } from '../catalog/discovery.worker.ts'
 import { catalogItems } from '../catalog/fixtures.ts'
@@ -866,6 +868,14 @@ export default {
     if (request.method === 'GET' && url.pathname.startsWith('/api/catalog/items/')) {
       return handleCatalogDetails(request, url)
     }
+
+    const submittedTitle = await submitTitleRequest(request)
+
+    if (submittedTitle !== null) { return submittedTitle }
+
+    const titleRequests = handleTitleRequests(request)
+
+    if (titleRequests !== null) { return titleRequests }
 
     if (request.method === 'GET' && url.pathname === '/api/catalog/search') {
       return handleCatalogSearch(request, url)

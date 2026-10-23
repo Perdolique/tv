@@ -113,11 +113,13 @@
 </template>
 
 <script lang="ts" setup>
+  /* oxlint-disable eslint/max-lines -- The import page owns source selection and its request-queue entry point. */
   import { Icon } from '#components'
   import { definePageMeta } from '#app/composables/pages'
-  import { navigateTo, useHead, useRequestFetch, useResponseHeader } from '#app'
+  import { navigateTo, useHead, useRoute, useRequestFetch, useResponseHeader } from '#app'
   import type { ImportSearchItem, ImportSelection, ImportShowItem } from '@tv/shared/catalog-import'
-  import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
+  import { titleRequestPreviewSchema } from '@tv/shared/catalog-requests'
+  import { computed, nextTick, onMounted, ref, useId, useTemplateRef, watch } from 'vue'
   import * as v from 'valibot'
   import ImportPageShell from '~/components/import/ImportPageShell.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
@@ -141,6 +143,7 @@
 
   useResponseHeader('Cache-Control').value = 'private, no-store'
 
+  const route = useRoute()
   const requestFetch = useRequestFetch()
   const { canManage, deny, unauthorize } = useCatalogImportAccess()
   const titleType = ref<'movie' | 'series'>('movie')
@@ -454,6 +457,63 @@
       if (saveRequest.finish(controller)) {saving.value = false}
     }
   }
+
+  onMounted(async () => {
+    const rawType = route.query.type
+    const rawId = Number(route.query.tmdbId)
+    const isSupportedType = rawType === 'movie' || rawType === 'series'
+    const isSafeId = Number.isSafeInteger(rawId)
+
+    if (!canManage.value || !isSupportedType || !isSafeId || rawId < 1) { return }
+
+    titleType.value = rawType
+
+    await nextTick()
+
+    if (!canManage.value || titleType.value !== rawType) { return }
+
+    const controller = titleRequest.start()
+
+    searching.value = true
+
+    try {
+      const raw = await requestFetch('/api/catalog/requests/preview', {
+        query: {
+          type: rawType,
+          tmdbId: rawId
+        },
+
+        signal: controller.signal,
+        retry: 0
+      })
+
+      const parsed = v.parse(titleRequestPreviewSchema, raw)
+
+      if (!titleRequest.isCurrent(controller)) { return }
+
+      const { card } = parsed
+
+      const item: ImportSearchItem = {
+        id: card.tmdbId,
+        type: card.type,
+        title: card.title,
+        originalTitle: card.originalTitle,
+        year: card.year,
+        posterUrl: card.posterUrl
+      }
+
+      query.value = card.title
+
+      await nextTick()
+
+      results.value = [item]
+      searched.value = true
+
+      await selectTitle(item)
+    } catch (error) {
+      if (titleRequest.isCurrent(controller)) { searchError.value = handleFailure(error, 'We couldn’t open the requested title. Search for it again.') }
+    } finally { if (titleRequest.finish(controller)) { searching.value = false } }
+  })
 
   watch([selected, showChoice, noShowMatch, noMatchReason], () => {
     saveRequest.cancel()

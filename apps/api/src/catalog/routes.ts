@@ -1,3 +1,4 @@
+import { registerTitleRequestRoutes } from './requests/routes.ts'
 import { Hono } from 'hono'
 import { requestId } from 'hono/request-id'
 
@@ -64,6 +65,7 @@ function createCatalogApp(
     context.header('Cache-Control', 'no-store')
   })
 
+  registerTitleRequestRoutes(app, dependencies)
   registerCatalogImportRoutes(app, dependencies)
   registerCatalogDiscoveryRoutes(app, dependencies)
 

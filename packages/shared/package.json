@@ -14,7 +14,8 @@
     "./redirect": "./src/redirect.ts",
     "./turnstile": "./src/turnstile.ts",
     "./type-guards": "./src/type-guards.ts",
-    "./verification": "./src/verification.ts"
+    "./verification": "./src/verification.ts",
+    "./catalog-requests": "./src/catalog-requests.ts"
   },
   "scripts": {
     "test:typecheck": "tsc --noEmit",

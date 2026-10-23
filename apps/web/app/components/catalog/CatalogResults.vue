@@ -24,13 +24,14 @@
         <h3>No titles found</h3>
         <p>Try another title or a different spelling.</p>
       </div>
+      <NuxtLink :to="requestLocation">Can’t find it? Request a title</NuxtLink>
     </template>
   </section>
 </template>
 
 <script lang="ts" setup>
   import type { CatalogSearchItem } from '@tv/shared/catalog'
-  import { computed, useTemplateRef } from 'vue'
+  import { computed, toRef, useTemplateRef } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
 
@@ -50,6 +51,13 @@
   const hasItems = computed(() => items !== undefined && items.length > 0)
   const showSkeleton = computed(() => isLoading && !hasResult.value)
   const failureHint = computed(() => hasResult.value ? 'Your previous results are still shown below.' : 'Try again.')
+
+  const requestLocation = toRef(() => {
+    return {
+      path: '/request-title',
+      query: { query: resultQuery }
+    }
+  })
 
   const rows = computed(() => items?.map((item) => {
     const type = item.type === 'movie' ? 'Movie' : 'Series'

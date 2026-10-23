@@ -2,6 +2,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { CatalogErrorCode, CatalogErrorEnvelope } from '@tv/shared/catalog'
 
 const ERROR_MESSAGES = {
+  RATE_LIMITED: 'Too many requests. Try again in a minute.',
   AUTHENTICATION_REQUIRED: 'Authentication is required.',
   CONFLICT: 'Your viewing changed. Reload the title and try again.',
   FORBIDDEN: 'You do not have access to catalog management.',

@@ -127,6 +127,7 @@ interface CatalogUpcomingReleasesResponse {
 }
 
 type CatalogErrorCode =
+  | 'RATE_LIMITED'
   | 'AUTHENTICATION_REQUIRED'
   | 'CONFLICT'
   | 'FORBIDDEN'
