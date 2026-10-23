@@ -87,7 +87,7 @@ describe('catalog import access Worker contract', () => {
         await expect(denied.json()).resolves.toStrictEqual({
           error: {
             code: 'FORBIDDEN',
-            message: 'You do not have access to catalog imports.'
+            message: 'You do not have access to catalog management.'
           }
         })
 

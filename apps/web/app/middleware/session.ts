@@ -3,9 +3,9 @@ import { isCatalogQueryOnlyNavigation } from '~/utils/catalog-navigation.ts'
 import { useAuthSession } from '~/composables/use-auth-session.ts'
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
-  const { restoreSession, state } = useAuthSession()
+  const { restoreSession } = useAuthSession()
 
-  if (state.value.status === 'authenticated' && isCatalogQueryOnlyNavigation(to, from)) {
+  if (isCatalogQueryOnlyNavigation(to, from)) {
     return
   }
 

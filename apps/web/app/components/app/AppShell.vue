@@ -8,8 +8,8 @@
         <NuxtLink :class="$style.guestLink" :to="registerLocation">Create an account</NuxtLink>
       </nav>
       <div v-if="hasSessionError" :class="$style.sessionError">
-        <AppMessage role="status">Your account is temporarily unavailable. You can still read this title.</AppMessage>
-        <AppButton :disabled="isRetryingSession" variant="secondary" @click="retrySession">Retry account</AppButton>
+        <AppMessage role="status">Your account is temporarily unavailable. You can still browse the catalog.</AppMessage>
+        <AppButton ref="sessionRetryButton" :disabled="isRetryingSession" variant="secondary" @click="retrySession">Retry account</AppButton>
       </div>
     </header>
     <nav v-if="isAuthenticated" :class="$style.desktopNavigation" aria-label="Main navigation">
@@ -29,6 +29,10 @@
         <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:dashboard-square-01" /></span>
         <span :class="$style.navigationLabel">Dashboard</span>
       </NuxtLink>
+      <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/collections" :aria-current="collectionsCurrent">
+        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:collections-bookmark" /></span>
+        <span :class="$style.navigationLabel">Collections</span>
+      </NuxtLink>
       <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/imports" :aria-current="importsCurrent">
         <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" /></span>
         <span :class="$style.navigationLabel">Add title</span>
@@ -42,6 +46,7 @@
           <Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" />
           <span>Add title</span>
         </NuxtLink>
+        <NuxtLink v-if="canManage" :class="$style.mobileAddLink" to="/manage/collections" :aria-current="collectionsCurrent">Collections</NuxtLink>
         <AppMessage v-if="hasSignOutError" :class="$style.accountError" role="alert" tone="danger">{{ signOutError }}</AppMessage>
         <AppButton
           ref="signOutButton"
@@ -97,6 +102,7 @@
 
   interface Emits {
     signedOut: [];
+    sessionRestored: [];
   }
 
   const { activeDestination, focused = false } = defineProps<Props>()
@@ -105,6 +111,7 @@
   const requestFetch = useRequestFetch()
   const { restoreSession, setAnonymous, state } = useAuthSession()
   const { canManage, discover: discoverImportAccess } = useCatalogImportAccess()
+  const sessionRetryButton = useTemplateRef('sessionRetryButton')
   const signOutButton = useTemplateRef('signOutButton')
   const signOutError = ref('')
   const isSigningOut = ref(false)
@@ -112,6 +119,7 @@
   const isAuthenticated = computed(() => state.value.status === 'authenticated')
   const hasSessionError = computed(() => state.value.status === 'error')
   const hasSignOutError = computed(() => signOutError.value !== '')
+  const collectionsCurrent = computed(() => route.path.startsWith('/manage/collections') ? 'page' : undefined)
   const importsCurrent = computed(() => route.path.startsWith('/manage/imports') ? 'page' : undefined)
   const catalogCurrent = computed(() => activeDestination === 'catalog' ? 'page' : undefined)
   const calendarCurrent = computed(() => activeDestination === 'calendar' ? 'page' : undefined)
@@ -121,6 +129,8 @@
   const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
 
   const signInLocation = computed(() => {
+    if (redirectTo.value === '/') { return '/sign-in' }
+
     return {
       path: '/sign-in',
       query: { redirectTo: redirectTo.value }
@@ -128,6 +138,8 @@
   })
 
   const registerLocation = computed(() => {
+    if (redirectTo.value === '/') { return '/register' }
+
     return {
       path: '/register',
       query: { redirectTo: redirectTo.value }
@@ -146,6 +158,11 @@
     await restoreSession({ force: true })
 
     isRetryingSession.value = false
+
+    await nextTick()
+
+    if (state.value.status === 'error') { sessionRetryButton.value?.focus() }
+    else { emit('sessionRestored') }
   }
 
   async function signOut(): Promise<void> {

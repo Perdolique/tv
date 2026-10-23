@@ -1,8 +1,9 @@
-/* oxlint-disable eslint/max-lines -- Catalog browser contracts share one end-to-end service harness. */
 import type { BrowserContext, Page } from '@playwright/test'
+import * as v from 'valibot'
+import { authSessionResponseSchema } from '../../../apps/web/app/utils/auth-response.ts'
 import { appBaseUrl } from '../constants.ts'
 import { expect, test } from '../fixtures/global.fixtures.ts'
-import { addCookie, getRedirectLocation } from '../helpers.ts'
+import { addCookie } from '../helpers.ts'
 import { waitForHydration } from './helpers.ts'
 
 async function openCatalog(page: Page, context: BrowserContext, target = '/'): Promise<void> {
@@ -28,17 +29,11 @@ const failedSearchTest = test.extend({ expectedHttpErrors: { values: [{
   status: 503
 }] } })
 
-const expiredSearchTest = test.extend({ expectedHttpErrors: { values: [{
-  pathname: '/api/catalog/search',
-  status: 401
-}] } })
-
-test('keeps guests out of search and preserves the query in both auth links', async ({ page }) => {
-  const requests: string[] = []
-
-  page.on('request', request => { requests.push(request.url()) })
+test('lets guests search a direct URL and keeps authentication links available', async ({ page }) => {
   await page.goto('/?query=Dark')
-  await expect(page.getByRole('textbox', { name: 'Search movies and series' })).toHaveCount(0)
+  await waitForHydration(page)
+  await expect(page.getByRole('textbox', { name: 'Search movies and series' })).toHaveValue('Dark')
+  await expect(page.getByRole('region', { name: 'Search results' }).getByRole('listitem')).toHaveCount(2)
 
   await expect(page.getByRole('link', {
     name: 'Sign in',
@@ -46,7 +41,6 @@ test('keeps guests out of search and preserves the query in both auth links', as
   })).toHaveAttribute('href', '/sign-in?redirectTo=/?query=Dark')
 
   await expect(page.getByRole('link', { name: 'Create an account' })).toHaveAttribute('href', '/register?redirectTo=/?query=Dark')
-  expect(requests.filter(url => url.includes('/api/catalog/search'))).toStrictEqual([])
 })
 
 test('searches partial and case-insensitive titles, preserves other URL parameters, and clears immediately', async ({ page, context }) => {
@@ -80,7 +74,7 @@ test('searches partial and case-insensitive titles, preserves other URL paramete
   await page.getByRole('button', { name: 'Clear search' }).click()
   await expect(page.getByRole('textbox')).toBeFocused()
   await expect(page.getByRole('listitem')).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Search results' }).getByRole('status')).toHaveText('Enter a movie or series title to start exploring.')
+  await expect(page.getByRole('region', { name: 'Discover titles' })).toBeVisible()
   await expect(page).toHaveURL(`${appBaseUrl}/?source=home`)
 })
 
@@ -212,7 +206,7 @@ test('renders a direct search on the server, hydrates without fetching again, re
   })).toBeVisible()
 
   await expect(page).toHaveURL(`${appBaseUrl}/?query=Dark`)
-  await expect(page.getByRole('listitem')).toHaveCount(0)
+  await expect(page.getByRole('listitem')).toHaveCount(2)
 })
 
 test('shows first-load skeletons and keeps the previous list while updating', async ({ page, context }) => {
@@ -267,40 +261,12 @@ failedSearchTest('keeps previous results on an unsafe server error and retries t
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
-// oxlint-disable-next-line vitest/require-hook -- This is a Playwright test with expected HTTP errors.
-expiredSearchTest('clears private results and redirects an expired session back through sign in', async ({ page, context }) => {
+test('keeps public search available after its account expires', async ({ page, context }) => {
   await openCatalog(page, context, '/?query=Arrival')
-
-  const historyLength = await page.evaluate(() => globalThis.history.length)
-
-  await addCookie(context, 'tv_session', `e2e-expiring-${crypto.randomUUID()}`)
-  await addCookie(context, 'expire_catalog', '1')
+  await context.clearCookies({ name: 'tv_session' })
   await search(page, 'Dark')
-  await expect(page).toHaveURL(`${appBaseUrl}/sign-in?redirectTo=/?query=Dark`)
-  await expect(page.getByRole('region', { name: 'Search results' })).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
-  expect(await page.evaluate(() => globalThis.history.length)).toBe(historyLength)
-  await context.clearCookies({ name: 'expire_catalog' })
-  await page.getByLabel('Email').fill('viewer@example.com')
-  await page.getByLabel('Password', { exact: true }).fill('correct horse battery staple')
-  await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(`${appBaseUrl}/?query=Dark`)
   await expect(page.getByRole('listitem')).toHaveCount(2)
-  expect(await page.evaluate(() => globalThis.history.length)).toBe(historyLength)
-})
-
-test('revalidates an expired session when clearing the current query', async ({ page, context }) => {
-  const expiringSession = `e2e-expiring-${crypto.randomUUID()}`
-
-  await addCookie(context, 'tv_session', expiringSession)
-  await page.goto('/?query=Dark')
-  await waitForHydration(page)
-  await expect(page.getByRole('listitem')).toHaveCount(2)
-  await addCookie(context, 'expire_catalog', '1')
-
-  const expiredResponse = await context.request.get('/api/catalog/search?query=Dark')
-
-  expect(expiredResponse.status()).toBe(401)
   await page.getByRole('button', { name: 'Clear search' }).click()
 
   await expect(page.getByRole('link', {
@@ -308,6 +274,7 @@ test('revalidates an expired session when clearing the current query', async ({ 
     exact: true
   })).toBeVisible()
 
+  await expect(page.getByRole('region', { name: 'Discover titles' })).toBeVisible()
   await expect(page.getByText('viewer@example.com')).toHaveCount(0)
 })
 
@@ -342,7 +309,7 @@ test('aborts replaced and cleared requests at the transport layer', async ({ pag
 
   expect(clearedRequest.failure()?.errorText).toBe('net::ERR_ABORTED')
   await expect(page.getByRole('listitem')).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Search results' }).getByRole('status')).toHaveText('Enter a movie or series title to start exploring.')
+  await expect(page.getByRole('region', { name: 'Discover titles' })).toBeVisible()
 })
 
 test('renders a safe first-search failure on the server without hydration warnings', async ({ page, context }) => {
@@ -355,22 +322,32 @@ test('renders a safe first-search failure on the server without hydration warnin
   await expect(page.getByRole('listitem')).toHaveCount(2)
 })
 
-test('redirects a search that loses access during server rendering', async ({ context }) => {
-  await addCookie(context, 'tv_session', `e2e-expiring-${crypto.randomUUID()}`)
+test('renders public search on the server with an expired account cookie', async ({ context }) => {
+  const sessionId = crypto.randomUUID()
+
+  await addCookie(context, 'tv_session', `e2e-expiring-${sessionId}`)
   await addCookie(context, 'expire_catalog', '1')
 
-  const response = await context.request.get('/?query=Dark', { maxRedirects: 0 })
-  const location = getRedirectLocation(response)
+  const sessionResponse = await context.request.get('/api/auth/session')
+  const rawSession: unknown = await sessionResponse.json()
+  const session = v.parse(authSessionResponseSchema, rawSession)
 
-  expect(response.status()).toBe(302)
-  expect(location.pathname).toBe('/sign-in')
-  expect(location.searchParams.get('redirectTo')).toBe('/?query=Dark')
+  expect(sessionResponse.status()).toBe(200)
+  expect(session.user).toBeNull()
+
+  const response = await context.request.get('/?query=Dark', { maxRedirects: 0 })
+  const html = await response.text()
+
+  expect(response.status()).toBe(200)
+  expect(html).toContain('Dark City')
+  expect(html).toContain('Sign in')
+  expect(html).not.toContain('viewer@example.com')
 })
 
 test('preserves search proxy cookies, status codes and no-store responses', async ({ context }) => {
   const anonymous = await context.request.get('/api/catalog/search?query=Dark')
 
-  expect(anonymous.status()).toBe(401)
+  expect(anonymous.status()).toBe(200)
   expect(anonymous.headers()['cache-control']).toBe('no-store')
   await addCookie(context, 'tv_session', 'e2e-session')
 

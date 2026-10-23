@@ -647,7 +647,7 @@ test('keeps public metadata available when session restoration fails', async ({ 
   })).toBeVisible()
 
   await expect(page.getByRole('button', { name: 'Retry account' })).toBeVisible()
-  await expect(page.getByText('You can still read this title.', { exact: false })).toBeVisible()
+  await expect(page.getByText('You can still browse the catalog.', { exact: false })).toBeVisible()
 
   const unavailableFollow = page.getByRole('button', {
     name: 'Follow unavailable',

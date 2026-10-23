@@ -38,8 +38,37 @@ const catalogItems = pgTable('catalog_items', {
     .notNull(),
 
   releaseYear: integer('release_year'),
-  posterPath: text('poster_path')
-})
+  posterPath: text('poster_path'),
+
+  addedAt: timestamp('added_at', {
+    withTimezone: true,
+    mode: 'date'
+  }).defaultNow()
+}, table => [index('catalog_items_added_index').on(table.addedAt.desc().nullsLast(), table.id)])
+
+const catalogCollections = pgTable('catalog_collections', {
+  id: uuid().default(sql`uuidv7()`).primaryKey(),
+  title: text().notNull(),
+  description: text(),
+  isFeatured: boolean('is_featured').default(false).notNull(),
+  revision: integer().default(1).notNull()
+}, table => [
+  check('catalog_collections_title', sql`length(btrim(${table.title})) BETWEEN 1 AND 160`),
+  check('catalog_collections_description', sql`length(${table.description}) <= 2000`),
+  check('catalog_collections_revision', sql`${table.revision} > 0`),
+  index('catalog_collections_title_index').on(table.title, table.id)
+])
+
+const catalogCollectionItems = pgTable('catalog_collection_items', {
+  collectionId: uuid('collection_id').notNull().references(() => catalogCollections.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => catalogItems.id, { onDelete: 'cascade' }),
+  position: integer().notNull()
+}, table => [
+  primaryKey({ columns: [table.collectionId, table.catalogItemId] }),
+  unique('catalog_collection_items_position_unique').on(table.collectionId, table.position),
+  check('catalog_collection_items_position', sql`${table.position} >= 0`),
+  index('catalog_collection_items_title_index').on(table.catalogItemId, table.collectionId)
+])
 
 const catalogItemTitles = pgTable('catalog_item_titles', {
   catalogItemId:
@@ -503,6 +532,8 @@ const sessions = pgTable('sessions', {
 ])
 
 export {
+  catalogCollections,
+  catalogCollectionItems,
   catalogEpisodes,
   catalogExternalLinks,
   catalogImportFields,

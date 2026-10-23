@@ -153,31 +153,16 @@ describe('catalog search Worker contract', () => {
     vi.restoreAllMocks()
   })
 
-  it('requires a valid session and clears a malformed cookie', async () => {
-    const missingResponse = await catalogRequest(
-      '/api/catalog/search?query=dead',
-      null
-    )
+  it.each([null, '__Host-tv_session=malformed'])('searches publicly with cookie %s without changing account cookies', async (cookie) => {
+    const response = await catalogRequest('/api/catalog/search?query=dead', cookie)
 
-    const malformedResponse = await catalogRequest(
-      '/api/catalog/search?query=dead',
-      '__Host-tv_session=malformed'
-    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('set-cookie')).toBeNull()
 
-    expect(missingResponse.status).toBe(401)
-    expect(missingResponse.headers.get('set-cookie')).toBeNull()
+    const body = await response.json()
 
-    await expect(missingResponse.json()).resolves.toStrictEqual({
-      error: {
-        code: 'AUTHENTICATION_REQUIRED',
-        message: 'Authentication is required.'
-      }
-    })
-
-    expect(malformedResponse.status).toBe(401)
-    expect(malformedResponse.headers.get('set-cookie')).toContain('Max-Age=0')
-    expectNoStore(missingResponse)
-    expectNoStore(malformedResponse)
+    expect(body).toHaveProperty('items')
+    expectNoStore(response)
   })
 
   it('rejects insecure non-loopback HTTP with a safe no-store error', async () => {
@@ -199,13 +184,13 @@ describe('catalog search Worker contract', () => {
     expectNoStore(response)
   })
 
-  it('rejects an expired session and clears its cookie', async () => {
+  it('keeps search public with an expired session', async () => {
     await expireTestSession()
 
     const response = await catalogRequest('/api/catalog/search?query=dead')
 
-    expect(response.status).toBe(401)
-    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('set-cookie')).toBeNull()
     expectNoStore(response)
   })
 

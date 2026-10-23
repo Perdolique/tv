@@ -51,6 +51,7 @@
 
   @layer components {
     .component {
+      container-type: inline-size;
       position: relative;
       inline-size: 100%;
       aspect-ratio: 2 / 3;
@@ -84,6 +85,12 @@
       .component[data-compact='true'] .placeholder {
         padding: var(--space-3);
         font-size: 0.875rem;
+      }
+    }
+    @container (width < 5rem) {
+      .component[data-compact='true'] .placeholder {
+        padding: var(--space-1);
+        font-size: 0.75rem;
       }
     }
   }

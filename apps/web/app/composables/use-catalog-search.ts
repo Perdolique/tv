@@ -1,8 +1,7 @@
 import { useAsyncData, useRequestFetch, useRoute, useRouter } from '#app'
 import type { CatalogSearchItem } from '@tv/shared/catalog'
-import { isRecord } from '@tv/shared/type-guards'
 import * as v from 'valibot'
-import { onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
+import { onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { catalogSearchResponseSchema, normalizeSearchQuery } from '~/utils/catalog-response.ts'
 
 interface SearchResult {
@@ -13,7 +12,7 @@ interface SearchResult {
 type SearchOutcome =
   | { status: 'idle' }
   | { generation: number; status: 'success'; result: SearchResult }
-  | { generation: number; status: 'error' | 'unauthorized'; query: string }
+  | { generation: number; status: 'error'; query: string }
 
 const LOADING_INDICATOR_DELAY_MS = 200
 const LOADING_INDICATOR_MINIMUM_MS = 200
@@ -32,7 +31,7 @@ function parseCatalogSearchItems(response: unknown): CatalogSearchItem[] {
 }
 
 // Owns URL synchronization, request lifetime, and the last successful search, not the session.
-function useCatalogSearch(isAuthenticated: Ref<boolean>) {
+function useCatalogSearch() {
   const route = useRoute()
   const router = useRouter()
   const requestFetch = useRequestFetch()
@@ -42,7 +41,6 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
   const lastResult = shallowRef<SearchResult>()
   const failure = ref('')
   const isLoading = ref(false)
-  const unauthorized = ref(false)
 
   // oxlint-disable-next-line eslint/init-declarations -- No debounce timer exists until the user types.
   let timer: ReturnType<typeof globalThis.setTimeout> | undefined
@@ -60,7 +58,7 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
     const requestedQuery = query.value
     const requestGeneration = generation
 
-    if (!isAuthenticated.value || requestedQuery === '') {
+    if (requestedQuery === '') {
       return { status: 'idle' }
     }
 
@@ -87,12 +85,9 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
         throw error
       }
 
-      const isUnauthorized = isRecord(error) && error.statusCode === 401
-      const status = isUnauthorized ? 'unauthorized' : 'error'
-
       return {
         generation: requestGeneration,
-        status,
+        status: 'error',
         query: requestedQuery
       }
     }
@@ -129,11 +124,10 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
     failure.value = ''
     isLoading.value = false
     loadingStartedAt = 0
-    unauthorized.value = false
   }
 
   function applyOutcome(outcome: Exclude<SearchOutcome, { status: 'idle' }>): void {
-    if (outcome.generation !== generation || !isAuthenticated.value || disposed) {
+    if (outcome.generation !== generation || disposed) {
       return
     }
 
@@ -143,12 +137,8 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
     if (outcome.status === 'success') {
       lastResult.value = outcome.result
       failure.value = ''
-    } else if (outcome.status === 'error') {
-      failure.value = outcome.query
     } else {
-      reset()
-
-      unauthorized.value = true
+      failure.value = outcome.query
     }
   }
 
@@ -225,7 +215,7 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
       return
     }
 
-    if (!isAuthenticated.value || disposed || (!force && nextQuery === query.value)) {
+    if (disposed || (!force && nextQuery === query.value)) {
       return
     }
 
@@ -242,7 +232,7 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
       failure.value = ''
     }
 
-    // Settle the URL before a fast 401 can trigger competing navigation to sign-in.
+    // Settle the URL before a response can update the visible query.
     await updateUrl(nextQuery)
 
     if (generation !== searchGeneration) {
@@ -283,15 +273,6 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
     void search()
   })
 
-  watch(isAuthenticated, (authenticated) => {
-    if (authenticated) {
-      input.value = normalizeSearchQuery(route.query.query)
-      void search(true)
-    } else {
-      reset()
-    }
-  }, { flush: 'sync' })
-
   onScopeDispose(() => {
     disposed = true
 
@@ -306,8 +287,7 @@ function useCatalogSearch(isAuthenticated: Ref<boolean>) {
     isLoading,
     lastResult,
     ready,
-    search,
-    unauthorized
+    search
   }
 }
 

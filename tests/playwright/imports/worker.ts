@@ -405,7 +405,7 @@ async function handleImportRequest(request: Request, url: URL, authenticated: bo
 
   if (cookieValue(request, 'catalog_manager') !== '1') {return json({ error: {
     code: 'FORBIDDEN',
-    message: 'You do not have access to catalog imports.'
+    message: 'You do not have access to catalog management.'
   } }, 403)}
 
   const state = getState(request)
