@@ -21,7 +21,7 @@ type CatalogReview = Pick<ImportPreviewData, 'card' | 'target' | 'candidates' | 
 
 interface CatalogState {
   candidateKeys: string[];
-  items: (typeof catalogItems.$inferSelect)[];
+  items: Pick<typeof catalogItems.$inferSelect, 'id' | 'type' | 'releaseYear' | 'posterPath'>[];
   titles: (typeof catalogItemTitles.$inferSelect)[];
   descriptions: (typeof catalogItemDescriptions.$inferSelect)[];
   episodes: (typeof catalogEpisodes.$inferSelect)[];
@@ -139,8 +139,14 @@ async function readCatalogState(database: CatalogReader, selection: ImportSelect
 
   const ids = [...itemIds]
 
+  // Import fingerprints cover metadata owned by imports, not discovery bookkeeping.
   const items = await database
-    .select()
+    .select({
+      id: catalogItems.id,
+      type: catalogItems.type,
+      releaseYear: catalogItems.releaseYear,
+      posterPath: catalogItems.posterPath
+    })
     .from(catalogItems)
     .where(
       inArray(catalogItems.id, ids)

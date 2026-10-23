@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./catalog": "./src/catalog.ts",
+    "./catalog-discovery": "./src/catalog-discovery.ts",
     "./catalog-viewings": "./src/catalog-viewings.ts",
     "./catalog-series": "./src/catalog-series.ts",
     "./catalog-timeline": "./src/catalog-timeline.ts",

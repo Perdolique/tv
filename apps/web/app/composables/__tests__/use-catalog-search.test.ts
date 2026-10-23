@@ -96,13 +96,12 @@ const movie = {
 
 const scopes: ReturnType<typeof effectScope>[] = []
 
-async function setup(authenticated = true) {
+async function setup() {
   const scope = effectScope()
 
   scopes.push(scope)
 
-  const enabled = ref(authenticated)
-  const search = scope.run(() => useCatalogSearch(enabled))
+  const search = scope.run(() => useCatalogSearch())
 
   if (search === undefined) {
     throw new Error('Search scope did not start')
@@ -112,7 +111,6 @@ async function setup(authenticated = true) {
 
   return {
     search,
-    enabled,
     scope
   }
 }
@@ -150,8 +148,8 @@ describe(useCatalogSearch, () => {
     vi.restoreAllMocks()
   })
 
-  it('does not search for guests or empty input', async () => {
-    const { search } = await setup(false)
+  it('does not search for empty input or an uncommitted debounce', async () => {
+    const { search } = await setup()
 
     search.changeInput('Dark')
     await vi.advanceTimersByTimeAsync(250)
@@ -161,22 +159,14 @@ describe(useCatalogSearch, () => {
     expect(search.lastResult.value).toBeUndefined()
   })
 
-  it('searches the current URL query when authentication becomes available', async () => {
+  it('searches a direct URL without an authentication dependency', async () => {
     harness.route.query = { query: 'Dark' }
 
-    const { enabled } = await setup(false)
+    const { search } = await setup()
 
-    expect(harness.fetch).not.toHaveBeenCalled()
-
-    enabled.value = true
-
-    await nextTick()
-    await vi.advanceTimersByTimeAsync(0)
     expect(harness.fetch).toHaveBeenCalledTimes(1)
-
-    expect(harness.fetch).toHaveBeenCalledWith('/api/catalog/search', expect.objectContaining({
-      query: { query: 'Dark' }
-    }))
+    expect(search.lastResult.value?.query).toBe('Dark')
+    expect(harness.fetch).toHaveBeenCalledWith('/api/catalog/search', expect.objectContaining({ query: { query: 'Dark' } }))
   })
 
   it('normalizes NFC and whitespace, and does not duplicate Enter or equivalent input', async () => {
@@ -347,12 +337,12 @@ describe(useCatalogSearch, () => {
 
     await previous
 
-    expect(search.unauthorized.value).toBe(false)
+    expect(search.failure.value).toBe('')
     expect(search.lastResult.value?.query).toBe('Dark')
   })
 
-  it.each(['clear', 'sign-out', 'unmount'] as const)('cancels pending requests and timers on %s', async (action) => {
-    const { search, enabled, scope } = await setup()
+  it.each(['clear', 'unmount'] as const)('cancels pending requests and timers on %s', async (action) => {
+    const { search, scope } = await setup()
     const deferred = Promise.withResolvers<unknown>()
 
     harness.fetch.mockReturnValueOnce(deferred.promise)
@@ -368,7 +358,6 @@ describe(useCatalogSearch, () => {
 
     const actions = {
       clear: search.clear,
-      'sign-out': () => { enabled.value = false },
       unmount: () => { scope.stop() }
     }
 
@@ -384,7 +373,7 @@ describe(useCatalogSearch, () => {
     expect(search.failure.value).toBe('')
   })
 
-  it('clears successful data and reports a current 401 to the session owner', async () => {
+  it('preserves public results when a request unexpectedly returns 401', async () => {
     const { search } = await setup()
 
     search.changeInput('Arrival')
@@ -392,12 +381,11 @@ describe(useCatalogSearch, () => {
     harness.fetch.mockRejectedValueOnce({ statusCode: 401 })
     search.changeInput('Dark')
     await search.search()
-    expect(search.lastResult.value).toBeUndefined()
-    expect(search.unauthorized.value).toBe(true)
-    expect(search.failure.value).toBe('')
+    expect(search.lastResult.value?.query).toBe('Arrival')
+    expect(search.failure.value).toBe('Dark')
   })
 
-  it('settles URL navigation before a fast unauthorized response can redirect', async () => {
+  it('settles URL navigation before a fast failed response', async () => {
     const { search } = await setup()
     const navigation = Promise.withResolvers<null>()
 
@@ -418,7 +406,7 @@ describe(useCatalogSearch, () => {
     await pending
 
     expect(harness.route.query).toStrictEqual({ query: 'Dark' })
-    expect(search.unauthorized.value).toBe(true)
+    expect(search.failure.value).toBe('Dark')
   })
 
   it('does not start an obsolete request after URL navigation resolves late', async () => {

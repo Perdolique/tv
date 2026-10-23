@@ -172,7 +172,7 @@ async function signIn(page: Page, options: SignInOptions = {}): Promise<void> {
   expect(signInResponse.status()).toBe(200)
   expect(signInResponse.headers()['cache-control']).toBe('no-store')
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
-  await expect(page).toHaveTitle('Your catalog · TV')
+  await expect(page).toHaveTitle('Catalog · TV')
 }
 
 async function addFailedSignOutCookie(context: BrowserContext): Promise<void> {
@@ -268,10 +268,10 @@ test.describe('Authentication routing and SSR', () => {
     test('renders the public home for an anonymous SSR request', async ({ page }) => {
       await page.goto('/')
       await expect(page).toHaveURL(`${appBaseUrl}/`)
-      await expect(page.getByRole('heading', { name: 'TV' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeVisible()
       await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in')
       await expect(page.getByRole('link', { name: 'Create an account' })).toHaveAttribute('href', '/register')
-      await expect(page).toHaveTitle('TV')
+      await expect(page).toHaveTitle('Catalog · TV')
     })
 
     test('preserves a deep public target in guest links', async ({ page }) => {
@@ -731,7 +731,7 @@ test.describe('Authenticated session lifecycle', () => {
     await secondPage.goto('/')
     await secondPage.getByRole('button', { name: 'Sign out' }).click()
     await expect(secondPage).toHaveURL(`${appBaseUrl}/`)
-    await expect(secondPage.getByRole('heading', { name: 'TV' })).toBeFocused()
+    await expect(secondPage.getByRole('heading', { name: 'Your catalog starts here.' })).toBeFocused()
     await navigateWithClientRouter(page, '/sign-in')
     await expect(page).toHaveURL(`${appBaseUrl}/sign-in`)
     await secondPage.close()
@@ -745,7 +745,7 @@ test.describe('Authenticated session lifecycle', () => {
     await secondPage.goto('/')
     await secondPage.getByRole('button', { name: 'Sign out' }).click()
     await expect(secondPage).toHaveURL(`${appBaseUrl}/`)
-    await expect(secondPage.getByRole('heading', { name: 'TV' })).toBeFocused()
+    await expect(secondPage.getByRole('heading', { name: 'Your catalog starts here.' })).toBeFocused()
 
     let sessionRequestCount = 0
 
@@ -757,7 +757,7 @@ test.describe('Authenticated session lifecycle', () => {
 
     await navigateWithClientRouter(page, '/?view=recent')
     await expect(page).toHaveURL(`${appBaseUrl}/?view=recent`)
-    await expect(page.getByRole('heading', { name: 'TV' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeVisible()
     expect(sessionRequestCount).toBe(1)
     await secondPage.close()
   })
@@ -799,8 +799,8 @@ test.describe('Authenticated session lifecycle', () => {
   expectedSessionUnavailableTest('moves focus to authenticated content after session retry succeeds', async ({ context, page }) => {
     await addRecoverableSessionCookies(context)
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'We couldn’t verify your session.' })).toBeVisible()
-    await page.getByRole('button', { name: 'Try again' }).click()
+    await expect(page.getByText('Your account is temporarily unavailable. You can still browse the catalog.')).toBeVisible()
+    await page.getByRole('button', { name: 'Retry account' }).click()
 
     const heading = page.getByRole('heading', { name: 'Your catalog starts here.' })
 
@@ -811,17 +811,17 @@ test.describe('Authenticated session lifecycle', () => {
   expectedSessionUnavailableTest('focuses the public home after an anonymous session retry succeeds', async ({ context, page }) => {
     await addRecoverableSessionCookies(context, { authenticated: false })
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'We couldn’t verify your session.' })).toBeVisible()
-    await page.getByRole('button', { name: 'Try again' }).click()
+    await expect(page.getByText('Your account is temporarily unavailable. You can still browse the catalog.')).toBeVisible()
+    await page.getByRole('button', { name: 'Retry account' }).click()
     await expect(page).toHaveURL(`${appBaseUrl}/`)
-    await expect(page.getByRole('heading', { name: 'TV' })).toBeFocused()
+    await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeFocused()
   })
 
   expectedRepeatedSessionUnavailableTest('returns focus to retry after another session failure', async ({ context, page }) => {
     await addRecoverableSessionCookies(context, { failures: 2 })
     await page.goto('/')
 
-    const retryButton = page.getByRole('button', { name: 'Try again' })
+    const retryButton = page.getByRole('button', { name: 'Retry account' })
 
     await retryButton.click()
     await expect(retryButton).toBeFocused()
@@ -855,8 +855,8 @@ test.describe('Authenticated session lifecycle', () => {
     await signIn(page)
     await page.getByRole('button', { name: 'Sign out' }).click()
     await expect(page).toHaveURL(`${appBaseUrl}/`)
-    await expect(page).toHaveTitle('TV')
-    await expect(page.getByRole('heading', { name: 'TV' })).toBeFocused()
+    await expect(page).toHaveTitle('Catalog · TV')
+    await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeFocused()
     await page.reload()
     await expect(page).toHaveURL(`${appBaseUrl}/`)
     await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible()
@@ -874,6 +874,6 @@ test.describe('Authenticated session lifecycle', () => {
     await expect(signOutButton).toBeFocused()
     await signOutButton.click()
     await expect(page).toHaveURL(`${appBaseUrl}/`)
-    await expect(page.getByRole('heading', { name: 'TV' })).toBeFocused()
+    await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeFocused()
   })
 })

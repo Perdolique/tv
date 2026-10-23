@@ -1,4 +1,5 @@
 /* oxlint-disable eslint/max-lines -- The fake Worker keeps the complete browser auth contract in one auditable test service. */
+import { handleDiscoveryRequest } from '../catalog/discovery.worker.ts'
 import { catalogItems } from '../catalog/fixtures.ts'
 import { detailsItems, dune, russianDune } from '../catalog/details.fixtures.ts'
 import { episodeFixtures } from '../catalog/episodes.fixtures.ts'
@@ -328,6 +329,10 @@ function handleSession(request: Request): Response {
   const expiringSession = getExpiringSession(request)
 
   if (expiringSession !== undefined) {
+    if (hasCookie(request, 'expire_catalog=1')) {
+      expiredCatalogSessions.add(expiringSession)
+    }
+
     const user = expiredCatalogSessions.has(expiringSession) ? null : AUTHENTICATED_USER
 
     return json({ user })
@@ -401,22 +406,6 @@ function hasAuthenticatedCatalogSession(request: Request): boolean {
 }
 
 async function handleCatalogSearch(request: Request, url: URL): Promise<Response> {
-  const expiringSession = getExpiringSession(request)
-  const authenticated = hasAuthenticatedCatalogSession(request)
-
-  if (!authenticated || hasCookie(request, 'expire_catalog=1')) {
-    if (expiringSession !== undefined) {
-      expiredCatalogSessions.add(expiringSession)
-    }
-
-    return json({ error: {
-      code: 'AUTHENTICATION_REQUIRED',
-      message: 'Authentication is required.'
-    } }, 401, {
-      'Set-Cookie': 'tv_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
-    })
-  }
-
   if (hasCookie(request, 'fail_catalog=1')) {
     return json({ error: {
       code: 'SERVICE_UNAVAILABLE',
@@ -857,6 +846,10 @@ export default {
     const importResponse = await handleImportRequest(request, url, authenticated)
 
     if (importResponse !== null) {return importResponse}
+
+    const discoveryResponse = await handleDiscoveryRequest(request, url, authenticated)
+
+    if (discoveryResponse !== null) { return discoveryResponse }
 
     const diaryResponse = await handleDiaryRequest(request, url, authenticated)
 

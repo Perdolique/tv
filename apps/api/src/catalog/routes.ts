@@ -1,13 +1,11 @@
 import { Hono } from 'hono'
 import { requestId } from 'hono/request-id'
 
-// oxlint-disable-next-line import/no-relative-parent-imports -- Catalog reuses the shared API session resolver.
-import { resolveCurrentSession } from '../auth/current-session.ts'
-
 // oxlint-disable-next-line import/no-relative-parent-imports -- Protected routes share the auth transport contract.
 import { isSessionTransportAllowed } from '../auth/session.ts'
 import { CatalogHttpError, createCatalogErrorEnvelope } from './errors.ts'
 import { createCatalogDetailsItem, validateCatalogItemId } from './details.ts'
+import { registerCatalogDiscoveryRoutes } from './discovery-routes.ts'
 import { registerCatalogEpisodeRoutes } from './episode-routes.ts'
 import { registerCatalogEpisodeRatingRoutes } from './episode-rating-routes.ts'
 import { registerCatalogRatingRoutes } from './rating-routes.ts'
@@ -44,6 +42,7 @@ import {
   defaultCatalogDependencies,
   logCatalogServerError,
   withCatalogSession,
+  withCatalogDatabase,
   type CatalogDependencies,
   type CatalogEnvironment
 } from './session.ts'
@@ -66,6 +65,7 @@ function createCatalogApp(
   })
 
   registerCatalogImportRoutes(app, dependencies)
+  registerCatalogDiscoveryRoutes(app, dependencies)
 
   app.get('/api/catalog/items/:id', async (context) => {
     const id = validateCatalogItemId(context.req.param('id'))
@@ -246,43 +246,13 @@ function createCatalogApp(
   })
 
   app.get('/api/catalog/search', async (context) => {
-    // oxlint-disable-next-line eslint/init-declarations -- Session database failures are translated below.
-    let session: Awaited<ReturnType<typeof resolveCurrentSession>>
-
-    try {
-      session = await resolveCurrentSession(context, async () => {
-        const { database } = await dependencies.connectDatabase(
-          context.env.DATABASE.connectionString
-        )
-
-        return database
-      })
-    } catch (error) {
-      throw new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
-    }
-
-    if (session === null) {
-      throw new CatalogHttpError('AUTHENTICATION_REQUIRED', 401)
-    }
-
     const url = new URL(context.req.url)
     const query = normalizeCatalogQuery(url.searchParams.get('query'))
+    const titleLocale = canonicalizeTitleLocale(url.searchParams.get('titleLocale'))
 
-    const titleLocale = canonicalizeTitleLocale(
-      url.searchParams.get('titleLocale')
+    const rows = await withCatalogDatabase(context, dependencies.connectDatabase, async (database) =>
+      findTitleRowsForMatchingCatalogItems(database, query)
     )
-
-    // oxlint-disable-next-line eslint/init-declarations -- Catalog database failures are translated below.
-    let rows: Awaited<ReturnType<typeof findTitleRowsForMatchingCatalogItems>>
-
-    try {
-      rows = await findTitleRowsForMatchingCatalogItems(
-        session.database,
-        query
-      )
-    } catch (error) {
-      throw new CatalogHttpError('SERVICE_UNAVAILABLE', 503, { cause: error })
-    }
 
     const items = createCatalogSearchItems(rows, titleLocale)
 

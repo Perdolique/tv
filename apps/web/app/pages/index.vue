@@ -1,343 +1,116 @@
 <template>
-  <div :class="$style.component" :data-authenticated="isAuthenticated">
-    <main v-if="hasSessionError" :class="$style.panel">
-      <p :class="$style.wordmark">
-        TV
-      </p>
-
-      <h1 :class="$style.heading">
-        We couldn’t verify your session.
-      </h1>
-
-      <p :class="$style.supportingText">
-        Try again.
-      </p>
-
-      <AppButton
-        ref="retryButton"
-        :disabled="isRetrying"
-        @click="retrySession"
-      >
-        Try again
-      </AppButton>
+  <AppShell active-destination="catalog" @signed-out="focusHeading" @session-restored="focusHeading">
+    <main :class="$style.component">
+      <h1 ref="heading" :class="$style.heading" tabindex="-1">Your catalog starts here.</h1>
+      <p :class="$style.supportingText">Find your next movie or series.</p>
+      <CatalogSearchField :model-value="input" @update:model-value="changeInput" @submit="submitSearch" @clear="clear" />
+      <CatalogDiscovery v-if="showDiscovery" :data="discovery" :has-error="hasDiscoveryError" :is-loading="isDiscoveryLoading" :reload="discoveryReady.execute" />
+      <CatalogResults v-else ref="catalogResults" :failure="failure" :is-loading="isLoading" :items="lastResult?.items" :result-query="lastResult?.query" @retry="retrySearch" />
     </main>
-
-    <AppShell v-else-if="isAuthenticated" active-destination="catalog" @signed-out="focusAnonymousHeading">
-      <main :class="$style.catalogContent">
-        <h1 ref="authenticatedHeading" :class="$style.catalogHeading" tabindex="-1">Your catalog starts here.</h1>
-        <p :class="$style.supportingText">Find your next movie or series.</p>
-        <CatalogSearchField :model-value="input" @update:model-value="changeInput" @submit="submitSearch" @clear="clear" />
-        <CatalogResults ref="catalogResults" :failure="failure" :is-loading="isLoading" :items="lastResult?.items" :result-query="lastResult?.query" @retry="retrySearch" />
-      </main>
-    </AppShell>
-
-    <main v-else-if="isAnonymous" :class="$style.panel">
-      <h1
-        ref="anonymousHeading"
-        :class="$style.anonymousHeading"
-        tabindex="-1"
-      >
-        TV
-      </h1>
-
-      <p :class="$style.supportingText">Sign in or create an account to search movies and series.</p>
-
-      <nav :class="$style.navigation" aria-label="Authentication">
-        <NuxtLink :class="$style.primaryLink" :to="signInLocation">
-          Sign in
-        </NuxtLink>
-        <NuxtLink :class="$style.secondaryLink" :to="registerLocation">
-          Create an account
-        </NuxtLink>
-      </nav>
-    </main>
-  </div>
+  </AppShell>
 </template>
 
 <script lang="ts" setup>
+  import { useHead, useResponseHeader } from '#app'
   import { definePageMeta } from '#app/composables/pages'
-  import { navigateTo, useHead, useResponseHeader, useRoute } from '#app'
-  import { sanitizeRedirectTo } from '@tv/shared/redirect'
-  import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, onMounted, useTemplateRef, watch } from 'vue'
+  import { discoveryResponseSchema } from '@tv/shared/catalog-discovery'
   import AppShell from '~/components/app/AppShell.vue'
   import CatalogSearchField from '~/components/catalog/CatalogSearchField.vue'
+  import CatalogDiscovery from '~/components/catalog/CatalogDiscovery.vue'
   import CatalogResults from '~/components/catalog/CatalogResults.vue'
   import { useCatalogSearch } from '~/composables/use-catalog-search.ts'
-  import AppButton from '~/components/ui/AppButton.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
+  import { useCatalogRead } from '~/composables/use-catalog-read.ts'
 
-  definePageMeta({ middleware: 'session' })
+  definePageMeta({ middleware: 'public-session' })
 
-  const cacheControlHeader = useResponseHeader('Cache-Control')
+  useResponseHeader('Cache-Control').value = 'private, no-store'
 
-  cacheControlHeader.value = 'private, no-store'
+  useHead({ title: 'Catalog · TV' })
 
-  const route = useRoute()
-  const { restoreSession, setAnonymous, state } = useAuthSession()
-  const isRetrying = ref(false)
-  const retryButton = useTemplateRef('retryButton')
-  const authenticatedHeading = useTemplateRef('authenticatedHeading')
-  const anonymousHeading = useTemplateRef('anonymousHeading')
+  const heading = useTemplateRef('heading')
   const catalogResults = useTemplateRef('catalogResults')
-  const isAuthenticated = computed(() => state.value.status === 'authenticated')
-  const { changeInput, clear, failure, input, isLoading, lastResult, ready, search, unauthorized } = useCatalogSearch(isAuthenticated)
-  const isAnonymous = computed(() => state.value.status === 'anonymous')
-  const hasSessionError = computed(() => state.value.status === 'error')
-  const redirectTo = computed(() => sanitizeRedirectTo(route.fullPath))
+  const { restoreSession } = useAuthSession()
+  const sessionReady = restoreSession()
+  const { changeInput, clear, failure, input, isLoading, lastResult, ready, search } = useCatalogSearch()
 
-  const signInLocation = computed(() => redirectTo.value === '/'
-    ? '/sign-in'
-    : {
-        path: '/sign-in',
-        query: { redirectTo: redirectTo.value }
-      })
+  const showDiscovery = computed(() => {
+    const query = input.value.trim()
 
-  const registerLocation = computed(() => redirectTo.value === '/'
-    ? '/register'
-    : {
-        path: '/register',
-        query: { redirectTo: redirectTo.value }
-      })
+    return query === ''
+  })
 
-  const pageTitle = computed(() => isAuthenticated.value
-    ? 'Your catalog · TV'
-    : 'TV')
+  const {
+    data: discovery,
+    ready: discoveryReady,
+    hasError: hasDiscoveryError,
+    isLoading: isDiscoveryLoading
+  } = useCatalogRead('catalog-discovery', '/api/catalog/discovery', {
+    schema: discoveryResponseSchema,
+    immediate: showDiscovery.value
+  })
 
-  useHead(() => {
-    return { title: pageTitle.value }
+  watch(showDiscovery, (visible) => {
+    if (visible && discoveryReady.status.value === 'idle') { void discoveryReady.execute() }
   })
 
   onMounted(() => {
     if (globalThis.location.hash.startsWith('#token=')) {
-      globalThis.history.replaceState(
-        globalThis.history.state,
-        '',
-        `${globalThis.location.pathname}${globalThis.location.search}`
-      )
+      const location = `${globalThis.location.pathname}${globalThis.location.search}`
+
+      globalThis.history.replaceState(globalThis.history.state, '', location)
     }
-  })
-
-  watch(unauthorized, async (expired) => {
-    if (expired) {
-      const target = sanitizeRedirectTo(route.fullPath)
-
-      setAnonymous()
-
-      await navigateTo({
-        path: '/sign-in',
-        query: { redirectTo: target }
-      }, { replace: true })
-    }
-  }, {
-    immediate: true,
-    flush: 'sync'
   })
 
   function submitSearch(): void {
-    void search(failure.value !== '')
-  }
+    const shouldRetry = failure.value !== ''
 
-  async function waitForSearchToSettle(): Promise<void> {
-    if (!isLoading.value) {
-      return
-    }
-
-    const settled = Promise.withResolvers<boolean>()
-
-    const stop = watch(isLoading, (loading) => {
-      if (!loading) {
-        stop()
-        settled.resolve(true)
-      }
-    }, { flush: 'sync' })
-
-    await settled.promise
+    void search(shouldRetry)
   }
 
   async function retrySearch(): Promise<void> {
     await search(true)
-    await waitForSearchToSettle()
+
+    if (isLoading.value) {
+      const settled = Promise.withResolvers<boolean>()
+
+      const stop = watch(isLoading, (loading) => {
+        if (!loading) {
+          stop()
+          settled.resolve(true)
+        }
+      }, { flush: 'sync' })
+
+      await settled.promise
+    }
+
     await nextTick()
     catalogResults.value?.focusAfterRetry()
   }
 
-  await ready
-
-  async function retrySession(): Promise<void> {
-    isRetrying.value = true
-
-    await restoreSession({ force: true })
-
-    isRetrying.value = false
-
-    if (state.value.status === 'anonymous') {
-      await nextTick()
-      anonymousHeading.value?.focus()
-
-      return
-    }
-
-    if (state.value.status === 'authenticated') {
-      await nextTick()
-      authenticatedHeading.value?.focus()
-
-      return
-    }
-
-    if (state.value.status === 'error') {
-      await nextTick()
-      retryButton.value?.focus()
-    }
-  }
-
-  async function focusAnonymousHeading(): Promise<void> {
+  async function focusHeading(): Promise<void> {
     await nextTick()
-    anonymousHeading.value?.focus()
+    heading.value?.focus()
   }
 
+  await ready
+  await discoveryReady
+
+  if (import.meta.server) { await sessionReady }
 </script>
 
 <style module>
   @layer reset, vendor, tokens, base, components, utilities;
 
   @layer components {
-    .component {
-      position: relative;
-      isolation: isolate;
-      display: grid;
-      place-items: center;
-      min-block-size: 100svh;
-      padding: var(--space-6) var(--layout-page-mobile);
-      background:
-        radial-gradient(circle at top, var(--color-surface-muted), transparent 52%),
-        var(--color-canvas);
-      background-size: 100vi 100%;
-    }
-
-    .component::before {
-      position: absolute;
-      inset: 0;
-      z-index: -1;
-      inline-size: 100vi;
-      background: inherit;
-      content: '';
-    }
-
-    .component[data-authenticated='true'] {
-      display: block;
-      place-items: normal;
-      padding: 0;
-      background: var(--color-canvas);
-    }
-
-    .catalogHeading {
-
-      font-size: 1.75rem;
-
-      line-height: 1.15;
-
-      font-weight: 600;
-
-    }
-
-    .catalogContent {
-
-      display: grid;
-
-      gap: var(--space-6);
-
-      max-inline-size: 56rem;
-
-      padding: var(--space-8) var(--layout-page-mobile);
-
-    }
-
+    .component { display: grid; gap: var(--space-6); padding: var(--space-8) var(--layout-page-mobile); }
+    .heading { font-size: 1.75rem; line-height: 1.15; font-weight: 600; }
+    .supportingText { color: var(--color-text-secondary); }
     @media (width >= 40rem) {
-      .catalogHeading {
-        font-size: 2.25rem;
-        line-height: 1.17;
-      }
-      .catalogContent {
-        padding-inline: var(--layout-page-compact);
-      }
+      .component { padding-inline: var(--layout-page-compact); }
+      .heading { font-size: 2.25rem; }
     }
-
-    @media (width >= 64rem) {
-      .catalogContent {
-        padding: var(--space-10) var(--layout-page-wide);
-      }
-    }
-
-    .panel {
-      display: grid;
-      gap: var(--space-5);
-      inline-size: min(100%, 34rem);
-      padding: var(--space-8);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-xl);
-      background: var(--color-surface);
-      box-shadow: var(--shadow-card);
-    }
-
-    .wordmark,
-    .anonymousHeading {
-      color: var(--color-accent);
-      font-weight: 700;
-      letter-spacing: -0.08em;
-      line-height: 1;
-    }
-
-    .wordmark {
-      font-size: 1.5rem;
-    }
-
-    .anonymousHeading {
-      font-size: clamp(3.5rem, 18vw, 6rem);
-      text-align: center;
-    }
-
-    .heading {
-      font-size: clamp(1.75rem, 7vw, 2.5rem);
-      line-height: 1.15;
-    }
-
-    .supportingText {
-      color: var(--color-text-secondary);
-    }
-
-    .navigation {
-      display: grid;
-      gap: var(--space-3);
-    }
-
-    .primaryLink,
-    .secondaryLink {
-      display: grid;
-      place-items: center;
-      min-block-size: 3.5rem;
-      padding: var(--space-3) var(--space-6);
-      border-radius: var(--radius-md);
-      font-weight: 700;
-      text-align: center;
-      text-decoration: none;
-    }
-
-    .primaryLink {
-      border: 0;
-      background: var(--color-accent-fill);
-      color: var(--color-on-accent);
-    }
-
-    .secondaryLink {
-      border: 1px solid var(--color-border-strong);
-      background: var(--color-surface);
-      color: var(--color-text-primary);
-    }
-
-    @media (width >= 40rem) {
-      .component {
-        padding-inline: var(--layout-page-compact);
-      }
-    }
+    @media (width >= 64rem) { .component { padding: var(--space-10) var(--layout-page-wide); } }
   }
 </style>

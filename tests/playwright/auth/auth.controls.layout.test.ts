@@ -84,7 +84,7 @@ for (const viewport of referenceViewports) {
     await page.goto('/')
     await page.evaluate(async () => globalThis.document.fonts.ready)
 
-    const navigation = page.getByRole('navigation', { name: 'Authentication' })
+    const navigation = page.getByRole('navigation', { name: 'Main navigation' })
 
     await expectCenteredLabel(navigation.getByRole('link', {
       name: 'Sign in',

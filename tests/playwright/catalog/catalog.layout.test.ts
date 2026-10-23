@@ -59,7 +59,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await page.goto('/?query=a')
       await expect(page.getByRole('listitem')).toHaveCount(4)
       await expectCatalogFits(page)
-      await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Your catalog starts here.' })).toBeVisible()
     })
   }
 }
@@ -208,6 +208,20 @@ test('keeps mobile keyboard order aligned with the bottom navigation', async ({ 
   const input = page.getByRole('textbox')
 
   await expect(input).toBeFocused()
+  await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('region', {
+    name: 'Recently added',
+    exact: true
+  }).getByRole('link', { name: 'View all' })).toBeFocused()
+
+  await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('region', {
+    name: 'Top rated on TV',
+    exact: true
+  }).getByRole('link', { name: 'View all' })).toBeFocused()
+
   await page.keyboard.press('Tab')
   await expect(catalogLink).toBeFocused()
   await page.keyboard.press('Tab')

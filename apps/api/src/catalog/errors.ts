@@ -4,7 +4,7 @@ import type { CatalogErrorCode, CatalogErrorEnvelope } from '@tv/shared/catalog'
 const ERROR_MESSAGES = {
   AUTHENTICATION_REQUIRED: 'Authentication is required.',
   CONFLICT: 'Your viewing changed. Reload the title and try again.',
-  FORBIDDEN: 'You do not have access to catalog imports.',
+  FORBIDDEN: 'You do not have access to catalog management.',
   INTERNAL_ERROR: 'An unexpected error occurred.',
   INVALID_REQUEST: 'The request is invalid.',
   NOT_FOUND: 'This title could not be found.',
@@ -14,6 +14,7 @@ const ERROR_MESSAGES = {
 interface CatalogErrorOptions {
   cause?: unknown;
   fields?: Record<string, string>;
+  message?: string;
 }
 
 class CatalogHttpError extends Error {
@@ -26,7 +27,7 @@ class CatalogHttpError extends Error {
     status: ContentfulStatusCode,
     options: CatalogErrorOptions = {}
   ) {
-    super(ERROR_MESSAGES[code], { cause: options.cause })
+    super(options.message ?? ERROR_MESSAGES[code], { cause: options.cause })
 
     this.code = code
     this.fields = options.fields

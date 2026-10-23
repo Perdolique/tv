@@ -153,6 +153,7 @@
           <h2 :id="overviewId" :class="$style.subheading">Overview</h2>
           <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
           <p v-else :class="$style.supportingText">No description available yet.</p>
+          <CatalogRelatedCollections :key="item.id" :catalog-item-id="item.id" :recovery-heading="heading" />
         </section>
         <CatalogViewings
           v-if="isMovie"
@@ -262,6 +263,7 @@
               <h2 :id="seriesOverviewId" :class="$style.subheading">Overview</h2>
               <p v-if="hasDescription" :class="$style.description" :lang="descriptionLocale">{{ item.description }}</p>
               <p v-else :class="$style.supportingText">No description available yet.</p>
+              <CatalogRelatedCollections :key="item.id" :catalog-item-id="item.id" :recovery-heading="heading" />
             </section>
           </div>
           <CatalogViewings
@@ -311,6 +313,7 @@
   import AppMessage from '~/components/ui/AppMessage.vue'
   import AppStatusChip from '~/components/ui/AppStatusChip.vue'
   import AppShell from '~/components/app/AppShell.vue'
+  import CatalogRelatedCollections from '~/components/catalog/CatalogRelatedCollections.vue'
   import CatalogPoster from '~/components/catalog/CatalogPoster.vue'
   import CatalogRating from '~/components/catalog/CatalogRating.vue'
   import CatalogRatingSummary from '~/components/catalog/CatalogRatingSummary.vue'
