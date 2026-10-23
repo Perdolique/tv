@@ -60,11 +60,11 @@ describe('series pause and drop migration', () => {
 
       const folders = await readdir(migrationsFolder)
       const earlier = folders.filter(folder => folder < migrationName)
-      const beforeFolder = join(directory, 'before')
+      const historicalFolder = join(directory, 'historical')
 
       const copies = earlier.map(async folder => {
         const source = join(migrationsFolder, folder)
-        const target = join(beforeFolder, folder)
+        const target = join(historicalFolder, folder)
 
         await cp(source, target, { recursive: true })
       })
@@ -73,7 +73,7 @@ describe('series pause and drop migration', () => {
 
       const database = createDatabase(client)
 
-      await migrate(database, { migrationsFolder: beforeFolder })
+      await migrate(database, { migrationsFolder: historicalFolder })
 
       const userId = randomUUID()
       const movieId = randomUUID()
@@ -98,8 +98,12 @@ describe('series pause and drop migration', () => {
       await client.query('INSERT INTO catalog_item_follows (user_id,catalog_item_id) VALUES ($1,$2)', [userId, seriesId])
 
       const before = await diary(client, userId)
+      const migrationSource = join(migrationsFolder, migrationName)
+      const migrationTarget = join(historicalFolder, migrationName)
 
-      await migrate(database, { migrationsFolder })
+      // Keep later schema additions outside this historical data-preservation check.
+      await cp(migrationSource, migrationTarget, { recursive: true })
+      await migrate(database, { migrationsFolder: historicalFolder })
 
       const after = await diary(client, userId)
 

@@ -1071,8 +1071,13 @@ describe('unified viewing ratings migration', () => {
       `, [firstUserId, requestId, movieId, movieViewingId])
 
       const before = await readNonDiaryData(client)
+      const resetMigration = '20261017210000_unified-viewing-ratings'
+      const resetSource = join(migrationsFolder, resetMigration)
+      const resetTarget = join(fixture.migrationsFolder, resetMigration)
 
-      await migrate(database, { migrationsFolder })
+      // Keep later schema additions outside this historical data-preservation check.
+      await cp(resetSource, resetTarget, { recursive: true })
+      await migrate(database, { migrationsFolder: fixture.migrationsFolder })
 
       const after = await readNonDiaryData(client)
 
@@ -1124,7 +1129,7 @@ describe('unified viewing ratings migration', () => {
       await expect(client.query('UPDATE catalog_item_ratings SET score = 11 WHERE viewing_id = $1', [movieViewingId])).rejects.toMatchObject({ code: '23514' })
       await expect(client.query('UPDATE catalog_rating_votes SET score = 0 WHERE source_viewing_id = $1', [movieViewingId])).rejects.toMatchObject({ code: '23514' })
       await expect(client.query('INSERT INTO catalog_timeline_events (user_id, catalog_item_id, viewing_id, kind) VALUES ($1, $2, $3, \'rating_changed\')', [firstUserId, movieId, movieViewingId])).rejects.toMatchObject({ code: '23514' })
-      await migrate(database, { migrationsFolder })
+      await migrate(database, { migrationsFolder: fixture.migrationsFolder })
 
       const retained = await client.query('SELECT score FROM catalog_rating_votes WHERE source_viewing_id = $1', [movieViewingId])
 
