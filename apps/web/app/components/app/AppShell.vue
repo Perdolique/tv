@@ -12,39 +12,43 @@
         <AppButton ref="sessionRetryButton" :disabled="isRetryingSession" variant="secondary" @click="retrySession">Retry account</AppButton>
       </div>
     </header>
-    <nav v-if="isAuthenticated" :class="$style.desktopNavigation" aria-label="Main navigation">
-      <NuxtLink :class="$style.navigationLink" to="/" :aria-current="catalogCurrent">
-        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" /></span>
-        <span :class="$style.navigationLabel">Catalog</span>
-      </NuxtLink>
-      <NuxtLink :class="$style.navigationLink" to="/calendar" :aria-current="calendarCurrent">
-        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" /></span>
-        <span :class="$style.navigationLabel">Calendar</span>
-      </NuxtLink>
-      <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
-        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" /></span>
-        <span :class="$style.navigationLabel">Watchlist</span>
-      </NuxtLink>
-      <NuxtLink :class="$style.navigationLink" to="/dashboard" :aria-current="dashboardCurrent">
-        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:dashboard-square-01" /></span>
-        <span :class="$style.navigationLabel">Dashboard</span>
-      </NuxtLink>
-      <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/collections" :aria-current="collectionsCurrent">
-        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:collections-bookmark" /></span>
-        <span :class="$style.navigationLabel">Collections</span>
-      </NuxtLink>
-      <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/imports" :aria-current="importsCurrent">
-        <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" /></span>
-        <span :class="$style.navigationLabel">Add title</span>
-      </NuxtLink>
-    </nav>
     <header v-if="isAuthenticated" :class="$style.accountBar">
       <p :class="$style.wordmark">TV</p>
+      <nav :class="$style.desktopNavigation" aria-label="Main navigation">
+        <NuxtLink :class="$style.navigationLink" to="/" :aria-current="catalogCurrent">
+          <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:film-01" /></span>
+          <span :class="$style.navigationLabel">Catalog</span>
+        </NuxtLink>
+        <NuxtLink :class="$style.navigationLink" to="/calendar" :aria-current="calendarCurrent">
+          <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:calendar-03" /></span>
+          <span :class="$style.navigationLabel">Calendar</span>
+        </NuxtLink>
+        <NuxtLink :class="$style.navigationLink" to="/watchlist" :aria-current="watchlistCurrent">
+          <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:bookmark-02" /></span>
+          <span :class="$style.navigationLabel">Watchlist</span>
+        </NuxtLink>
+        <NuxtLink :class="$style.navigationLink" to="/dashboard" :aria-current="dashboardCurrent">
+          <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:dashboard-square-01" /></span>
+          <span :class="$style.navigationLabel">Dashboard</span>
+        </NuxtLink>
+        <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/collections" :aria-current="collectionsCurrent">
+          <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:collections-bookmark" /></span>
+          <span :class="$style.navigationLabel">Collections</span>
+        </NuxtLink>
+        <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/imports" :aria-current="importsCurrent">
+          <span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" /></span>
+          <span :class="$style.navigationLabel">Import title</span>
+        </NuxtLink>
+        <NuxtLink :class="$style.navigationLink" to="/request-title" :aria-current="requestsCurrent"><span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" /></span><span :class="$style.navigationLabel">Request title</span></NuxtLink>
+        <NuxtLink v-if="canManage" :class="$style.navigationLink" to="/manage/requests" :aria-current="incomingCurrent"><span :class="$style.navigationIcon"><Icon aria-hidden="true" mode="svg" name="hugeicons:clock-01" /></span><span :class="$style.navigationLabel">Incoming requests</span></NuxtLink>
+      </nav>
       <div :class="$style.accountActions">
+        <NuxtLink :class="$style.mobileAddLink" to="/request-title" :aria-current="requestsCurrent">Request title</NuxtLink>
+        <NuxtLink v-if="canManage" :class="$style.mobileAddLink" to="/manage/requests" :aria-current="incomingCurrent">Incoming requests</NuxtLink>
         <p :class="$style.accountEmail" :title="userEmail">Signed in as <strong>{{ userEmail }}</strong></p>
         <NuxtLink v-if="canManage" :class="$style.mobileAddLink" to="/manage/imports" :aria-current="importsCurrent">
           <Icon aria-hidden="true" mode="svg" name="hugeicons:add-01" />
-          <span>Add title</span>
+          <span>Import title</span>
         </NuxtLink>
         <NuxtLink v-if="canManage" :class="$style.mobileAddLink" to="/manage/collections" :aria-current="collectionsCurrent">Collections</NuxtLink>
         <AppMessage v-if="hasSignOutError" :class="$style.accountError" role="alert" tone="danger">{{ signOutError }}</AppMessage>
@@ -87,7 +91,7 @@
   import { Icon } from '#components'
   import { useRequestFetch, useRoute } from '#app'
   import { sanitizeRedirectTo } from '@tv/shared/redirect'
-  import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, ref, toRef, useTemplateRef, watch } from 'vue'
   import AppButton from '~/components/ui/AppButton.vue'
   import AppMessage from '~/components/ui/AppMessage.vue'
   import { useAuthSession } from '~/composables/use-auth-session.ts'
@@ -120,6 +124,14 @@
   const hasSessionError = computed(() => state.value.status === 'error')
   const hasSignOutError = computed(() => signOutError.value !== '')
   const collectionsCurrent = computed(() => route.path.startsWith('/manage/collections') ? 'page' : undefined)
+  const incomingCurrent = toRef(() => route.path === '/manage/requests' ? 'page' : undefined)
+
+  const requestsCurrent = toRef(() => {
+    const isCurrent = route.path === '/request-title' || route.path === '/requests'
+
+    return isCurrent ? 'page' : undefined
+  })
+
   const importsCurrent = computed(() => route.path.startsWith('/manage/imports') ? 'page' : undefined)
   const catalogCurrent = computed(() => activeDestination === 'catalog' ? 'page' : undefined)
   const calendarCurrent = computed(() => activeDestination === 'calendar' ? 'page' : undefined)
@@ -361,6 +373,7 @@
         z-index: 1;
         flex-direction: column;
         flex-wrap: nowrap;
+        gap: 0;
         inline-size: var(--layout-sidebar-compact);
         padding: var(--space-4) var(--space-2);
         border-block-end: 0;
@@ -368,6 +381,7 @@
       }
       .accountActions {
         display: grid;
+        flex-shrink: 0;
         justify-items: center;
         inline-size: 100%;
         margin-block-start: auto;
@@ -382,26 +396,36 @@
       }
       .mobileNavigation { display: none; }
       .desktopNavigation {
-        position: fixed;
-        inset-inline-start: 0;
-        inset-block-start: 5rem;
-        z-index: 2;
         display: grid;
+        flex: 1;
+        align-self: center;
         align-content: start;
         gap: var(--space-2);
+        min-block-size: 0;
         inline-size: var(--layout-sidebar-compact);
+        margin-block-start: var(--space-10);
         padding: var(--space-2) var(--space-1);
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
       }
       .navigationLink {
+        min-inline-size: 0;
         padding-inline: var(--space-1);
+        white-space: normal;
       }
+      .navigationLabel {
+        max-inline-size: 100%;
+        line-height: 1.25;
+        text-align: center;
+      }
+      .navigationIcon { max-inline-size: 100%; }
       .guestBar { padding-inline: var(--layout-page-compact); }
     }
     @media (width >= 64rem) {
       .component[data-authenticated='true'] { padding-inline-start: var(--layout-sidebar-wide); }
       .desktopNavigation {
-        inset-block-start: 5.5rem;
         inline-size: var(--layout-sidebar-wide);
+        margin-block-start: var(--space-8);
         padding: var(--space-3) var(--space-4);
       }
       .navigationLink {
@@ -412,10 +436,11 @@
         padding: var(--space-2);
       }
       .navigationIcon {
+        flex-shrink: 0;
         inline-size: 2rem;
         block-size: 2rem;
       }
-      .navigationLabel { font-size: 1rem; }
+      .navigationLabel { font-size: 1rem; text-align: start; }
       .navigationLink[aria-current='page'] {
         background: var(--color-surface-muted);
         box-shadow: inset 3px 0 var(--color-accent);

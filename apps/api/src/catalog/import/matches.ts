@@ -42,14 +42,14 @@ async function addCandidateSources(database: Pick<Database, 'select'>, candidate
   return candidates.toSorted((first, second) => first.kind.localeCompare(second.kind) || first.id.localeCompare(second.id))
 }
 
-async function findImportCatalogMatches(database: Pick<Database, 'select' | 'selectDistinct'>, selection: ImportSelection, card: ImportCard | null): Promise<ImportCatalogMatch[]> {
+async function findImportCatalogMatches(database: Pick<Database, 'select' | 'selectDistinct'>, selection: Pick<ImportSelection, 'type' | 'tmdbId'> & { tvmaze?: Extract<ImportSelection, { type: 'series' }>['tvmaze'] }, card: ImportCard | null): Promise<ImportCatalogMatch[]> {
   const identities = [{
     provider: 'tmdb',
     entityType: selection.type === 'movie' ? 'movie' : 'tv',
     externalId: String(selection.tmdbId)
   }]
 
-  if (selection.type === 'series' && selection.tvmaze.status === 'selected') {
+  if (selection.type === 'series' && selection.tvmaze?.status === 'selected') {
     identities.push({
       provider: 'tvmaze',
       entityType: 'show',

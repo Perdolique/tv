@@ -158,6 +158,13 @@ test('supports keyboard search and clear with visible focus and reduced motion',
   })).toBeFocused()
 
   await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('link', {
+    name: 'Request title',
+    exact: true
+  })).toBeFocused()
+
+  await page.keyboard.press('Tab')
   await expect(signOutButton).toBeFocused()
   await page.keyboard.press('Tab')
 

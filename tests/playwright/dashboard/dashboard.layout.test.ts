@@ -141,8 +141,8 @@ for (const colorScheme of ['light', 'dark'] as const) {
   }
 }
 
-for (const [width, height] of [[320, 1024], [639, 1024], [640, 1024], [1023, 1024], [1024, 1024], [720, 512]] as const) {
-  test(`keeps dashboard rows and four navigation items inside ${width}px`, async ({ page }) => {
+for (const [width, height, navigationCount] of [[320, 1024, 4], [639, 1024, 4], [640, 1024, 5], [1023, 1024, 5], [1024, 1024, 5], [720, 512, 5]] as const) {
+  test(`keeps dashboard rows and navigation items inside ${width}px`, async ({ page }) => {
     await page.setViewportSize({
       width,
       height
@@ -154,7 +154,7 @@ for (const [width, height] of [[320, 1024], [639, 1024], [640, 1024], [1023, 102
     const navigation = page.getByRole('navigation', { name: 'Main navigation' })
     const links = navigation.getByRole('link')
 
-    await expect(links).toHaveCount(4)
+    await expect(links).toHaveCount(navigationCount)
 
     const controls = await links.all()
     const controlBounds = await Promise.all(controls.map(async control => visibleBounds(control)))

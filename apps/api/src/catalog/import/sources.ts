@@ -66,7 +66,7 @@ function nullableDate(value: string | null | undefined): string | null {
   return text
 }
 
-function normalizeTmdb(selection: ImportSelection, input: unknown): TmdbCardResult {
+function normalizeTmdb(selection: Pick<ImportSelection, 'type' | 'tmdbId'>, input: unknown): TmdbCardResult {
   try {
     const raw = selection.type === 'movie' ? v.parse(movieSchema, input) : v.parse(seriesSchema, input)
 
@@ -313,7 +313,7 @@ function normalizeTvmaze(showId: number, input: unknown): TvmazeResult {
   }
 }
 
-async function loadTmdbCard(selection: ImportSelection, token: string, options: SourceHttpOptions): Promise<TmdbCardResult> {
+async function loadTmdbCard(selection: Pick<ImportSelection, 'type' | 'tmdbId'>, token: string, options: SourceHttpOptions): Promise<TmdbCardResult> {
   const type = selection.type === 'movie' ? 'movie' : 'tv'
   const url = `https://api.themoviedb.org/3/${type}/${selection.tmdbId}?append_to_response=translations,external_ids`
 

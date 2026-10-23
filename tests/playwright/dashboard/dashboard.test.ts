@@ -294,6 +294,7 @@ failedHistoryTest('recovers initial history while keeping the summary visible', 
   await addCookie(context, 'tv_session', 'e2e-session')
   await addCookie(context, 'paginated_viewing', '1')
   await page.goto('/')
+  await waitForHydration(page)
   await addCookie(context, 'fail_viewing_history', '1')
 
   await page.getByRole('link', {

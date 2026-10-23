@@ -262,6 +262,13 @@ test('marks one current destination and keeps keyboard navigation usable', async
   })).toBeFocused()
 
   await page.keyboard.press('Tab')
+
+  await expect(page.getByRole('link', {
+    name: 'Request title',
+    exact: true
+  })).toBeFocused()
+
+  await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeFocused()
   await page.keyboard.press('Tab')
 

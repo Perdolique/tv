@@ -53,6 +53,14 @@
         "limit": 5,
         "period": 60
       }
+    },
+    {
+      "name": "CATALOG_REQUEST_RATE_LIMITER",
+      "namespace_id": "1007",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
     }
   ],
   "send_email": [
@@ -134,6 +142,14 @@
           "namespace_id": "1006",
           "simple": {
             "limit": 5,
+            "period": 60
+          }
+        },
+        {
+          "name": "CATALOG_REQUEST_RATE_LIMITER",
+          "namespace_id": "1008",
+          "simple": {
+            "limit": 20,
             "period": 60
           }
         }

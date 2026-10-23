@@ -173,7 +173,7 @@ test('imports a movie through a saved review and shows the result in shared hist
   await waitForHydration(page)
 
   await expect(page.getByRole('link', {
-    name: 'Add title',
+    name: 'Import title',
     exact: true
   })).toBeVisible()
 
@@ -730,7 +730,7 @@ deniedTest('redirects guests and denies an account without the current grant', a
   await expect(page.getByRole('searchbox', { name: 'Title name' })).toHaveCount(0)
 
   await expect(page.getByRole('link', {
-    name: 'Add title',
+    name: 'Import title',
     exact: true
   })).toHaveCount(0)
 })
@@ -794,7 +794,7 @@ for (const viewport of [{
       await waitForHydration(page)
 
       const entry = page.getByRole('link', {
-        name: 'Add title',
+        name: 'Import title',
         exact: true
       })
 
@@ -807,7 +807,7 @@ for (const viewport of [{
       await expect(entry.locator('svg')).toBeVisible()
 
       await expect(mainNavigation.getByRole('link', {
-        name: 'Add title',
+        name: 'Import title',
         exact: true
       })).toHaveCount(Number(viewport.width >= 640))
 
@@ -826,7 +826,7 @@ for (const viewport of [{
       await expect(navigation.filter({ visible: true })).toHaveCount(Number(viewport.width >= 640))
 
       await expect(navigation.getByRole('link', {
-        name: 'Add title',
+        name: 'Import title',
         exact: true
       }).and(page.locator('[aria-current="page"]'))).toHaveCount(Number(viewport.width >= 640))
 

@@ -1,5 +1,6 @@
 /* oxlint-disable eslint/max-lines -- The central schema keeps related catalog and account table exports in one place. */
 import { sql } from 'drizzle-orm'
+import type { RequestCard } from '@tv/shared/catalog-requests'
 import type { CatalogViewingStatus } from '@tv/shared/catalog-viewings'
 
 import {
@@ -531,7 +532,37 @@ const sessions = pgTable('sessions', {
   index('sessions_expires_at_index').on(table.expiresAt)
 ])
 
+const catalogTitleRequests = pgTable('catalog_title_requests', {
+  id: uuid().default(sql`uuidv7()`).primaryKey(),
+  type: catalogItemType().notNull(),
+  tmdbId: integer('tmdb_id').notNull(),
+  card: jsonb().$type<RequestCard>().notNull(),
+
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string'
+  }).defaultNow().notNull()
+}, table => [
+  unique('catalog_title_requests_source_unique').on(table.type, table.tmdbId),
+  check('catalog_title_requests_source_positive', sql`${table.tmdbId} > 0`)
+])
+
+const catalogTitleRequesters = pgTable('catalog_title_requesters', {
+  requestId: uuid('request_id').notNull().references(() => catalogTitleRequests.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string'
+  }).defaultNow().notNull()
+}, table => [
+  primaryKey({ columns: [table.requestId, table.userId] }),
+  index('catalog_title_requesters_owner_index').on(table.userId, table.createdAt, table.requestId)
+])
+
 export {
+  catalogTitleRequests,
+  catalogTitleRequesters,
   catalogCollections,
   catalogCollectionItems,
   catalogEpisodes,
