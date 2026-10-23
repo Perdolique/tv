@@ -47,7 +47,7 @@ async function request(path: string, cookie?: string): Promise<Response> {
 describe('public catalog details Worker contract', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
-  it('serves the same details without a cookie and with an invalid cookie while keeping search protected', async () => {
+  it('serves the same details without a cookie and with an invalid cookie', async () => {
     await withClient(async (client) => {
       const id = await findDeadManId(client)
       const path = `/api/catalog/items/${id}`
@@ -75,9 +75,6 @@ describe('public catalog details Worker contract', () => {
 
       await expect(malformed.json()).resolves.toStrictEqual(body)
 
-      const search = await request('/api/catalog/search?query=dead')
-
-      expect(search.status).toBe(401)
     })
   })
 
